@@ -219,6 +219,9 @@ describe('a paid booking’s money', () => {
     expect(customer!.rendered.text).toContain('Your booking is cancelled.\nYour payment will be refunded.');
     expect(customer!.rendered.html).toContain('<p>Your payment will be refunded.</p>');
     expect(owner!.rendered.text).toContain('The payment has been refunded.');
+    const [late, lateOwner] = mails({ kind: 'cancelled', wasBooked: true, refund: 'none' });
+    expect(late!.rendered.text).toContain('Your booking is cancelled.\nIt was cancelled too close to its start for a refund, so your payment is not refunded.');
+    expect(lateOwner!.rendered.text).toContain('Ada Lovelace cancelled Massage. It was cancelled too close to its start for a refund: the payment is kept.');
     const [unpaid, unpaidOwner] = mails({ kind: 'cancelled', wasBooked: true, by: 'business' });
     expect(unpaid!.rendered.text).not.toContain('refunded');
     expect(unpaidOwner!.rendered.text).not.toContain('payment');

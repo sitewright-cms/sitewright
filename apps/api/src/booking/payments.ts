@@ -226,17 +226,27 @@ export class BookingPayments implements BookingSettlement {
   }
 
   /**
-   * The business cancelled a booking: whatever was paid for it goes back in full. Undefined when nothing was paid;
-   * `manual` when the provider would not refund it (or did not answer), so the business must, from its dashboard.
+   * The money of a booking being cancelled, decided BEFORE the cancellation (inside its cancel lock): `inFull` refunds
+   * what is still outstanding; otherwise the payment is kept (`none`). Undefined when nothing was paid for it;
+   * `refunded` when it already was (a cancellation retried after a busy moment); `manual` when the provider would not
+   * refund it (or did not answer), so the business checks its dashboard.
+   * ★ Settled either way: the sweep must never take it up again and refund what was kept, or refund twice.
    */
-  async refundCancelled(projectId: string, claimId: string): Promise<'refunded' | 'manual' | undefined> {
-    const txn = await this.deps.transactions.paidForBooking(projectId, claimId);
+  async cancelMoney(projectId: string, claimId: string, inFull: boolean): Promise<'refunded' | 'manual' | 'none' | undefined> {
+    const txn = await this.deps.transactions.paymentForBooking(projectId, claimId);
     if (!txn) return undefined;
-    const word = await this.refundAll(txn);
-    // ★ Settled by the cancellation: the sweep must never take it up again and refund it a second time (or mail a
-    // customer whose booking the business cancelled that it was paid too late).
+    let word: 'refunded' | 'manual' | 'none';
+    if (txn.status === 'refunded') word = 'refunded';
+    else if (!inFull) word = 'none';
+    else word = (await this.refundAll(txn)) === 'refunded' ? 'refunded' : 'manual';
     await this.deps.transactions.markBookingSettled(txn.id);
-    return word === 'refunded' ? 'refunded' : 'manual';
+    return word;
+  }
+
+  /** The business cancelled a booking: whatever was paid for it goes back in full. */
+  async refundCancelled(projectId: string, claimId: string): Promise<'refunded' | 'manual' | undefined> {
+    const word = await this.cancelMoney(projectId, claimId, true);
+    return word === 'none' ? undefined : word;
   }
 
   /**

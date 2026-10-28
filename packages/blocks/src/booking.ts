@@ -152,6 +152,8 @@ export const BOOKING_STATUS_PARTS = Object.freeze({
   cancel: 'cancel',
   /** Shown after the cancel button is pressed; holds the `cancel-yes` and `cancel-no` buttons. */
   cancelConfirm: 'cancel-confirm',
+  /** Inside the confirmation, for a paid booking: whether cancelling now refunds it (added when it is missing). */
+  cancelRefund: 'cancel-refund',
   cancelYes: 'cancel-yes',
   cancelNo: 'cancel-no',
   /** Where a refusal or a failure is written. */
@@ -171,7 +173,7 @@ function defaultStatusMarkup(t: (key: string) => string): string {
     p('status-unknown', 'booking.status_unknown') +
     `<p data-sw-part="details" hidden><strong data-sw-field="offering"></strong><br><span data-sw-field="when"></span></p>` +
     `<p><button type="button" class="btn" data-sw-part="cancel" hidden>${escapeHtml(t('booking.cancel'))}</button></p>` +
-    `<div data-sw-part="cancel-confirm" hidden><p>${escapeHtml(t('booking.cancel_confirm'))}</p>` +
+    `<div data-sw-part="cancel-confirm" hidden><p>${escapeHtml(t('booking.cancel_confirm'))}</p><p data-sw-part="cancel-refund" hidden></p>` +
     `<button type="button" class="btn btn-primary" data-sw-part="cancel-yes">${escapeHtml(t('booking.cancel_yes'))}</button> ` +
     `<button type="button" class="btn" data-sw-part="cancel-no">${escapeHtml(t('booking.cancel_no'))}</button></div>` +
     `<p data-sw-part="message" role="status"></p>`

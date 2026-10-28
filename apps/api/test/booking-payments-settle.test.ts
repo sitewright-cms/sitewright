@@ -67,7 +67,7 @@ function setup(
       releaseRefundClaim: vi.fn(async () => undefined),
       settleRefund: vi.fn(async () => undefined),
       unsettledBookingPayments: vi.fn(async () => [] as TransactionRow[]),
-      paidForBooking: vi.fn(async () => undefined),
+      paymentForBooking: vi.fn(async () => undefined),
       // The payment as it stands now: what the test says it is, else the one handed in.
       byId: vi.fn(async () => current),
     },
@@ -157,10 +157,26 @@ describe('★ settling a booking’s payment', () => {
     expect(deps.log.error).toHaveBeenCalledTimes(1);
   });
 
+  it('★ keeps the payment of a booking cancelled too late for a refund, and marks it settled so no sweep refunds it later', async () => {
+    const { payments, deps, claimed, settled } = setup();
+    deps.transactions.paymentForBooking.mockResolvedValue(txn() as never);
+    expect(await payments.cancelMoney('p1', 'c1', false)).toBe('none');
+    expect(claimed).toEqual([]);
+    expect(settled).toEqual(['t1']);
+  });
+
+  it('reads a payment refunded before (a cancellation retried) as refunded, and refunds nothing more', async () => {
+    const { payments, deps, claimed } = setup();
+    deps.transactions.paymentForBooking.mockResolvedValue(txn({ status: 'refunded', refundedMinor: 4500 }) as never);
+    expect(await payments.cancelMoney('p1', 'c1', true)).toBe('refunded');
+    expect(await payments.cancelMoney('p1', 'c1', false)).toBe('refunded');
+    expect(claimed).toEqual([]);
+  });
+
   it('★ refunds in full what was paid for a booking the business cancels, and marks it settled so the sweep never refunds it again', async () => {
     const { payments, deps, claimed, settled } = setup();
     expect(await payments.refundCancelled('p1', 'c1')).toBeUndefined();
-    deps.transactions.paidForBooking.mockResolvedValue(txn({ refundedMinor: 500 }) as never);
+    deps.transactions.paymentForBooking.mockResolvedValue(txn({ refundedMinor: 500 }) as never);
     deps.transactions.byId.mockResolvedValueOnce(txn({ refundedMinor: 500 }) as never).mockResolvedValueOnce(txn({ status: 'refunded', refundedMinor: 4500 }) as never);
     expect(await payments.refundCancelled('p1', 'c1')).toBe('refunded');
     expect(claimed).toEqual([4000]);

@@ -368,8 +368,8 @@ export class ShopTransactionRepository {
     return rows.map(toRow);
   }
 
-  /** The payment that paid for a booking (paid, or partly refunded since), if any. */
-  async paidForBooking(projectId: string, claimId: string): Promise<TransactionRow | undefined> {
+  /** The payment that paid for a booking (paid, or partly or wholly refunded since), if any. */
+  async paymentForBooking(projectId: string, claimId: string): Promise<TransactionRow | undefined> {
     const [r] = await this.db
       .select()
       .from(shopTransactions)
@@ -377,7 +377,7 @@ export class ShopTransactionRepository {
         and(
           eq(shopTransactions.projectId, projectId),
           eq(shopTransactions.bookingClaimId, claimId),
-          inArray(shopTransactions.status, ['paid', 'partially_refunded']),
+          inArray(shopTransactions.status, ['paid', 'partially_refunded', 'refunded']),
         ),
       )
       .orderBy(desc(shopTransactions.createdAt))

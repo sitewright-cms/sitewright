@@ -11,6 +11,17 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Customers can cancel a paid booking, with a refund until a deadline.** A customer who cancels a paid booking on
+  their booking page gets their payment back in full until the offering's deadline before it starts (set per
+  offering under its price, "Refunded if cancelled … hours or more before"; 24 hours unless set), and nothing after.
+  The page says which before they confirm, and both sides' emails say where the money stands. The money goes back
+  before the booking is cancelled, so a failure in between leaves a booking standing rather than a cancelled one
+  nobody refunded. The business cancelling still always refunds in full.
+  - **Hardening (security review):** one cancellation of a booking at a time, the customer's and the business's
+    alike, so a double click refunds and mails once; a payment kept because the cancellation came too late is
+    marked settled, so no sweep refunds it later; a cancellation retried after its refund went out still says it
+    was refunded; and a paid booking is not cancelled online in its last minute, so its refund and its
+    cancellation both land before it starts.
 - **Paid bookings: an offering can be paid when it is booked.** An offering gets a price (per booking, per seat or
   unit, or per night or day of a stay) and the booking set-up a payment provider and currency (Settings → Payment):
   one of the project's providers whose keys are complete, the same as the shop's (Website settings → Shop →
@@ -27,7 +38,7 @@ The running version of an instance is reported at `GET /version` (baked into the
     settlement step, which a shop order and a booking each answer in their own way.
   - **Cancelling:** a paid booking the business cancels in the Bookings tab is refunded in full, and the tab and the
     customer's email say so (or that the business must refund it from the provider's dashboard, when the provider
-    would not). For now the customer cannot cancel a paid booking themselves; their refunds come next.
+    would not).
   - **Hardening (security review):** money that arrives after the checkout was closed as failed or expired is
     recorded and refunded rather than lost; a payment is settled exactly once and marked so, and one a crash or a
     busy moment interrupted is finished by the maintenance sweep (confirmed, or refunded); a moment of load never

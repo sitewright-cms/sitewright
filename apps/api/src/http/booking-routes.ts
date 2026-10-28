@@ -3,6 +3,7 @@ import {
   FormFieldSchema,
   MIN_SUBMIT_ELAPSED_MS,
   minorUnitExponent,
+  refundsInFull,
   validateFormSubmission,
   type BookingConfig,
   type BookingOffering,
@@ -10,6 +11,7 @@ import {
 } from '@sitewright/schema';
 import type { Availability, BookingRequest } from '../booking/availability.js';
 import { BOOKING_PAY_LIMITS, type BookingPayments } from '../booking/payments.js';
+import { BookingCancelLock, PAID_CANCEL_MARGIN_MS } from '../booking/cancel-lock.js';
 import { signBookingRef, verifyBookingRef } from '../booking/reference.js';
 import type { BookingService, ClaimFailure } from '../booking/service.js';
 import type { BookingEvent } from '../booking/notify.js';
@@ -67,8 +69,12 @@ export interface BookingRoutesDeps {
    * reference), and where a cancelled payment goes. White-label: never the platform's address. Null: no site to go to.
    */
   readonly returnUrls?: (projectId: string, reference: string, statusPath: string | undefined) => Promise<{ return: string; cancel: string } | null>;
-  /** Whether a booking was paid for: then only the business cancels it (and refunds it). */
-  readonly isPaid?: (projectId: string, claimId: string) => Promise<boolean>;
+  /** Whether a booking was paid for, and whether that payment was refunded since: then cancelling decides its money first. */
+  readonly payment?: (projectId: string, claimId: string) => Promise<'paid' | 'refunded' | undefined>;
+  /** A cancelled booking's money: refunded in full (`inFull`) or kept. See BookingPayments.cancelMoney. */
+  readonly cancelMoney?: (projectId: string, claimId: string, inFull: boolean) => Promise<'refunded' | 'manual' | 'none' | undefined>;
+  /** One cancellation of a booking at a time; shared with the Bookings tab's. */
+  readonly cancelLock?: BookingCancelLock;
 }
 
 /** A page language as the widget reports it (`<html lang>`); the notifier keeps it only if the site has it. */
@@ -184,6 +190,7 @@ const STATUS: Record<ClaimFailure, number> = {
 export function registerBookingRoutes(app: FastifyInstance, deps: BookingRoutesDeps): void {
   const { bookings, rl } = deps;
   const now = deps.now ?? Date.now;
+  const lock = deps.cancelLock ?? new BookingCancelLock();
   const notFound = (reply: FastifyReply) => reply.code(404).send({ error: 'not-found' });
   const unavailable = (reply: FastifyReply) => reply.code(400).send({ error: 'booking-unavailable' });
 
@@ -324,15 +331,20 @@ export function registerBookingRoutes(app: FastifyInstance, deps: BookingRoutesD
     const c = await bookings.get(projectId, claimId);
     if (!c) return notFound(reply);
     const found = await bookings.offering(projectId, c.offeringId);
+    const start = c.startAt.getTime();
+    const payment = c.state === 'booked' ? await deps.payment?.(projectId, claimId) : undefined;
+    const paid = payment !== undefined;
     return reply.send({
       state: c.state,
-      start: c.startAt.getTime(),
+      start,
       end: c.endAt.getTime(),
       quantity: c.units,
       // What the status page needs to say when it is: the offering's clock, and whether it is booked by the night.
       offering: found ? bookingSummary(found.offering, found.config) : null,
-      // A paid booking is cancelled by the business, which refunds it (the customer's own refunds come later).
-      cancellable: c.startAt.getTime() > now() && !(await deps.isPaid?.(projectId, claimId)),
+      cancellable: paid ? start - now() > PAID_CANCEL_MARGIN_MS : start > now(),
+      // A paid booking: what cancelling it now does with the money, said before the customer confirms.
+      // (Its money already back, from a cancellation tried before: refunded in full, whatever the deadline says now.)
+      ...(paid ? { refund: payment === 'refunded' || refundsInFull(found?.offering, start, now()) ? 'full' : 'none' } : {}),
     });
   });
 
@@ -341,19 +353,40 @@ export function registerBookingRoutes(app: FastifyInstance, deps: BookingRoutesD
     const { projectId } = req.params;
     const claimId = verifyBookingRef(projectId, req.params.reference, deps.getSecret());
     if (!claimId || !(await deps.isPublicProject(projectId))) return notFound(reply);
-    if (await deps.isPaid?.(projectId, claimId)) return reply.code(409).send({ error: 'paid', detail: 'a paid booking is cancelled by the business' });
-    const result = await bookings.cancel(projectId, claimId);
-    if (result.ok) {
-      // Both sides hear of it; a booking already in calendars is taken out of them again.
-      const found = await bookings.offering(projectId, result.claim.offeringId).catch(() => null);
-      if (found) void deps.notify?.({ kind: 'cancelled', projectId, claim: result.claim, offering: found.offering, config: found.config });
-      // The offering was removed from the set-up since: there is no name or address left to write with.
-      else req.log.warn({ projectId, offeringId: result.claim.offeringId }, 'booking cancelled without mails: its offering no longer exists');
-      return reply.send({ ok: true });
-    }
-    if (result.reason === 'unknown-claim') return notFound(reply);
-    if (result.reason === 'busy') reply.header('retry-after', '60');
-    return reply.code(result.reason === 'started' ? 409 : 503).send({ error: result.reason, detail: result.detail });
+    return lock.run(projectId, claimId, async () => {
+      // ★ A paid BOOKING's money is decided FIRST (in full until the offering's deadline, kept after): a failure
+      // between the two then leaves a booking standing that the customer cancels again (its money already decided),
+      // never a cancelled booking nobody refunds. A checkout still in progress (a hold) has no money to decide: its
+      // payment, should it come after all, finds the hold gone and is refunded.
+      let refund: 'refunded' | 'manual' | 'none' | undefined;
+      const before = await bookings.get(projectId, claimId);
+      if (before?.state === 'booked' && (await deps.payment?.(projectId, claimId)) !== undefined) {
+        const start = before.startAt.getTime();
+        if (start - now() <= PAID_CANCEL_MARGIN_MS) return reply.code(409).send({ error: 'started', detail: 'it starts too soon to cancel online' });
+        const offered = await bookings.offering(projectId, before.offeringId).catch(() => null);
+        refund = await (deps.cancelMoney?.(projectId, claimId, refundsInFull(offered?.offering, start, now())) ?? Promise.resolve(undefined)).catch(
+          (err: unknown) => {
+            req.log.error({ err, projectId }, 'the money of a booking the customer cancelled could not be settled');
+            return 'manual' as const;
+          },
+        );
+      }
+      const result = await bookings.cancel(projectId, claimId);
+      if (result.ok) {
+        // Both sides hear of it; a booking already in calendars is taken out of them again.
+        const found = await bookings.offering(projectId, result.claim.offeringId).catch(() => null);
+        if (found) void deps.notify?.({ kind: 'cancelled', projectId, claim: result.claim, offering: found.offering, config: found.config, ...(refund ? { refund } : {}) });
+        // The offering was removed from the set-up since: there is no name or address left to write with.
+        else req.log.warn({ projectId, offeringId: result.claim.offeringId }, 'booking cancelled without mails: its offering no longer exists');
+        return reply.send({ ok: true, ...(refund ? { refund } : {}) });
+      }
+      // Its money decided, yet not cancelled (a busy moment): logged, and the customer tries again (the retry finds
+      // the money already decided, and mails it).
+      if (refund) req.log.warn({ projectId, reason: result.reason, refund }, "a booking's money was settled but its cancellation was refused");
+      if (result.reason === 'unknown-claim') return notFound(reply);
+      if (result.reason === 'busy') reply.header('retry-after', '60');
+      return reply.code(result.reason === 'started' ? 409 : 503).send({ error: result.reason, detail: result.detail, ...(refund ? { refund } : {}) });
+    });
   });
 }
 

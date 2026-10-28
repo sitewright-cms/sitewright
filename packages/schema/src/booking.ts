@@ -199,7 +199,23 @@ const offeringBase = {
   chooseResource: z.boolean().default(false),
   /** Paid before it is confirmed. None: free (or paid on the day, which the platform does not handle). */
   price: BookingPriceSchema.optional(),
+  /**
+   * A paid booking the CUSTOMER cancels is refunded in full until this many minutes before it starts, and not at all
+   * after (the business cancelling always refunds in full). Unset: {@link DEFAULT_REFUND_UNTIL_MIN}.
+   */
+  refundUntilMin: z.number().int().min(0).max(MINUTES_IN_DAY * 365).optional(),
 };
+
+/** How long before its start a customer's cancellation of a paid booking is still refunded, unless set: a day. */
+export const DEFAULT_REFUND_UNTIL_MIN = MINUTES_IN_DAY;
+
+/**
+ * Whether a customer cancelling now gets their payment back: in full until the offering's refund deadline before the
+ * start, nothing after. An offering no longer in the set-up keeps the default.
+ */
+export function refundsInFull(offering: { refundUntilMin?: number | undefined } | undefined, startMs: number, nowMs: number): boolean {
+  return nowMs <= startMs - (offering?.refundUntilMin ?? DEFAULT_REFUND_UNTIL_MIN) * 60_000;
+}
 
 export const BookingOfferingSchema = z.discriminatedUnion('mode', [
   z.strictObject({

@@ -315,6 +315,16 @@
           "de": "Diese Buchung stornieren?",
           "es": "¿Cancelar esta reserva?"
         },
+        "booking.cancel_refund": {
+          "en": "Your payment will be refunded in full.",
+          "de": "Ihre Zahlung wird vollständig erstattet.",
+          "es": "Te devolveremos el pago íntegro."
+        },
+        "booking.cancel_no_refund": {
+          "en": "It is too close to its start for a refund: your payment will not be refunded.",
+          "de": "Der Termin ist zu nah für eine Erstattung: Ihre Zahlung wird nicht erstattet.",
+          "es": "Falta demasiado poco para el inicio: no se devolverá el pago."
+        },
         "booking.cancel_yes": {
           "en": "Yes, cancel it",
           "de": "Ja, stornieren",
@@ -389,6 +399,11 @@
           "en": "Your payment will be refunded.",
           "de": "Ihre Zahlung wird erstattet.",
           "es": "Te devolveremos el pago."
+        },
+        "booking.mail_no_refund_note": {
+          "en": "It was cancelled too close to its start for a refund, so your payment is not refunded.",
+          "de": "Die Stornierung erfolgte zu kurz vor dem Termin für eine Erstattung, daher wird Ihre Zahlung nicht erstattet.",
+          "es": "Se canceló demasiado cerca del inicio para un reembolso, así que no se devolverá el pago."
         },
         "about.ab_img_alt": {
           "en": "The Northwind studio",

@@ -11310,6 +11310,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // One cancellation of a booking at a time, whoever cancels it: its money is decided before it is cancelled.
   const bookingCancelLock = new BookingCancelLock();
+  /** Whether a booking was paid for, and whether that payment was refunded since (one still holding money counts first). */
+  const bookingPayment = async (projectId: string, claimId: string): Promise<'paid' | 'refunded' | undefined> => {
+    const txn = await shopTransactionsRepo.paymentForBooking(projectId, claimId);
+    return txn ? (txn.status === 'refunded' ? 'refunded' : 'paid') : undefined;
+  };
   // Public booking: what a published site's booking widget calls (see booking-routes.ts).
   registerBookingRoutes(app, {
     bookings: bookingService,
@@ -11355,10 +11360,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       return { return: page, cancel: page };
     },
     // A paid booking the customer cancels is refunded in full until its offering's deadline (late-bound, as above).
-    payment: async (projectId, claimId) => {
-      const txn = await shopTransactionsRepo.paymentForBooking(projectId, claimId);
-      return txn ? (txn.status === 'refunded' ? 'refunded' : 'paid') : undefined;
-    },
+    payment: bookingPayment,
     cancelMoney: (projectId, claimId, inFull) => (bookingPayments ? bookingPayments.cancelMoney(projectId, claimId, inFull) : Promise.resolve(undefined)),
     cancelLock: bookingCancelLock,
     payState: (projectId, claimId, since) => shopTransactionsRepo.bookingPayState(projectId, claimId, since),
@@ -11375,6 +11377,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Late-bound, as above: a paid booking the business cancels is refunded in full.
     refundCancelled: (projectId, claimId) => (bookingPayments ? bookingPayments.refundCancelled(projectId, claimId) : Promise.resolve(undefined)),
     cancelLock: bookingCancelLock,
+    payment: bookingPayment,
     resolveProject,
     rl,
   });

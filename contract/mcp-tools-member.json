@@ -13,9 +13,24 @@
     ]
   },
   {
+    "name": "answer_booking",
+    "required": [
+      "answer",
+      "id",
+      "project"
+    ]
+  },
+  {
     "name": "approve_invite",
     "required": [
       "inviteId",
+      "project"
+    ]
+  },
+  {
+    "name": "booking_availability",
+    "required": [
+      "offering",
       "project"
     ]
   },
@@ -250,6 +265,12 @@
     "name": "invite_member",
     "required": [
       "email",
+      "project"
+    ]
+  },
+  {
+    "name": "list_bookings",
+    "required": [
       "project"
     ]
   },

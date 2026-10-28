@@ -384,7 +384,11 @@ export class ShopTransactionRepository {
     return { paid: Number(r?.paid ?? 0) > 0, open: Number(r?.open ?? 0) };
   }
 
-  /** The payment that paid for a booking (paid, or partly or wholly refunded since), if any. */
+  /**
+   * The payment that paid for a booking (paid, or partly or wholly refunded since), if any. ★ One still holding money
+   * comes first: a booking paid twice has its duplicate refunded, and that refund must never hide the payment that
+   * counts (newest first only among equals).
+   */
   async paymentForBooking(projectId: string, claimId: string): Promise<TransactionRow | undefined> {
     const [r] = await this.db
       .select()
@@ -396,7 +400,7 @@ export class ShopTransactionRepository {
           inArray(shopTransactions.status, ['paid', 'partially_refunded', 'refunded']),
         ),
       )
-      .orderBy(desc(shopTransactions.createdAt))
+      .orderBy(sql`case when ${shopTransactions.status} = 'refunded' then 1 else 0 end`, desc(shopTransactions.createdAt))
       .limit(1);
     return r ? toRow(r) : undefined;
   }

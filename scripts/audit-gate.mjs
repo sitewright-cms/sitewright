@@ -37,12 +37,24 @@ process.on('uncaughtException', (e) => {
  * Critical and high are NEVER acceptable; they are not consulted against this map.
  */
 const ACCEPTED = {
-  // Empty, and that is the goal state. The last entry (GHSA-8988-4f7v-96qf, @opentelemetry/core
-  // <2.8.0 via lighthouse -> @sentry/node) was retired the day the stale check first fired on it:
-  // it had been accepted on the grounds that "Sentry pins otel 1.x, so clearing it means forcing a
-  // MAJOR into a third-party dep" — and then Sentry shipped otel 2, lighthouse 13.4.1 picked it up,
-  // and a lockfile refresh cleared the advisory outright. The reasoning that justified the exemption
-  // had quietly stopped being true, which is exactly what an exemption nobody re-reads looks like.
+  // Empty is the goal state. The last entry before these (GHSA-8988-4f7v-96qf, @opentelemetry/core
+  // via lighthouse -> @sentry/node) was retired the day the stale check first fired on it: it had been
+  // accepted because clearing it meant forcing a MAJOR into a third-party dep, and then the dep moved
+  // and a lockfile refresh cleared it outright. Expect the same here — when @fastify/static and eslint
+  // take glob 14 / minimatch 11, the stale check fails and these two lines go.
+  //
+  // Accepted 2026-11-03. Both fixes exist only in brand-new MAJORS (glob 14, minimatch 11, both
+  // published 2026-10-27) that the packages reaching them do not declare: @fastify/static 10.1.8 still
+  // depends on glob ^13, and glob 13 on minimatch ^10. Forcing a week-old major under them through an
+  // override would trade an unreachable moderate for an untested runtime change.
+  'GHSA-3g3m-2fjr-6pw4':
+    'glob <=14.0.1: an AbortSignal that has fired does not stop the walk. The only runtime caller is ' +
+    "@fastify/static, which calls glob('**/**') ONCE at registration (wildcard: false) over the editor " +
+    'dist, with no signal at all — nothing here ever passes one.',
+  'GHSA-g3hv-75wg-m249':
+    'minimatch <11.0.1: a crafted PATTERN expands into exponentially many parts (DoS). Every pattern ' +
+    "reaching it is the repo's own: eslint / typescript-eslint config globs (dev tooling, not in the " +
+    "image) and the fixed '**/**' that @fastify/static gives glob at startup. No user input is a pattern.",
 };
 
 const SEVERITY_RANK = { info: 0, low: 1, moderate: 2, high: 3, critical: 4 };

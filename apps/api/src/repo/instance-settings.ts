@@ -20,6 +20,7 @@ import {
   type PlatformBackground,
   type Hsts,
   type Embedding,
+  type ShareEmbedding,
   type LogLevel,
   type InstanceSettingsInput,
   type InstanceSettingsStored,
@@ -154,6 +155,11 @@ export class InstanceSettingsRepository {
   /** The effective embedding policy (admin setting or the DENIED default) — read by the security-headers hook. */
   async getEmbedding(): Promise<Embedding> {
     return (await this.getStored()).embedding ?? { ...DEFAULT_EMBEDDING, origins: [] };
+  }
+
+  /** Which sites may frame a preview share link (empty = same-origin only) — read by the preview route. */
+  async getShareEmbedding(): Promise<ShareEmbedding> {
+    return (await this.getStored()).shareEmbedding ?? { origins: [] };
   }
 
   /** The default lifetime for a NEW share link, in days (0 = never expires). */
@@ -355,6 +361,16 @@ export class InstanceSettingsRepository {
       if (current.embedding) next.embedding = current.embedding;
     } else {
       next.embedding = input.embedding;
+    }
+
+    // Share-link framing allowlist (non-secret object): an object sets it, `null` clears it (share
+    // links back to same-origin only), undefined keeps whatever was stored.
+    if (input.shareEmbedding === null) {
+      // cleared — leave next.shareEmbedding undefined
+    } else if (input.shareEmbedding === undefined) {
+      if (current.shareEmbedding) next.shareEmbedding = current.shareEmbedding;
+    } else {
+      next.shareEmbedding = input.shareEmbedding;
     }
 
     // Additional platform origins: an array REPLACES the whole list (so removing one is possible),

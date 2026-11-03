@@ -9,6 +9,18 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Preview share links in a frame on sites you allow.** System Settings → Security → "Preview share links in a
+  frame" lists the sites (origins such as `https://review.example.com`, at most 20) that may show a preview share
+  link inside their own pages, for example a page where a client reviews a draft that was never published.
+  Through a valid share link, the page and the draft-page notice then answer `frame-ancestors 'self'` plus those
+  sites, without `X-Frame-Options`. Everything else keeps its policy: the logged-in preview, an expired, withdrawn
+  or forged link, the preview's files, hosted sites and the admin panel. It is a separate list from "Embedding
+  (iframe)", so a site trusted with drafts cannot frame the admin panel. The sandbox is unchanged, so a framed
+  draft still runs at an opaque origin with no access to the platform's session. A saved change applies to the
+  next request.
+
 ## [0.75.0] — 2026-10-28
 
 ### Added

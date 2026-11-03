@@ -65,6 +65,7 @@ import { Tabs } from './ui/Tabs';
 import { LocalePickerModal } from './i18n/LocalePickerModal';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
 import { OidcProvidersField, nextOidcProviderKey, type OidcProviderDraft } from './settings/OidcProvidersField';
+import { ShareFramingField } from './settings/ShareFramingField';
 import { RankTrackingSettings, type RankTrackingSettingsHandle } from './settings/RankTrackingSettings';
 import { WebmasterAccountsSettings, type WebmasterAccountsSettingsHandle } from './settings/WebmasterAccountsSettings';
 import { secretFieldProps } from '../lib/secret-field';
@@ -233,6 +234,7 @@ export function InstanceSettings({ initialTab = 'general', focusSection }: { ini
   const [embedDraft, setEmbedDraft] = useState('');
   const [embedError, setEmbedError] = useState<string | null>(null);
   const [shareExpiryDays, setShareExpiryDays] = useState<number>(30);
+  const [shareFrameOrigins, setShareFrameOrigins] = useState<string[]>([]);
   const [extraOrigins, setExtraOrigins] = useState<string[]>([]);
   const [originDraft, setOriginDraft] = useState('');
   const [originError, setOriginError] = useState<string | null>(null);
@@ -488,6 +490,7 @@ export function InstanceSettings({ initialTab = 'general', focusSection }: { ini
     setEmbedEnabled(s.embedding?.enabled ?? false);
     setEmbedAllowSelf(s.embedding?.allowSelf ?? false);
     setEmbedOrigins(s.embedding?.origins ?? []);
+    setShareFrameOrigins(s.shareEmbedding?.origins ?? []);
     setExtraOrigins(s.additionalOrigins ?? []);
     setShareExpiryDays(s.shareExpiryDays ?? 30);
     setEmbedDraft('');
@@ -605,6 +608,8 @@ export function InstanceSettings({ initialTab = 'general', focusSection }: { ini
     // HSTS: send the full policy (no secrets). enabled=false stores an OFF policy (preserves the other
     // fields for when it's re-enabled) rather than clearing the section.
     input.embedding = { enabled: embedEnabled, origins: embedOrigins, allowSelf: embedAllowSelf };
+    // An empty list CLEARS it (share links back to same-origin only), like additionalOrigins below.
+    input.shareEmbedding = shareFrameOrigins.length > 0 ? { origins: shareFrameOrigins } : null;
     // An empty list CLEARS the setting (back to single-origin) rather than storing `[]`, matching how
     // every other optional setting reverts to its default.
     input.additionalOrigins = extraOrigins.length > 0 ? extraOrigins : null;
@@ -1637,6 +1642,8 @@ export function InstanceSettings({ initialTab = 'general', focusSection }: { ini
           </div>
         )}
       </fieldset>
+
+      <ShareFramingField origins={shareFrameOrigins} onChange={setShareFrameOrigins} />
 
       <fieldset className={`${glassCard} p-4`}>
         <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">

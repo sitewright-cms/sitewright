@@ -855,3 +855,52 @@ describe('InstanceSettings \u2014 storage', () => {
     await waitFor(() => expect(figure('Data folder total')).toBe('2.0 GB'));
   });
 });
+
+describe('InstanceSettings — preview share links in a frame', () => {
+  const add = (value: string) => {
+    const input = screen.getByLabelText('Site that may show share links');
+    fireEvent.change(input, { target: { value } });
+    fireEvent.keyDown(input, { key: 'Enter' }); // Enter adds the site, it does not submit the form
+  };
+
+  it('loads the stored sites, adds a valid one, refuses an invalid one, and saves the list', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: { ...DEFAULTS, shareEmbedding: { origins: ['https://old.example.com'] } } });
+    render(<InstanceSettings />);
+    expect(await screen.findByText('https://old.example.com')).toBeInTheDocument();
+
+    add('https://preview.business.na/claim'); // a path: refused, nothing added
+    expect(screen.getByText(/must be scheme:\/\/host/)).toBeInTheDocument();
+    expect(putInstanceSettings).not.toHaveBeenCalled();
+    add('https://preview.business.na');
+    expect(screen.getByText('https://preview.business.na')).toBeInTheDocument();
+    expect(screen.queryByText(/must be scheme:\/\/host/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove https://old.example.com from the share-link sites' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    const body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;
+    expect(body.shareEmbedding).toEqual({ origins: ['https://preview.business.na'] });
+    // The admin-panel embedding list is a separate setting and is not touched by this one.
+    expect(body.embedding?.origins).toEqual([]);
+  });
+
+  it('an empty list clears the setting (share links back to same-origin only)', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: { ...DEFAULTS, shareEmbedding: { origins: ['https://old.example.com'] } } });
+    render(<InstanceSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove https://old.example.com from the share-link sites' }));
+    expect(screen.getByText(/None — share links open only on their own/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    expect((putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput).shareEmbedding).toBeNull();
+  });
+
+  it('stops at 20 sites', async () => {
+    const origins = Array.from({ length: 20 }, (_, i) => `https://s${i}.example.com`);
+    getInstanceSettings.mockResolvedValue({ settings: { ...DEFAULTS, shareEmbedding: { origins } } });
+    render(<InstanceSettings />);
+    expect(await screen.findByText('https://s19.example.com')).toBeInTheDocument();
+    add('https://one-more.example.com');
+    expect(screen.getByText('At most 20 sites — remove one first.')).toBeInTheDocument();
+    expect(screen.queryByText('https://one-more.example.com')).not.toBeInTheDocument();
+  });
+});

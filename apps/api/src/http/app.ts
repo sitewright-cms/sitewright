@@ -43,6 +43,7 @@ import {
   maskInstanceSettings,
   DEFAULT_HSTS,
   frameAncestorsFor,
+  shareFrameAncestorsFor,
   type LogLevel,
   DEFAULT_NEW_PROJECT_LOCALE,
   DEFAULT_PLATFORM_NAME,
@@ -1928,6 +1929,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // mutable-ref style as hstsPolicy, and pre-resolved to the `frame-ancestors` source list (or null =
   // stay denied) so the per-response hook does no work beyond a null check.
   let frameAncestors = frameAncestorsFor(await instanceSettingsRepo.getEmbedding());
+  // Who may FRAME a preview SHARE link (admin instance setting; same-origin only by default). The same
+  // mutable-ref style, pre-resolved to the `frame-ancestors` source list or null. Read by the preview
+  // route on each response, so a saved change applies to the next request without a restart.
+  let shareFrameAncestors = shareFrameAncestorsFor(await instanceSettingsRepo.getShareEmbedding());
   // Additional origins this instance answers on (admin instance setting; empty = single-origin). Same
   // mutable-ref style as hstsPolicy — loaded at boot, refreshed after a settings PUT — so the per-request
   // resolution below does no DB work and an admin change applies without a restart.
@@ -3976,6 +3981,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // single-container by design); a multi-replica deployment would need cross-replica invalidation.
       hstsPolicy = settings.hsts ?? { ...DEFAULT_HSTS };
       frameAncestors = frameAncestorsFor(settings.embedding);
+      shareFrameAncestors = shareFrameAncestorsFor(settings.shareEmbedding);
       additionalOrigins = settings.additionalOrigins ?? [];
       // Apply a log-level change live (pino's level is mutable) so an admin can dial verbosity without a
       // restart. On CLEAR (settings.logLevel undefined) fall back to the raw ENV level (not opts.logLevel,
@@ -10885,6 +10891,38 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // canonicalization below stay on that form. A share request has already been redirected to the
         // canonical slug above, so `handle` IS the slug there; a default preview keeps its id form.
         const base = `/preview-site/${handle}/${sig}/`;
+        /**
+         * The sandbox and framing headers of a preview HTML DOCUMENT (the page, the draft-page notice).
+         *
+         * Same-origin framing (`X-Frame-Options: SAMEORIGIN`) unless this request AUTHENTICATED AS A SHARE
+         * and an admin allowlisted sites for share links: then `frame-ancestors 'self' <origins>`, and no
+         * X-Frame-Options, which cannot express a list and would contradict it. The member-only default
+         * URL never gets the allowlist, and neither does the "link does not work" page: it is answered
+         * above, before a share is known to be valid. The allowlist is the in-process copy that a settings
+         * save refreshes, read here on every response, so a saved change applies to the next request.
+         *
+         * The sandbox: author content runs at an opaque origin — scripts run for true WYSIWYG, but can't
+         * reach the editor's same-origin session. `allow-forms` lets the submit EVENT fire; the leads it
+         * would fire are handled by pointing preview forms at the dry-run endpoint (build.ts), not by
+         * breaking the button. Without it the browser refuses the submit outright, so the one thing the
+         * review workflow could never exercise on the surface it runs on was a form.
+         * `allow-popups allow-popups-to-escape-sandbox` so an outbound `target="_blank"` link actually
+         * opens. Without them the browser silently drops the navigation — every external link on every
+         * previewed site reads as DEAD (a clone review chased 31 IMDb links that were authored correctly
+         * and simply could not fire). The escape token matters as much as the popup one: a popup that
+         * inherits this sandbox lands on the target site at an OPAQUE origin and breaks there instead.
+         * Neither token grants the framed document same-origin access to the editor.
+         *
+         * ★ The sandbox tokens are the same whichever framing applies. A framing site gets the draft at an
+         * OPAQUE origin and nothing else: no `allow-same-origin`, so the page can never reach the session.
+         */
+        const documentHeaders = (r: FastifyReply): FastifyReply => {
+          const shareFraming = viaShare ? shareFrameAncestors : null;
+          if (shareFraming) {
+            return r.header('content-security-policy', `${PREVIEW_SANDBOX_CSP}; frame-ancestors ${shareFraming}`);
+          }
+          return r.header('content-security-policy', PREVIEW_SANDBOX_CSP).header('x-frame-options', 'SAMEORIGIN');
+        };
 
         // ── Static asset: cross-origin headers so the opaque-origin frame can load it (still signed) ──
         if (isPreviewAssetPath(path)) {
@@ -10951,15 +10989,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // draft". The page lookup runs ONLY on the miss, so a served page pays nothing for it.
           const draft = draftPageForPath((await contentRepo.list(systemCtx, 'page')) as Page[], path);
           if (draft) {
-            return reply
-              .code(404)
-              .header('cache-control', 'no-store')
-              .header('referrer-policy', 'no-referrer')
-              .header('content-security-policy', PREVIEW_SANDBOX_CSP)
-              // SAMEORIGIN like the served pages above. Setting our own CSP makes the global onSend
-              // hook skip its default framing header, so without this the notice — which names a draft
-              // page — would be the one preview document ANY origin could frame.
-              .header('x-frame-options', 'SAMEORIGIN')
+            // Framed like the served pages below. Setting our own CSP makes the global onSend hook skip
+            // its default framing header, so without `documentHeaders` the notice — which names a draft
+            // page — would be the one preview document ANY origin could frame.
+            return documentHeaders(reply.code(404).header('cache-control', 'no-store').header('referrer-policy', 'no-referrer'))
               .type('text/html')
               .send(draftPageNotice(draft));
           }
@@ -10974,23 +11007,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           const safePath = path.replace(/[\r\n\0]/g, '');
           return reply.redirect(`${base}${safePath}/${query}`, 301);
         }
-        return reply
+        return documentHeaders(reply)
           .header('cache-control', 'no-store')
           // Don't leak the signed (bearer) URL to third parties via the Referer header on outbound links.
           .header('referrer-policy', 'no-referrer')
-          // Sandbox the author content (opaque origin) — scripts run for true WYSIWYG, but can't reach
-          // the editor's same-origin session. `allow-forms` lets the submit EVENT fire; the leads it
-          // would fire are handled by pointing preview forms at the dry-run endpoint (build.ts), not by
-          // breaking the button. Without it the browser refuses the submit outright, so the one thing
-          // the review workflow could never exercise on the surface it runs on was a form.
-          // `allow-popups allow-popups-to-escape-sandbox` so an outbound `target="_blank"` link actually
-          // opens. Without them the browser silently drops the navigation — every external link on every
-          // previewed site reads as DEAD (a clone review chased 31 IMDb links that were authored
-          // correctly and simply could not fire). The escape token matters as much as the popup one: a
-          // popup that inherits this sandbox lands on the target site at an OPAQUE origin and breaks
-          // there instead. Neither token grants the framed document same-origin access to the editor.
-          .header('content-security-policy', PREVIEW_SANDBOX_CSP)
-          // ★ …and the page's REAL policy, report-only, so it is visible where the author is working.
+          // ★ The page's REAL policy too, report-only, so it is visible where the author is working.
           // Publish derives a per-page CSP and ships it as an INERT `<meta name="sw-csp">`; the hosted
           // routes promote that to a header, but preview did not — so the one policy directive the
           // preview carried was its own `sandbox`, and an author checking "is my video allowed?" saw
@@ -11002,7 +11023,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             'content-security-policy-report-only',
             siteCspHeaderFromHtml(html) ?? "default-src 'self'; img-src 'self' data: https:; object-src 'none'",
           )
-          .header('x-frame-options', 'SAMEORIGIN')
           .type('text/html')
           .send(html);
       },

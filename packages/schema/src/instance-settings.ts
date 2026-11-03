@@ -245,6 +245,35 @@ export function frameAncestorsFor(embedding: Embedding | undefined): string | nu
   return sources.length > 0 ? sources.join(' ') : null;
 }
 
+/** The most sites the share-link framing allowlist holds. */
+export const MAX_SHARE_EMBEDDING_ORIGINS = 20;
+
+/**
+ * Which other sites may show a preview SHARE link in a frame. Empty by default: a share link answers
+ * `X-Frame-Options: SAMEORIGIN` like every preview document.
+ *
+ * ★ Kept apart from {@link EmbeddingSchema} on purpose. That one lets origins frame the ADMIN PANEL; an
+ * origin trusted to show a client their draft must not gain that. This list reaches exactly one surface:
+ * the HTML of a preview request that authenticated AS A SHARE (the page and the draft-page notice). The
+ * member-only preview URL, the "link does not work" page, the preview's assets, hosted sites and the
+ * editor keep their own policy.
+ */
+export const ShareEmbeddingSchema = z.object({
+  /** Origins allowed to frame share links. Empty → share links stay same-origin only. */
+  origins: z.array(FrameAncestorOriginSchema).max(MAX_SHARE_EMBEDDING_ORIGINS).default([]),
+});
+export type ShareEmbedding = z.infer<typeof ShareEmbeddingSchema>;
+
+/**
+ * The `frame-ancestors` source list for a share link, or `null` when the allowlist is empty (share links
+ * then keep `X-Frame-Options: SAMEORIGIN`). `'self'` stays first so the app can still frame its own
+ * preview documents, as SAMEORIGIN allowed.
+ */
+export function shareFrameAncestorsFor(shareEmbedding: ShareEmbedding | undefined): string | null {
+  const origins = shareEmbedding?.origins ?? [];
+  return origins.length > 0 ? ["'self'", ...origins].join(' ') : null;
+}
+
 /**
  * How long a new preview share link lasts when the admin has set no default. 30 days: long enough for a
  * client review cycle, short enough that a link forgotten in an inbox stops working by itself.
@@ -478,6 +507,8 @@ export const InstanceSettingsStoredSchema = z.object({
   hsts: HstsSchema.optional(),
   /** Who may iframe the admin panel (admin opt-in; unset → framing denied). See {@link EmbeddingSchema}. */
   embedding: EmbeddingSchema.optional(),
+  /** Which sites may frame a preview SHARE link (admin opt-in; unset → same-origin only). See {@link ShareEmbeddingSchema}. */
+  shareEmbedding: ShareEmbeddingSchema.optional(),
   /**
    * Additional origins this instance answers on, beyond the canonical `SW_PUBLIC_URL`.
    *
@@ -642,6 +673,9 @@ export const InstanceSettingsInputSchema = z.object({
   // Embedding allowlist: an object sets it (all fields defaulted), `null` clears it (revert to
   // framing DENIED), and an absent (undefined) value leaves the stored one unchanged.
   embedding: EmbeddingSchema.nullable().optional(),
+  // Share-link framing allowlist: an object sets it, `null` clears it (share links back to same-origin
+  // only), and an absent value leaves the stored one unchanged.
+  shareEmbedding: ShareEmbeddingSchema.nullable().optional(),
   // Additional platform origins: an array REPLACES the whole list, `null` clears it (back to
   // single-origin), and an absent value leaves the stored one unchanged. The server additionally
   // refuses a list that mixes schemes or lands inside the hosted-sites domain — see
@@ -743,6 +777,8 @@ export interface InstanceSettingsPublic {
   hsts?: Hsts;
   /** Embedding allowlist (not a secret), or absent when unset (framing denied). */
   embedding?: Embedding;
+  /** Share-link framing allowlist (not a secret), or absent when unset (same-origin only). */
+  shareEmbedding?: ShareEmbedding;
   /** Additional origins this instance answers on (not a secret), or absent when single-origin. */
   additionalOrigins?: string[];
   /** Default share-link lifetime in days (0 = never expires), or absent when using the 30-day default. */
@@ -803,6 +839,7 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
   if (stored.additionalOrigins !== undefined) result.additionalOrigins = stored.additionalOrigins; // non-secret
   if (stored.shareExpiryDays !== undefined) result.shareExpiryDays = stored.shareExpiryDays; // non-secret
   if (stored.embedding !== undefined) result.embedding = stored.embedding; // non-secret — surfaced as-is
+  if (stored.shareEmbedding !== undefined) result.shareEmbedding = stored.shareEmbedding; // non-secret
   if (stored.backupRetention !== undefined) result.backupRetention = stored.backupRetention;
   if (stored.defaultImageUploadCap !== undefined) result.defaultImageUploadCap = stored.defaultImageUploadCap;
   if (stored.logLevel !== undefined) result.logLevel = stored.logLevel;

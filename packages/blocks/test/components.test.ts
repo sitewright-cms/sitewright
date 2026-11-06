@@ -406,7 +406,7 @@ describe('component registry', () => {
     expect(css).toMatch(/:where\(\[data-sw-part="prev"\],\[data-sw-part="next"\]\) svg\{width:1\.5rem;height:1\.5rem\}/);
   });
 
-  it('Carousel caption + dots default to the frosted "hero" look (single-item), overridable', () => {
+  it('Carousel caption + dots default to the frosted "hero" look, overridable', () => {
     const { css } = componentAssets(['Carousel']);
     // .sw-caption → frosted centered pill by default (zero-specificity so a light/wide utility overrides).
     expect(css).toContain(':where([data-sw-component="carousel"] .sw-caption){');
@@ -418,8 +418,18 @@ describe('component registry', () => {
     // slide. The strip is the one that kept getting missed: it carries no .sw-caption class, so the pill
     // rule never reaches it. Zero-specificity, so an authored text-left still wins.
     expect(css).toContain(':where([data-sw-component="carousel"] [data-sw-part="slide"] figcaption){text-align:center}');
-    // Frosted dots pill + thicker glyph now apply to any SINGLE-item slider (:not multi), not just kenburns.
-    expect(css).toMatch(/:not\(\[data-sw-multi="true"\]\)\) :where\(\[data-sw-part="dots"\]\)\{[^}]*backdrop-filter/);
+    // The frosted dots pill is part of the ONE base dots rule, so every slider with dots gets it — a
+    // multi-item row (data-sw-multi) included. Zero-specificity, so an authored utility still wins.
+    const dots = css.match(/:where\(\[data-sw-component="carousel"\]\) :where\(\[data-sw-part="dots"\]\)\{([^}]*)\}/);
+    expect(dots?.[1]).toContain('position:absolute');
+    expect(dots?.[1]).toContain('backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)');
+    expect(dots?.[1]).toContain('padding:6px');
+    expect(dots?.[1]).toContain('border-radius:100em');
+    expect(css).not.toMatch(/:not\(\[data-sw-multi="true"\]\)\) :where\(\[data-sw-part="dots"\]\)\{/);
+    // The thicker glyph stays the single-item polish.
+    expect(css).toContain(
+      ':where([data-sw-component="carousel"]:not([data-sw-multi="true"])) :where([data-sw-part="dots"]) button svg{stroke-width:4px}',
+    );
   });
 
   it('Modal uses the native <dialog> API', () => {

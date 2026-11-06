@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.76.1] — 2026-11-06
+
 ### Fixed
 
 - **A lightbox opened from an autoplaying slider stays open.** When gallery images sat in an autoplaying
@@ -6301,7 +6303,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.76.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.76.1...HEAD
+[0.76.1]: https://github.com/sitewright-cms/sitewright/compare/v0.76.0...v0.76.1
 [0.76.0]: https://github.com/sitewright-cms/sitewright/compare/v0.75.0...v0.76.0
 [0.75.0]: https://github.com/sitewright-cms/sitewright/compare/v0.74.0...v0.75.0
 [0.74.0]: https://github.com/sitewright-cms/sitewright/compare/v0.73.0...v0.74.0

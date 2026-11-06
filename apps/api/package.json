@@ -62,7 +62,7 @@
     "@types/yauzl": "^3.4.0",
     "@vitest/coverage-v8": "^5.0.5",
     "drizzle-kit": "^0.31",
-    "jose": "^6.2.12",
+    "jose": "^6.2.13",
     "typescript": "^5.7.2",
     "vitest": "^5.0.5"
   }

@@ -130,7 +130,8 @@ const CAROUSEL_CSS = [
   // (being a real class) outranks these :where() rules — hence the explicit "". An authored size utility
   // likewise still overrides both.
   ':where([data-sw-component="carousel"]) :where([data-sw-part="prev"],[data-sw-part="next"]) svg{width:1.5rem;height:1.5rem}',
-  ':where([data-sw-component="carousel"]) :where([data-sw-part="dots"]){position:absolute;bottom:.75rem;left:50%;transform:translateX(-50%);gap:.4rem;z-index:1}',
+  // The dots sit in a frosted pill on EVERY slider, single slide or a multi-item row alike.
+  ':where([data-sw-component="carousel"]) :where([data-sw-part="dots"]){position:absolute;bottom:.75rem;left:50%;transform:translateX(-50%);gap:.4rem;z-index:1;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);padding:6px;border-radius:100em}',
   // ── Arrow LOOK: automatic by slides-per-view, overridable with data-arrows ──────────────────────
   // The runtime stamps data-sw-multi="true" when the effective --sw-items > 1 (re-checked on reInit,
   // so a responsive breakpoint flip is honoured). Two mutually-exclusive, zero-specificity sets — an
@@ -196,9 +197,9 @@ const CAROUSEL_CSS = [
   // centred text. Zero-specificity, so `text-left` on the element still wins for a deliberately
   // left-aligned bar. Scoped to a SLIDE so a <figcaption> elsewhere in the component is untouched.
   ':where([data-sw-component="carousel"] [data-sw-part="slide"] figcaption){text-align:center}',
-  // Frosted dots pill + thicker glyph — the hero polish, applied to any SINGLE-item slider (the default
-  // look); multi-item rows keep the plain dots. Zero-specificity so an authored utility still wins.
-  ':where([data-sw-component="carousel"]:not([data-sw-multi="true"])) :where([data-sw-part="dots"]){backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);padding:6px;border-radius:100em}',
+  // Thicker dot glyph — the hero polish, applied to any SINGLE-item slider (the default look); multi-item
+  // rows keep the thinner ring. (The frosted pill is in the base dots rule above, for every slider.)
+  // Zero-specificity so an authored utility still wins.
   ':where([data-sw-component="carousel"]:not([data-sw-multi="true"])) :where([data-sw-part="dots"]) button svg{stroke-width:4px}',
   '[data-sw-component="carousel"] .sw-ripple{position:absolute;pointer-events:none;transform:scale(0);animation:sw-ripple .65s ease-out forwards}',
   ':where([data-sw-component="carousel"] .sw-ripple){border-radius:9999px;background:rgb(0 0 0/.35)}',

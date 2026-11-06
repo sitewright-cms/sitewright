@@ -9,6 +9,13 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **Slider dots sit in a frosted pill on every slider.** Before, only a single-slide slider got the blurred,
+  rounded backdrop behind its dots, and a multi-item row showed bare dots over its cards. Now every slider
+  with dots gets it. The thicker dot ring stays on single-slide sliders. As before, an authored utility class
+  on the dots overrides any of it. A published site picks this up on its next deploy.
+
 ## [0.76.1] — 2026-11-06
 
 ### Fixed

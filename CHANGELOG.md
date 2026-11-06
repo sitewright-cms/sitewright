@@ -9,6 +9,15 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **A lightbox opened from an autoplaying slider stays open.** When gallery images sat in an autoplaying
+  slider, the open image closed itself at the slider's next step and the page could no longer scroll. Each
+  step updates the slider's hidden "Slide n of N" text, and the lightbox took that as a new gallery image and
+  rebuilt itself, removing the open viewer without closing it. It now rebuilds only when an image it doesn't
+  know yet has really been added, and never while it is open. A rebuild also removes the previous viewer
+  completely, so each one no longer leaves window listeners and an empty container behind.
+
 ## [0.76.0] — 2026-11-03
 
 ### Added

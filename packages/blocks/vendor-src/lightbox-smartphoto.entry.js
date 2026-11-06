@@ -122,15 +122,18 @@ function enhanceGallery(gallery) {
     if (!a.getAttribute('data-id')) a.setAttribute('data-id', gallery.key + '-' + i);
   });
 
-  // ★ Each `new SmartPhoto` builds its OWN overlay and the library has no destroy(), so a re-enhance
-  // (see watchForNewItems) would stack one overlay per rebuild and a click would open whichever bound
-  // last. Take ownership by DIFFING the document either side of the constructor — the one that
-  // appeared is this gallery's — and retire the one this gallery owned before. Removing every
-  // `.sw-lightbox` instead would take the OTHER galleries' viewers on the page down with it.
-  var viewersNow = function () {
-    return Array.prototype.slice.call(document.querySelectorAll('.' + CLASS_NAMES.smartPhoto));
-  };
-  var viewersBefore = viewersNow();
+  // ★ Each `new SmartPhoto` builds its OWN overlay (inside its own `body > [data-id]` wrapper) and
+  // binds window resize/keydown handlers, so a re-enhance (see watchForNewItems) must retire the
+  // instance this gallery owned before. destroy() is SmartPhoto's own teardown: it unbinds every
+  // handler it registered, removes ITS wrapper (never another gallery's viewer) and stops the
+  // inertia loop. Only removing the overlay node — what this did before — left the old instance's
+  // window handlers live and its emptied wrapper in the body, one more of each per rebuild.
+  // watchForNewItems never rebuilds an OPEN gallery (gallery.open, below), so destroy() never pulls
+  // a viewer from under a visitor (it would skip hidePhoto's scroll unlock).
+  if (gallery.sp) {
+    window.clearInterval(gallery.sp.zoomHintInterval);
+    gallery.sp.destroy();
+  }
 
   var sp = new SmartPhoto(items, {
     classNames: CLASS_NAMES, // vendor-neutral "sw-lightbox-*" classes (see CLASS_NAMES above)
@@ -141,9 +144,7 @@ function enhanceGallery(gallery) {
     useHistoryApi: flag('data-history', false), // OFF: a CMS page shouldn't hijack the URL hash
     resizeStyle: attr('data-fit', 'fit') === 'fill' ? 'fill' : 'fit',
   });
-  var mine = viewersNow().filter(function (el) { return viewersBefore.indexOf(el) === -1; });
-  if (gallery.viewer && gallery.viewer.parentNode) gallery.viewer.parentNode.removeChild(gallery.viewer);
-  gallery.viewer = mine.length === 1 ? mine[0] : null;
+  gallery.sp = sp;
 
   // Caption is SmartPhoto's data-caption, injected into the viewer at TENANT trust (tenants
   // already author raw HTML) — NEVER bind visitor-submitted content into it.
@@ -176,6 +177,9 @@ function enhanceGallery(gallery) {
     if (armed) return;
     try {
       sp.on('close', function () {
+        // SmartPhoto fires 'close' once its exit transition has ended (never, if no transition ran —
+        // see reenhance's cap). A re-open DURING that transition is still open when it fires.
+        if (sp.data.hide) gallery.open = false;
         window.clearInterval(sp.interval); // stop the inertia loop while the gallery is closed
         sp.interval = null;
         window.clearInterval(sp.zoomHintInterval); // …and the zoomable-hint poll with it
@@ -217,6 +221,9 @@ function enhanceGallery(gallery) {
 
   items.forEach(function (a) {
     a.addEventListener('click', function () {
+      // OPEN from the click until 'close' — not SmartPhoto's own `data.hide`, which flips back at the
+      // START of the exit transition, while the page is still `overflow: hidden` until it ends.
+      gallery.open = true;
       lastFocus = a;
       // Re-arm the inertia loop for this open (covers the first open too); cleared again on close.
       if (!sp.interval) sp.interval = window.setInterval(function () { sp._doAnim(); }, 10);
@@ -272,16 +279,55 @@ function init() {
 // left every new tile dead: it looked identical to a working one and simply did nothing when clicked.
 // The platform now ships that pattern itself, so the lightbox has to cope with it.
 //
-// There is no destroy() on SmartPhoto, and constructing a second instance over the same anchors would
-// bind them twice and open two viewers. So a re-enhance REPLACES every item anchor with a clone first:
-// a replaced node takes its listeners with it, leaving exactly one live binding per tile. The previous
-// instance is left holding detached nodes and does nothing.
+// A re-enhance REPLACES every item anchor with a clone first: a replaced node takes its listeners
+// with it (ours included — SmartPhoto's destroy() only unbinds its own), leaving exactly one live
+// binding per tile once enhanceGallery has retired the previous instance.
+//
+// ★ ONLY FOR A NEW ITEM, AND NEVER WHILE OPEN. The observer sees every node added anywhere under a
+// root, and most of them are not gallery items: a carousel inside the lightbox rewrites its "Slide n
+// of N" live region on every slide (a text node), and its ripples and dots are added spans/buttons.
+// Rebuilding on those ran once per autoplay tick and destroyed the OPEN viewer mid-view — without
+// hidePhoto, so the page also stayed `overflow: hidden` and could no longer scroll (kayec.org.na's
+// donor slider). So a burst rebuilds only when a root holds an image the gallery is not bound to,
+// and a rebuild that comes due while the viewer is open waits until it has closed.
+function hasUnboundItems(gallery) {
+  var bound = function (a) {
+    return gallery.items.indexOf(a) !== -1;
+  };
+  // Mirrors resolveItems WITHOUT its side effect (wrapping bare images): explicit items when the
+  // root has any, else every image that belongs to this root, through its wrapping anchor.
+  return gallery.roots.some(function (root) {
+    var explicit = root.querySelectorAll('[data-sw-part="item"]');
+    if (explicit.length) return !Array.prototype.every.call(explicit, bound);
+    if (root.tagName === 'IMG') return false; // a single-image lightbox never grows
+    return Array.prototype.some.call(root.querySelectorAll('img'), function (img) {
+      if (img.closest('[data-sw-component="lightbox"]') !== root) return false;
+      var anchor = img.closest('a[href]');
+      return !(anchor && root.contains(anchor) && bound(anchor));
+    });
+  });
+}
+
 function watchForNewItems(gallery) {
   if (typeof window.MutationObserver !== 'function') return;
   var pending = 0;
+  var hiddenChecks = 0;
 
   var reenhance = function () {
     pending = 0;
+    if (!hasUnboundItems(gallery)) return;
+    if (gallery.open) {
+      // Capped: a viewer SmartPhoto has reported hidden (`data.hide`, set at the START of its 0.3s
+      // exit) for four checks running has closed even if its 'close' was lost, so the new item is
+      // bound rather than waiting — and this timer polling — forever.
+      hiddenChecks = gallery.sp && gallery.sp.data.hide ? hiddenChecks + 1 : 0;
+      if (hiddenChecks < 4) {
+        pending = window.setTimeout(reenhance, 250);
+        return;
+      }
+      gallery.open = false;
+    }
+    hiddenChecks = 0;
     // ★ STOP OBSERVING WHILE WE MUTATE. The rebuild replaces every anchor with a clone (to drop the
     // stale listeners), and that is itself a childList mutation — left connected, the observer
     // re-triggers on its own work and rebuilds forever. Measured before this guard: one "load more"

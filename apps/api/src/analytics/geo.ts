@@ -57,7 +57,7 @@ export function createGeoLookup(path: string, onError?: (err: unknown) => void):
       // An IPv4-mapped IPv6 address (`::ffff:1.2.3.4`, what a dual-stack socket reports) looks up as IPv4.
       const addr = ip.startsWith('::ffff:') && isIP(ip.slice(7)) === 4 ? ip.slice(7) : ip;
       if (!isIP(addr)) return null;
-      let rec: CountryRecord | null = null;
+      let rec: CountryRecord | null;
       try {
         // Two record shapes: ip-location-db's flat `country_code`, and MaxMind's / DB-IP's `country.iso_code`.
         rec = reader.get(addr) as unknown as CountryRecord | null;

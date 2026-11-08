@@ -795,7 +795,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       }
       const projectId = b.project ?? '';
       if (!projectId) return result('Invalid request', 'No project was selected.');
-      let approvedName = '';
+      let approvedName: string;
       try {
         const role = await resolveProjectRole(db, userId, projectId);
         if (!role) return result('Not allowed', 'You do not have access to that project.');

@@ -216,9 +216,9 @@ function mapForeignIcons(nodes: AnyNode[], ctx: TransformCtx, diags: ImportDiagn
   for (const el of elements(nodes)) {
     if (!el.parent) continue; // detached by an earlier replacement in this same pass → skip
     const cls = el.attribs.class ?? '';
-    let mustache = '';
-    let label = '';
-    let target = '';
+    let mustache: string;
+    let label: string;
+    let target: string;
     if (el.name === 'i' || el.name === 'span') {
       if (el.children.some(isTag)) continue; // a wrapper holding real elements is not a bare icon carrier
       const flag = mapFlagClass(cls); // a country flag uses the {{sw-flag}} helper (its own default size)

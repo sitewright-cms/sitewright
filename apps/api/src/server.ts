@@ -113,7 +113,7 @@ const aiProvider = process.env.SW_AI_API_KEY
 // Validate an operator-set OpenAI-compatible base URL early — a typo (missing scheme) should fail at
 // boot with a clear message, not at the first assistant request.
 if (process.env.SW_AI_BASE_URL) {
-  let u: URL | null = null;
+  let u: URL | null;
   try {
     u = new URL(process.env.SW_AI_BASE_URL);
   } catch {

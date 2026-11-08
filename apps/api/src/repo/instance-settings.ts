@@ -524,7 +524,7 @@ export class InstanceSettingsRepository {
     if (!stored.hcaptcha) return null;
     // A secret that will not decrypt must not abort the migration: the SITE KEY is still worth
     // carrying over, and an author re-entering one secret beats losing the whole configuration.
-    let secret: string | null = null;
+    let secret: string | null;
     try {
       secret = stored.hcaptcha.secret ? this.decrypt(stored.hcaptcha.secret) : null;
     } catch {

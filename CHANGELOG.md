@@ -29,6 +29,11 @@ The running version of an instance is reported at `GET /version` (baked into the
     patterns matches a common desktop, mobile or in-app browser, so no real visitor is newly counted as a bot.
   - The CodeMirror pin moved with the manifest, so the editor runs the new `@codemirror/view`, and the lockfile
     still holds one copy of every CodeMirror and Lezer package.
+- **`@eslint/js` 9 → 10** (Dependabot #1201; development only, ESLint itself was already 10). Its recommended
+  set adds `no-useless-assignment`, which found 31 initial values that every path overwrote, or left the
+  function, before reading. They are removed; the type check confirms nothing read them, so behaviour is
+  unchanged. The image-map runtime, a fork of Image Map Pro that sites download, is exempt from the rule
+  rather than edited, so no site JavaScript changes.
 
 ## [0.78.0] — 2026-11-08
 

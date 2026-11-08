@@ -99,7 +99,7 @@ export async function runDueDeliveries(deps: DeliveryRunnerDeps): Promise<Delive
 
     // Same separation as the request path: a database error while recording "sent" must not be
     // mistaken for the mail having failed, or the next pass re-sends what already went.
-    let sent = false;
+    let sent: boolean;
     try {
       sent = await resolved.send(resolved.mail);
     } catch (err) {

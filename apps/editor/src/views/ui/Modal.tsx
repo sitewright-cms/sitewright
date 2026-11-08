@@ -141,7 +141,7 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
   const requestClose = async () => {
     if (closing.current) return;
     closing.current = true;
-    let ok = true;
+    let ok: boolean;
     try {
       ok = (await onBeforeCloseRef.current?.()) ?? true;
     } catch {

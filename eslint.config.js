@@ -60,6 +60,15 @@ export default tseslint.config(
     },
   },
   {
+    // The image-map runtime is a FORK of Image Map Pro (see its README), shipped as-is in every published
+    // site that uses the component. Its dead initial values are the upstream author's; editing them only
+    // to satisfy @eslint/js 10's `no-useless-assignment` would change the JS sites download for nothing.
+    files: ['packages/blocks/vendor-src/image-map/**/*.js'],
+    rules: {
+      'no-useless-assignment': 'off',
+    },
+  },
+  {
     // Node build scripts (plain ESM): provide Node globals and exempt their
     // trusted, operator-controlled file I/O.
     files: ['**/scripts/**/*.mjs'],

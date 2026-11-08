@@ -248,7 +248,7 @@ async function worker() {
     }
     // ★ OUR pinned integrity, not dist.integrity. See the header.
     const payload = `${spec}:${pinned.get(spec)}`;
-    let ok = false;
+    let ok;
     try {
       const pub = createPublicKey({ key: Buffer.from(key.key, 'base64'), format: 'der', type: 'spki' });
       ok = createVerify('SHA256').update(payload).end().verify(pub, Buffer.from(sig.sig, 'base64'));

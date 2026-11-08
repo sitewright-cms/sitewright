@@ -292,12 +292,12 @@ export async function captureBehaviour(
   return withRenderSlot(async () => {
     // DESKTOP probe: sliders / modals / fonts-loaded.
     const dp = await prepPage(browser, url, opts.mode, SCREENSHOT_VIEWPORTS.fullhd, opts.signal);
-    let desktop = desktopFallback;
-    let clipped: BehaviourFacts['clipped'] = [];
+    let desktop: typeof desktopFallback;
+    let clipped: BehaviourFacts['clipped'];
     // Header clearance is measured at BOTH viewports: the token is normally right at one breakpoint and
     // wrong at the other, which a desktop-only pass would call clean.
-    let headerDesktop: HeaderFacts | null = null;
-    let headerMobile: HeaderFacts | null = null;
+    let headerDesktop: HeaderFacts | null;
+    let headerMobile: HeaderFacts | null;
     try {
       // freeze:false — the probe needs live runtimes (a slider must actually enhance, fonts must load) to
       // detect them; the shared settle still scrolls/loads + waits fonts + waits embeds.
@@ -314,7 +314,7 @@ export async function captureBehaviour(
     }
     // MOBILE pass: nav reachability at 390px (open the toggle if the links are collapsed).
     const mp = await prepPage(browser, url, opts.mode, SCREENSHOT_VIEWPORTS.mobile, opts.signal);
-    let navReachableMobile = 0;
+    let navReachableMobile: number;
     try {
       await settlePage(mp.page, { freeze: false });
       // BEFORE the nav toggle below: opening the menu can grow the bar, and what we want is the bar the

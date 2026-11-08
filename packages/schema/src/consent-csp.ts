@@ -272,7 +272,7 @@ export function platformInjectedCspOrigins(
   // stay a plain, harvestable URL in the markup, and the policy must not have to change when it moves.
   const base = (formEndpointBase ?? '').trim();
   if (base && PLATFORM_API_MARKER_RE.test(html)) {
-    let host: string | null = null;
+    let host: string | null;
     try {
       const u = new URL(base);
       host = u.protocol === 'https:' && HOST_TOKEN_RE.test(u.host) ? u.host : null;

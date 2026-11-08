@@ -2249,6 +2249,8 @@ export const api = {
     /** When the project's content last changed — compared against each target's `lastDeployedAt`. */
     latestContentAt?: string | null;
       localHosting?: boolean;
+      /** Present (true) when search engines are asked not to index `url` — a platform address, no custom domain. */
+      searchHidden?: boolean;
       deployTargets?: number;
       previewToken?: string;
     }>('GET', `/projects/${projectId}/publish`),

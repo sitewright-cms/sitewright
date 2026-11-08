@@ -162,6 +162,11 @@ export class InstanceSettingsRepository {
     return (await this.getStored()).shareEmbedding ?? { origins: [] };
   }
 
+  /** Whether hosted sites at the platform's own addresses ask search engines not to index them. Off until an admin turns it on. */
+  async getSitesDomainNoindex(): Promise<boolean> {
+    return (await this.getStored()).sitesDomainNoindex === true;
+  }
+
   /** The default lifetime for a NEW share link, in days (0 = never expires). */
   async getShareExpiryDays(): Promise<number> {
     return (await this.getStored()).shareExpiryDays ?? DEFAULT_SHARE_EXPIRY_DAYS;
@@ -272,6 +277,12 @@ export class InstanceSettingsRepository {
       // Merge-only, like formModes: an absent field leaves the setting unchanged, so a partial PUT
       // from one settings panel cannot silently turn off a payment surface configured in another.
       ...(input.paymentsEnabled !== undefined ? { paymentsEnabled: input.paymentsEnabled } : current.paymentsEnabled !== undefined ? { paymentsEnabled: current.paymentsEnabled } : {}),
+      // Merge-only too: a save from a panel that never shows this switch must not put sites back into search results.
+      ...(input.sitesDomainNoindex !== undefined
+        ? { sitesDomainNoindex: input.sitesDomainNoindex }
+        : current.sitesDomainNoindex !== undefined
+          ? { sitesDomainNoindex: current.sitesDomainNoindex }
+          : {}),
     };
     // The cookie secret is INTERNAL (never in the Input schema). Preserve it across a settings save —
     // `next` is rebuilt from scratch, so without this an admin's PUT would silently drop it.

@@ -510,6 +510,16 @@ export const InstanceSettingsStoredSchema = z.object({
   /** Which sites may frame a preview SHARE link (admin opt-in; unset → same-origin only). See {@link ShareEmbeddingSchema}. */
   shareEmbedding: ShareEmbeddingSchema.optional(),
   /**
+   * Ask search engines not to index locally hosted sites at the PLATFORM's own addresses:
+   * `<slug>.<sitesDomain>` and the `/sites/<slug>/` path form. Every response there then carries
+   * `X-Robots-Tag: noindex`. A site reached on one of its VERIFIED custom domains is unaffected — that is
+   * the client's own address, and the platform address 301s to it anyway.
+   *
+   * ★ Off by default: on an instance whose sites live ONLY at `<slug>.<sitesDomain>`, switching it on takes
+   * them out of search results, so an upgrade must never do that by itself.
+   */
+  sitesDomainNoindex: z.boolean().optional(),
+  /**
    * Additional origins this instance answers on, beyond the canonical `SW_PUBLIC_URL`.
    *
    * Widens only the decisions whose right answer is "wherever this request arrived": the OIDC callback
@@ -676,6 +686,9 @@ export const InstanceSettingsInputSchema = z.object({
   // Share-link framing allowlist: an object sets it, `null` clears it (share links back to same-origin
   // only), and an absent value leaves the stored one unchanged.
   shareEmbedding: ShareEmbeddingSchema.nullable().optional(),
+  // Keep hosted sites at the platform's own addresses out of search results: a boolean sets it, an absent
+  // value leaves the stored one unchanged.
+  sitesDomainNoindex: z.boolean().optional(),
   // Additional platform origins: an array REPLACES the whole list, `null` clears it (back to
   // single-origin), and an absent value leaves the stored one unchanged. The server additionally
   // refuses a list that mixes schemes or lands inside the hosted-sites domain — see
@@ -779,6 +792,8 @@ export interface InstanceSettingsPublic {
   embedding?: Embedding;
   /** Share-link framing allowlist (not a secret), or absent when unset (same-origin only). */
   shareEmbedding?: ShareEmbedding;
+  /** Whether hosted sites at the platform's own addresses ask search engines not to index them (see sitesDomainNoindex above). */
+  sitesDomainNoindex: boolean;
   /** Additional origins this instance answers on (not a secret), or absent when single-origin. */
   additionalOrigins?: string[];
   /** Default share-link lifetime in days (0 = never expires), or absent when using the 30-day default. */
@@ -811,7 +826,11 @@ export function maskOidcProvider(p: OidcProviderStored): OidcProviderPublic {
 
 /** Projects the persisted document to its masked public view (no secrets). */
 export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSettingsPublic {
-  const result: InstanceSettingsPublic = { formModes: stored.formModes, paymentsEnabled: stored.paymentsEnabled === true };
+  const result: InstanceSettingsPublic = {
+    formModes: stored.formModes,
+    paymentsEnabled: stored.paymentsEnabled === true,
+    sitesDomainNoindex: stored.sitesDomainNoindex === true,
+  };
   if (stored.smtp) result.smtp = maskSmtp(stored.smtp);
   if (stored.stock) {
     result.stock = {

@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-const { listDeployTargets, createDeployTarget, updateDeployTarget, deleteDeployTarget, listProjectDomains } = vi.hoisted(() => ({
+const { listDeployTargets, createDeployTarget, updateDeployTarget, deleteDeployTarget, listProjectDomains, publishStatus } = vi.hoisted(() => ({
+  publishStatus: vi.fn<(id: string) => Promise<{ searchHidden?: boolean }>>(() => Promise.resolve({})),
   listProjectDomains: vi.fn<(id: string) => Promise<{ items: unknown[] }>>(() => Promise.resolve({ items: [] })),
   listDeployTargets: vi.fn<(id: string) => Promise<{ items: unknown[] }>>(() => Promise.resolve({ items: [] })),
   createDeployTarget: vi.fn<(id: string, cfg: unknown) => Promise<{ target: { id: string } }>>(() => Promise.resolve({ target: { id: 't1' } })),
@@ -12,6 +13,7 @@ vi.mock('../src/api', () => ({
   api: {
     listDeployTargets: (id: string) => listDeployTargets(id),
     listProjectDomains: (id: string) => listProjectDomains(id),
+    publishStatus: (id: string) => publishStatus(id),
     createDeployTarget: (id: string, cfg: unknown) => createDeployTarget(id, cfg),
     updateDeployTarget: (id: string, tid: string, cfg: unknown) => updateDeployTarget(id, tid, cfg),
     deleteDeployTarget: (id: string, tid: string) => deleteDeployTarget(id, tid),
@@ -29,6 +31,8 @@ beforeEach(() => {
   listDeployTargets.mockResolvedValue({ items: [] });
   createDeployTarget.mockResolvedValue({ target: { id: 't1' } });
   updateDeployTarget.mockResolvedValue({ target: { id: 't1' } });
+  publishStatus.mockReset();
+  publishStatus.mockResolvedValue({});
 });
 
 describe('DeployTargetWizard', () => {
@@ -204,6 +208,53 @@ describe('DeployTargetWizard', () => {
     render(<DeployTargetWizard project={project} />);
     await waitFor(() => expect(screen.getByText('Prod')).toBeInTheDocument());
     expect(screen.queryByText(/serve this site at a custom domain/)).toBeNull();
+  });
+
+  // ── search engines ─────────────────────────────────────────────────────────────────────────────
+  // The switch is an admin's (System Settings); the owner learns about it here, on their own project.
+
+  it('★ says the Local Hosting address is hidden from search engines when the server reports it', async () => {
+    listDeployTargets.mockResolvedValue({
+      items: [
+        { id: 'L', name: 'Local Hosting', protocol: 'local' },
+        { id: 's1', name: 'Prod', protocol: 'sftp', host: 'h.example', user: 'u' },
+      ],
+    });
+    publishStatus.mockResolvedValue({ searchHidden: true });
+    render(<DeployTargetWizard project={project} />);
+    // Exactly one: the LOCAL row. An SFTP upload goes to the owner's own server, which this switch never touches.
+    expect(await screen.findAllByText('Hidden from search engines')).toHaveLength(1);
+    expect(publishStatus).toHaveBeenCalledWith('p');
+  });
+
+  it('says nothing about search engines when the address is indexable', async () => {
+    listDeployTargets.mockResolvedValue({ items: [{ id: 'L', name: 'Local Hosting', protocol: 'local' }] });
+    render(<DeployTargetWizard project={project} />);
+    await waitFor(() => expect(publishStatus).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText('Local Hosting')).toBeInTheDocument());
+    expect(screen.queryByText('Hidden from search engines')).toBeNull();
+  });
+
+  it('★ re-reads the row lines when the edit form is left without saving (a domain verifies inside it)', async () => {
+    listDeployTargets.mockResolvedValue({ items: [{ id: 'L', name: 'Local Hosting', protocol: 'local' }] });
+    publishStatus.mockResolvedValue({ searchHidden: true });
+    render(<DeployTargetWizard project={project} />);
+    expect(await screen.findByText('Hidden from search engines')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Local Hosting' }));
+    // Verifying a primary custom domain in the form makes the site indexable; leaving must show that.
+    publishStatus.mockResolvedValue({});
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    await waitFor(() => expect(screen.queryByText('Hidden from search engines')).toBeNull());
+    expect(publishStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('says nothing when the publish status is refused', async () => {
+    listDeployTargets.mockResolvedValue({ items: [{ id: 'L', name: 'Local Hosting', protocol: 'local' }] });
+    publishStatus.mockRejectedValue(new Error('500'));
+    render(<DeployTargetWizard project={project} />);
+    await waitFor(() => expect(publishStatus).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText('Local Hosting')).toBeInTheDocument());
+    expect(screen.queryByText('Hidden from search engines')).toBeNull();
   });
 
   it('hides the Local Hosting card once a local target exists, and edits a remote target in place', async () => {

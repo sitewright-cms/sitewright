@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.77.0] — 2026-11-08
+
 ### Added
 
 - **Keep hosted sites at platform addresses out of search results.** A new admin switch, under System
@@ -6321,7 +6323,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.76.1...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.77.0...HEAD
+[0.77.0]: https://github.com/sitewright-cms/sitewright/compare/v0.76.1...v0.77.0
 [0.76.1]: https://github.com/sitewright-cms/sitewright/compare/v0.76.0...v0.76.1
 [0.76.0]: https://github.com/sitewright-cms/sitewright/compare/v0.75.0...v0.76.0
 [0.75.0]: https://github.com/sitewright-cms/sitewright/compare/v0.74.0...v0.75.0

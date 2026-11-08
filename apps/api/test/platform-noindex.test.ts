@@ -11,7 +11,8 @@ import { makeHarness, type Harness, type TestClient } from './harness.js';
  * and its robots.txt disallows it: the editor and its API, the draft site and its share links (a client
  * may post one somewhere public), the editor's preview documents, media, unknown paths. A hosted site is
  * the exception while the admin's `sitesDomainNoindex` switch is off; with it on, the site's platform
- * addresses are kept out too (`sites-domain-noindex.test.ts`).
+ * addresses answer noindex too (`sites-domain-noindex.test.ts`). `/sites/` stays open in robots.txt either
+ * way, so a crawler can fetch those pages and SEE that noindex.
  */
 
 const workerPath = fileURLToPath(new URL('./fixtures/blocks-render-worker.mjs', import.meta.url));
@@ -180,19 +181,17 @@ describe('the platform is never indexed', () => {
     expect(noindex(media)).toBe('noindex');
   });
 
-  it("★ the platform's robots.txt: only the /sites/ path form is crawlable, and only while sites may be indexed", async () => {
+  it("★ the platform's robots.txt: only the /sites/ path form is crawlable, whatever the switch says", async () => {
     const off = await visit('/robots.txt');
     expect(off.statusCode).toBe(200);
     expect(String(off.headers['content-type'])).toContain('text/plain');
     expect(off.headers['cache-control']).toBe('no-cache');
     expect(off.body).toBe('User-agent: *\nAllow: /sites/\nDisallow: /\n');
 
+    // ★ With hosted sites hidden, `/sites/` stays open: a crawler turned away never sees their noindex.
     expect((await owner.put('/admin/settings', { sitesDomainNoindex: true })).statusCode).toBe(200);
     const on = await visit('/robots.txt');
-    expect(on.body).toBe('User-agent: *\nDisallow: /\n'); // applies to the very next request
-
-    expect((await owner.put('/admin/settings', { sitesDomainNoindex: false })).statusCode).toBe(200);
-    expect((await visit('/robots.txt')).body).toContain('Allow: /sites/');
+    expect(on.body).toBe('User-agent: *\nAllow: /sites/\nDisallow: /\n');
   });
 
   it('★ a hosted site is the exception: no header while the switch is off', async () => {
@@ -207,8 +206,11 @@ describe('the platform is never indexed', () => {
     expect(robots.body).not.toMatch(/^Disallow:\s*\/\s*$/m);
     expect(noindex(robots)).toBeUndefined();
 
-    // With the switch on, the path form is a platform address like any other.
+    // With the switch on, the path form answers noindex, and its robots.txt stays the site's own, open file.
     expect((await owner.put('/admin/settings', { sitesDomainNoindex: true })).statusCode).toBe(200);
     expect(noindex(await visit('/sites/site/'))).toBe('noindex');
+    const hiddenRobots = await visit('/sites/site/robots.txt');
+    expect(hiddenRobots.body).toContain('User-agent: *');
+    expect(hiddenRobots.body).not.toMatch(/^Disallow:\s*\/\s*$/m);
   });
 });

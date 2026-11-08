@@ -18,15 +18,8 @@ The running version of an instance is reported at `GET /version` (baked into the
   of search. It is always on, with nothing to switch. A preview's HTML is untouched (it is a header, not a
   `<meta>` tag), so it still matches the published page. Hosted sites are the exception: at
   `<slug>.<sites domain>`, `/sites/<slug>/` or a custom domain they keep their own rules and their own
-  `robots.txt`.
-
-### Changed
-
-- **"Keep sites at platform addresses out of search results" now blocks crawlers in `robots.txt` too.** With the
-  switch on, a site's `robots.txt` at its platform address is `Disallow: /`, alongside the noindex header, and
-  the platform's `robots.txt` no longer allows `/sites/`. A site on its verified custom domain still serves
-  its own `robots.txt` and stays indexable. Pages already in search results can linger, because a crawler
-  turned away by `robots.txt` never sees the noindex. Google Search Console's Removals tool takes them out.
+  `robots.txt`. `/sites/` stays open in the platform's `robots.txt` even with "Keep sites at platform
+  addresses out of search results" on, so crawlers can fetch those pages and see their noindex.
 
 ## [0.77.0] — 2026-11-08
 

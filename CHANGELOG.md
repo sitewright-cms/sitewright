@@ -9,6 +9,15 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **Preview pages are never indexed.** Every preview surface now sends `X-Robots-Tag: noindex` on every
+  response: the draft site and its share links, the editor's preview documents, and the snippet, image-map
+  and authoring previews. That includes their files, redirects and "link expired" pages, so a share link a
+  client posts somewhere public stays out of search results. It is always on, with nothing to switch. It is
+  a header and not a `<meta>` tag, so the preview's HTML still matches the published page. A published site
+  keeps its own indexing rules.
+
 ## [0.77.0] — 2026-11-08
 
 ### Added

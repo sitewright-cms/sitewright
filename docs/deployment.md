@@ -158,6 +158,12 @@ over FTP/SFTP/Git. It is off by default.
 The setting does the same as adding `X-Robots-Tag: noindex` for `*.<SW_SITES_DOMAIN>` in your proxy, but it
 also covers the path form and needs no proxy change.
 
+**Previews are never indexed, whatever this setting says.** Everything under `/preview-site/` (the draft site
+and its share links) and `/preview/`, and the editor's snippet, image-map and authoring previews, is always
+sent with `X-Robots-Tag: noindex`. A share link a client posts somewhere public therefore stays out of search
+results. Don't block these paths in a proxy's `robots.txt` either: a crawler that cannot fetch them never
+sees the header.
+
 ## First run
 
 - A first admin is seeded on boot: `admin@sitewright.example` / `123456` unless you set `SW_ADMIN_EMAIL` /

@@ -479,6 +479,14 @@ const RL_WINDOW = '1 minute';
 const MAX_EVENT_SUBSCRIBERS_PER_PROJECT = 20;
 /** Per-route rate-limit config for an expensive/sensitive endpoint. */
 const rl = (max: number) => ({ rateLimit: { max, timeWindow: RL_WINDOW } });
+/**
+ * Route config for a PREVIEW surface: a draft, never a page a search engine should list, whoever holds
+ * the link. The baseline onSend hook adds `X-Robots-Tag: noindex` to EVERY response of such a route, so
+ * the page, its assets (a PDF is indexed too), its redirects and its "link expired" page all carry it,
+ * including a share link a client posted somewhere public. A header, not a `<meta>`: the preview DOM must
+ * stay the published DOM.
+ */
+const noindexed = <C extends object>(config: C): C & { noindex: true } => ({ ...config, noindex: true });
 // Static-asset + signed-preview serving fans out into MANY sub-requests per page view (fonts, CSS,
 // images/thumbnails, JS). On the shared GLOBAL cap that fan-out can exhaust it and 429 the HTML document
 // itself — a blank preview until reload, and intermittently missing CSS/images. @fastify/rate-limit gives
@@ -1691,6 +1699,10 @@ declare module 'fastify' {
      *  see the decoration site for why this is not scheduled inside createApp. */
     runDueFormDeliveries: (opts?: { now?: () => number; limit?: number }) => Promise<DeliveryRunResult>;
   }
+  interface FastifyContextConfig {
+    /** Every response this route sends carries `X-Robots-Tag: noindex`; see {@link noindexed}. */
+    noindex?: boolean;
+  }
 }
 
 /** A member token asked to create more projects than its daily cap allows (→ 429). */
@@ -2542,6 +2554,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Baseline security headers (the API also serves the SPA in single-container mode).
   app.addHook('onSend', async (req, reply) => {
     reply.header('x-content-type-options', 'nosniff');
+    if (req.routeOptions.config?.noindex) reply.header('x-robots-tag', 'noindex');
     // Default to `same-origin`, but let a route opt into a stricter policy (the signed preview doc
     // sets `no-referrer` so its bearer URL can't leak via the Referer header).
     if (!reply.hasHeader('referrer-policy')) reply.header('referrer-policy', 'same-origin');
@@ -6552,7 +6565,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // is session-authenticated (the editor iframe carries the cookie; previews are not API-key fetched).
   app.get<{ Params: { slug: string; token: string } }>(
     '/preview/:slug/:token',
-    { config: rl(120) },
+    { config: noindexed(rl(120)) },
     async (req, reply) => {
       // Every miss (unknown slug, no session, no membership, bad/expired token) returns the SAME
       // opaque 404 — it never leaks whether a given project or preview exists.
@@ -7661,7 +7674,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // document can neither reach the editor that framed it nor read anything same-origin.
     app.get<{ Params: { projectId: string }; Querystring: { map?: string; template?: string } }>(
       '/projects/:projectId/imagemaps/preview',
-      { config: rl(60) },
+      { config: noindexed(rl(60)) },
       async (req, reply) => {
         const { ctx } = await resolveProject(req, 'content:read');
         const html = (body: string, code = 200) =>
@@ -10828,7 +10841,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // independently by the version cache + coalescing + failure cooldown.
     app.get<{ Params: { projectId: string; sig: string; '*': string } }>(
       '/preview-site/:projectId/:sig/*',
-      { config: rl(PREVIEW_SITE_RL_MAX) },
+      { config: noindexed(rl(PREVIEW_SITE_RL_MAX)) },
       async (req, reply) => {
         /**
          * The branded "this link does not work" page, 404.
@@ -12150,7 +12163,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // strings, no brand vars) → no injection surface. STATIC apart from the query knobs; rate-limited.
   app.get<{ Querystring: Record<string, string | undefined> }>(
     '/authoring/parallax-preview',
-    { config: rl(60) },
+    { config: noindexed(rl(60)) },
     async (req, reply) => {
       const q = req.query;
       const numPair = (v: string | undefined): [number, number] | null => {
@@ -12188,7 +12201,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // keyword + clamped numeric timing reach the markup (svgAnimAttrs validates) → no injection surface.
   app.get<{ Querystring: Record<string, string | undefined> }>(
     '/authoring/svg-preview',
-    { config: rl(60) },
+    { config: noindexed(rl(60)) },
     async (req, reply) => {
       const q = req.query;
       const int = (v: string | undefined): number | undefined => {
@@ -12215,7 +12228,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // The SVG Animation Studio's live CANVAS document (renders the user's SVG + plays the real runtimes +
   // reports clicks/highlights). STATIC — all content arrives via postMessage from the editor; served
   // under the same sandbox CSP as the previews above (opaque origin, no session).
-  app.get('/authoring/svg-studio-preview', { config: rl(60) }, async (_req, reply) =>
+  app.get('/authoring/svg-studio-preview', { config: noindexed(rl(60)) }, async (_req, reply) =>
     reply
       .header('content-security-policy', 'sandbox allow-scripts')
       .header('x-frame-options', 'SAMEORIGIN')
@@ -12574,7 +12587,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/projects/:projectId/snippets/:id/preview',
     // 30/min — this hits the SAME small render-worker pool as render-template, so it shares that
     // route's throughput-aligned cap (the client's hover debounce keeps real usage well under it).
-    { config: rl(30) },
+    { config: noindexed(rl(30)) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:read');
       // `msg` is a fixed set of static in-code strings (never user input) — typed as a union so a

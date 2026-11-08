@@ -386,7 +386,7 @@ import { OAuthRepository } from '../repo/oauth.js';
 import { OAuthClientRepository } from '../repo/oauth-clients.js';
 import { registerOAuthRoutes, htmlPage, DEFAULT_CONSENT_CHROME } from './oauth-routes.js';
 import { renderPlatformSecurityTxt } from './security-txt.js';
-import { DISALLOW_ALL_ROBOTS_TXT, platformRobotsTxt } from './platform-robots.js';
+import { PLATFORM_ROBOTS_TXT } from './platform-robots.js';
 import { registerMcpRoutes } from './mcp-routes.js';
 import { registerRevisionRoutes } from './revisions-routes.js';
 import { entryScope } from './content-scope.js';
@@ -9705,16 +9705,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           return reply.redirect(`${proto}://${canonicalSiteHost}${port}/${safePath}${query}`, 301);
         }
         // SEARCH ENGINES (admin setting `sitesDomainNoindex`): the platform's own addresses for a site —
-        // `<slug>.<sitesDomain>` and this path form — are kept out like the rest of the platform. Set on the
-        // reply BEFORE any response below, so the page, its files (a PDF is indexed too), and the preview-token
-        // page all carry it, and the site's robots.txt there shuts crawlers out (noindex + robots.txt, as the
-        // admin asked; platform-robots.ts names the trade-off). A verified custom domain is the client's own
-        // address: no header, and the site's own robots.txt.
+        // `<slug>.<sitesDomain>` and this path form — ask not to be indexed. Set on the reply BEFORE any
+        // response below, so the page, its files (a PDF is indexed too), robots.txt and the preview-token page
+        // all carry it. A verified custom domain is the client's own address and stays indexable.
+        // ★ robots.txt stays the site's own, allow-all: a crawler that may not fetch a page never sees its
+        // noindex, and a blocked URL that is linked from elsewhere can still be listed. The platform's own
+        // robots.txt keeps `/sites/` open for the same reason (platform-robots.ts).
         if (sitesDomainNoindex && customDomainRoutes.get(arrivedHost)?.slug !== slug) {
           reply.header('x-robots-tag', 'noindex');
-          if (path === 'robots.txt') {
-            return reply.header('cache-control', 'no-cache').type('text/plain; charset=utf-8').send(DISALLOW_ALL_ROBOTS_TXT);
-          }
         }
         const siteBase = isolatedSiteHost ? '/' : `/sites/${slug}/`;
         // Bundled binary assets under `_assets/` (images inline; a foreign `.js` runs ONLY on the
@@ -12290,15 +12288,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       );
   });
 
-  // The PLATFORM's robots.txt: nothing here is for search engines, except the `/sites/` path form while
-  // hosted sites may be indexed (`sitesDomainNoindex` off). Only the platform's own hosts reach this route:
-  // `rewriteUrl` sends a site host's `/robots.txt` to that site's own file. `no-cache` so flipping the switch
-  // applies at once. Explicit, like security.txt above, so the SPA fallback never answers it with HTML.
+  // The PLATFORM's robots.txt: nothing here is for search engines except the `/sites/` path form, which stays
+  // open so a crawler can follow it and see whatever the site answers (see platform-robots.ts). Only the
+  // platform's own hosts reach this route: `rewriteUrl` sends a site host's `/robots.txt` to that site's own
+  // file. Explicit, like security.txt above, so the SPA fallback never answers it with HTML.
   app.get('/robots.txt', async (_req, reply) =>
-    reply
-      .type('text/plain; charset=utf-8')
-      .header('cache-control', 'no-cache')
-      .send(platformRobotsTxt(!sitesDomainNoindex)),
+    reply.type('text/plain; charset=utf-8').header('cache-control', 'no-cache').send(PLATFORM_ROBOTS_TXT),
   );
 
   app.get('/version', async () => {

@@ -147,9 +147,9 @@ Disallow: /
 ```
 
 A share link a client posts somewhere public therefore stays out of search results. There is nothing to
-switch on. `Allow: /sites/` keeps the path form of hosted sites crawlable. Without a sites domain that path is
-a site's address; with one, it only 301s to the site's own host, and a crawler must fetch it to follow the
-redirect.
+switch on. `Allow: /sites/` keeps the path form of hosted sites crawlable, whatever the setting below says.
+Without a sites domain that path is a site's address; with one, it only 301s to the site's own host, and a
+crawler must fetch it to follow the redirect.
 
 **Hosted sites are the exception, unless you hide them too.** A site served at `<slug>.<SW_SITES_DOMAIN>`, at
 `/sites/<slug>/` or at its custom domain keeps its own indexing rules and its own `robots.txt`, from its
@@ -157,27 +157,27 @@ publish.
 
 #### Keeping platform addresses out of search results
 
-**System Settings → Integrations → Hosted sites in search results** keeps sites at the platform's own addresses
-out of search as well. Everything served at `<slug>.<SW_SITES_DOMAIN>` or `/sites/<slug>/` is then sent with
-`X-Robots-Tag: noindex`, and the site's `robots.txt` there becomes `Disallow: /`. The platform's `robots.txt`
-drops its `Allow: /sites/` line. That covers a staging copy, and a site whose real home is deployed elsewhere
-over FTP/SFTP/Git. It is off by default.
+**System Settings → Integrations → Hosted sites in search results** asks search engines not to index sites
+at the platform's own addresses as well: everything served at `<slug>.<SW_SITES_DOMAIN>` or `/sites/<slug>/`
+is then sent with `X-Robots-Tag: noindex`. That covers a staging copy, and a site whose real home is deployed
+elsewhere over FTP/SFTP/Git. It is off by default.
 
-- **A site served at its own verified custom domain stays indexable.** No header is sent there, its own
-  `robots.txt` is served, and the site's platform address 301s to it anyway. That domain must be the
+- **A site served at its own verified custom domain stays indexable.** The header is never sent there, and
+  the site's platform address 301s to it anyway. That domain must be the
   **primary**: the first domain a project claims becomes its primary, and while that one is unverified,
   every other domain also 301s to the platform address.
 - **A site with no custom domain drops out of search entirely.** Its Local Hosting target says "Hidden from
   search engines", and the publish status carries `searchHidden: true`.
-- **Pages already indexed can linger.** A crawler that `robots.txt` turns away never fetches the page, so it
-  never sees the noindex either, and a URL it already knows, or finds linked elsewhere, can stay listed
-  without a snippet. Google Search Console's Removals tool takes a URL prefix out.
-- **Switching it off again applies at once** to pages and `robots.txt`, because they are served `no-cache`.
+- **`robots.txt` stays open on purpose,** both the site's own and the platform's `Allow: /sites/`. A crawler
+  that may not fetch a page never sees its noindex, and a blocked URL that is linked from elsewhere can still
+  be listed.
+- **Pages already indexed go as search engines visit them again,** which can take weeks. Google Search
+  Console's Removals tool hides a URL prefix sooner.
+- **Switching it off again applies to pages at once,** because they are served `no-cache`.
   Files under `_assets/` are cached as immutable, so a cache in front of the platform can keep serving one
   with the header until it expires.
 
-The setting does the same as adding `X-Robots-Tag: noindex` and a disallowing `robots.txt` for
-`*.<SW_SITES_DOMAIN>` in your proxy, but it also covers the path form and needs no proxy change.
+The setting does the same as adding `X-Robots-Tag: noindex` for `*.<SW_SITES_DOMAIN>` in your proxy, but it also covers the path form and needs no proxy change.
 
 ## First run
 

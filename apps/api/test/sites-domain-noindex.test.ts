@@ -6,8 +6,8 @@ import { makeHarness, type Harness, type TestClient } from './harness.js';
 
 // The admin setting `sitesDomainNoindex`: hosted sites at the PLATFORM's own addresses — `<slug>.<sitesDomain>`
 // and the `/sites/<slug>/` path form — answer `X-Robots-Tag: noindex`, while a site on its verified custom
-// domain stays indexable. There, the site's robots.txt shuts crawlers out too, like the platform's own
-// (`platform-noindex.test.ts`). The owner learns about it from the publish status (`searchHidden`).
+// domain stays indexable. robots.txt stays the site's own, open file, so a crawler can fetch the pages and SEE
+// the noindex. The owner learns about it from the publish status (`searchHidden`).
 
 const DOMAIN = 'agency.site';
 const CUSTOM = 'www.clientbrand.com';
@@ -84,7 +84,7 @@ describe('sitesDomainNoindex: hosted sites on the sites domain', () => {
     expect((await client.get('/admin/settings')).json().settings.sitesDomainNoindex).toBe(false);
   });
 
-  it('ON: the page, its files and a planted PDF answer noindex, and robots.txt disallows everything', async () => {
+  it('ON: the page, its files, robots.txt and a planted PDF all answer noindex; robots.txt stays open', async () => {
     await seedAndPublish(client, projectId);
     await mkdir(join(publishRoot, slug, '_assets', 'doc', 'file'), { recursive: true });
     await writeFile(join(publishRoot, slug, '_assets', 'doc', 'file', 'brochure.pdf'), '%PDF-1.4\n');
@@ -95,12 +95,12 @@ describe('sitesDomainNoindex: hosted sites on the sites domain', () => {
     expect(page.body).toContain('<h1>Home</h1>');
     expect(page.headers['x-robots-tag']).toBe('noindex');
 
-    // noindex + robots.txt, as for the rest of the platform: the site's own file is not served here.
     const robots = await site('/robots.txt');
     expect(robots.statusCode).toBe(200);
     expect(robots.headers['x-robots-tag']).toBe('noindex');
-    expect(robots.headers['cache-control']).toBe('no-cache');
-    expect(robots.body).toBe('User-agent: *\nDisallow: /\n');
+    // ★ Still the site's own, allow-all: a crawler that may not fetch the page never sees its noindex.
+    expect(robots.body).toContain('Allow: /');
+    expect(robots.body).not.toMatch(/^Disallow:\s*\/\s*$/m);
 
     const pdf = await site('/_assets/doc/file/brochure.pdf');
     expect(pdf.statusCode).toBe(200);
@@ -138,13 +138,13 @@ describe('sitesDomainNoindex: hosted sites on the sites domain', () => {
     const robots = await get('/robots.txt', CUSTOM);
     expect(robots.statusCode).toBe(200);
     expect(robots.headers['x-robots-tag']).toBeUndefined();
-    expect(robots.body).toContain('Allow: /'); // the site's own file, not the platform's Disallow
+    expect(robots.body).toContain('Allow: /'); // the site's own file
     expect(robots.body).not.toMatch(/^Disallow:\s*\/\s*$/m);
     // Its platform address only redirects to the custom domain, so a search engine follows it there.
     const viaSub = await site('/');
     expect(viaSub.statusCode).toBe(301);
     expect(viaSub.headers.location).toBe(`https://${CUSTOM}/`);
-    // robots.txt too: the redirect comes first, so the platform address never answers Disallow for this site.
+    // robots.txt too: the redirect comes first, so a crawler is sent on to the custom domain's own file.
     const subRobots = await site('/robots.txt');
     expect(subRobots.statusCode).toBe(301);
     expect(subRobots.headers.location).toBe(`https://${CUSTOM}/robots.txt`);
@@ -190,10 +190,8 @@ describe('sitesDomainNoindex: hosted sites on the sites domain', () => {
     await seedAndPublish(client, projectId);
     await setNoindex(client, true);
     expect((await site('/')).headers['x-robots-tag']).toBe('noindex');
-    expect((await site('/robots.txt')).body).toBe('User-agent: *\nDisallow: /\n');
     await setNoindex(client, false);
     expect((await site('/')).headers['x-robots-tag']).toBeUndefined();
-    expect((await site('/robots.txt')).body).toContain('Allow: /');
     expect((await status()).searchHidden).toBeUndefined();
   });
 
@@ -211,6 +209,9 @@ describe('sitesDomainNoindex: hosted sites on the sites domain', () => {
     expect(app.statusCode).toBe(200);
     expect(app.body).toBe('User-agent: *\nAllow: /sites/\nDisallow: /\n');
     expect(app.headers['x-robots-tag']).toBe('noindex');
+    // The same with sites hidden: `/sites/` stays open so a crawler sees their noindex.
+    await setNoindex(client, true);
+    expect((await get('/robots.txt', 'cms.agency.com')).body).toBe('User-agent: *\nAllow: /sites/\nDisallow: /\n');
   });
 
   it('only an instance admin may switch it', async () => {

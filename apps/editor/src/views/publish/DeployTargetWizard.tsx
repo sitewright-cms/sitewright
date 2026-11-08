@@ -175,9 +175,13 @@ export function DeployTargetWizard({ project, sitesDomain, isStaff }: { project:
             {targets.map((t) => (
               <li key={t.id} className={`flex items-center gap-2 ${glassPanel} px-3 py-2 text-sm`}>
                 <span className="font-medium text-slate-800 dark:text-slate-100">{t.name}</span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">{whereLabel(t, project.slug, sitesDomain)}</span>
+                {/* The search line sits UNDER the address it is about, not as another column: at phone width a
+                    fourth column squeezed the domain line into a one-word-wide strip. */}
+                <span className="flex flex-col items-start">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">{whereLabel(t, project.slug, sitesDomain)}</span>
+                  {t.protocol === 'local' && searchHidden && <SearchHiddenLine />}
+                </span>
                 {t.protocol === 'local' && <CustomDomainLine domains={domains} />}
-                {t.protocol === 'local' && searchHidden && <SearchHiddenLine />}
                 {t.minifyHtml && <span className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">minified</span>}
                 <div className="ml-auto flex items-center gap-1">
                   {/* A `local` target is served via the header's Publish action, not the deploy transport. */}

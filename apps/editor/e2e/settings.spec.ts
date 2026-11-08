@@ -92,6 +92,9 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
   await btnFx.getByLabel('Button effect').selectOption('lift');
   await btnFx.getByRole('button', { name: 'Apply' }).click();
   await expect(btnFx).toBeHidden();
+  // The first save's toast lives 2.6 s. When the steps above run faster than that, two "Settings saved"
+  // toasts are on screen and the strict locator below fails; let the first go, so the next one is THIS save's.
+  await expect(page.getByText('Settings saved')).toBeHidden();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Settings saved')).toBeVisible();
 

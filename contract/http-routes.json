@@ -162,6 +162,7 @@
   "GET /projects/:projectId/visual-audit/:pageId",
   "GET /rank-tracking/locations",
   "GET /ready",
+  "GET /robots.txt",
   "GET /sites/:slug/*",
   "GET /version",
   "OPTIONS /a/:projectId",

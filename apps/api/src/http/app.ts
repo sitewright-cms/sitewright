@@ -386,6 +386,7 @@ import { OAuthRepository } from '../repo/oauth.js';
 import { OAuthClientRepository } from '../repo/oauth-clients.js';
 import { registerOAuthRoutes, htmlPage, DEFAULT_CONSENT_CHROME } from './oauth-routes.js';
 import { renderPlatformSecurityTxt } from './security-txt.js';
+import { DISALLOW_ALL_ROBOTS_TXT, platformRobotsTxt } from './platform-robots.js';
 import { registerMcpRoutes } from './mcp-routes.js';
 import { registerRevisionRoutes } from './revisions-routes.js';
 import { entryScope } from './content-scope.js';
@@ -479,14 +480,6 @@ const RL_WINDOW = '1 minute';
 const MAX_EVENT_SUBSCRIBERS_PER_PROJECT = 20;
 /** Per-route rate-limit config for an expensive/sensitive endpoint. */
 const rl = (max: number) => ({ rateLimit: { max, timeWindow: RL_WINDOW } });
-/**
- * Route config for a PREVIEW surface: a draft, never a page a search engine should list, whoever holds
- * the link. The baseline onSend hook adds `X-Robots-Tag: noindex` to EVERY response of such a route, so
- * the page, its assets (a PDF is indexed too), its redirects and its "link expired" page all carry it,
- * including a share link a client posted somewhere public. A header, not a `<meta>`: the preview DOM must
- * stay the published DOM.
- */
-const noindexed = <C extends object>(config: C): C & { noindex: true } => ({ ...config, noindex: true });
 // Static-asset + signed-preview serving fans out into MANY sub-requests per page view (fonts, CSS,
 // images/thumbnails, JS). On the shared GLOBAL cap that fan-out can exhaust it and 429 the HTML document
 // itself — a blank preview until reload, and intermittently missing CSS/images. @fastify/rate-limit gives
@@ -1699,10 +1692,6 @@ declare module 'fastify' {
      *  see the decoration site for why this is not scheduled inside createApp. */
     runDueFormDeliveries: (opts?: { now?: () => number; limit?: number }) => Promise<DeliveryRunResult>;
   }
-  interface FastifyContextConfig {
-    /** Every response this route sends carries `X-Robots-Tag: noindex`; see {@link noindexed}. */
-    noindex?: boolean;
-  }
 }
 
 /** A member token asked to create more projects than its daily cap allows (→ 429). */
@@ -2554,7 +2543,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Baseline security headers (the API also serves the SPA in single-container mode).
   app.addHook('onSend', async (req, reply) => {
     reply.header('x-content-type-options', 'nosniff');
-    if (req.routeOptions.config?.noindex) reply.header('x-robots-tag', 'noindex');
+    // SEARCH ENGINES: the platform itself is never indexed. That is everything it answers outside `/sites/`:
+    // the editor, its API, previews and share links (a client may post one somewhere public), media, the
+    // sign-in and error pages. A served SITE decides for itself in its own handler (`sitesDomainNoindex`),
+    // and `/sites/` is where `rewriteUrl` sends every site host, custom domains included. The platform's
+    // robots.txt says the same (platform-robots.ts). A route that set its own, stricter value keeps it (the
+    // bookings feed sends `noindex, nofollow`); `reply.header` would replace it.
+    if (!reply.hasHeader('x-robots-tag') && !(req.url ?? '').startsWith('/sites/')) reply.header('x-robots-tag', 'noindex');
     // Default to `same-origin`, but let a route opt into a stricter policy (the signed preview doc
     // sets `no-referrer` so its bearer URL can't leak via the Referer header).
     if (!reply.hasHeader('referrer-policy')) reply.header('referrer-policy', 'same-origin');
@@ -6565,7 +6560,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // is session-authenticated (the editor iframe carries the cookie; previews are not API-key fetched).
   app.get<{ Params: { slug: string; token: string } }>(
     '/preview/:slug/:token',
-    { config: noindexed(rl(120)) },
+    { config: rl(120) },
     async (req, reply) => {
       // Every miss (unknown slug, no session, no membership, bad/expired token) returns the SAME
       // opaque 404 — it never leaks whether a given project or preview exists.
@@ -7674,7 +7669,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // document can neither reach the editor that framed it nor read anything same-origin.
     app.get<{ Params: { projectId: string }; Querystring: { map?: string; template?: string } }>(
       '/projects/:projectId/imagemaps/preview',
-      { config: noindexed(rl(60)) },
+      { config: rl(60) },
       async (req, reply) => {
         const { ctx } = await resolveProject(req, 'content:read');
         const html = (body: string, code = 200) =>
@@ -9710,13 +9705,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           return reply.redirect(`${proto}://${canonicalSiteHost}${port}/${safePath}${query}`, 301);
         }
         // SEARCH ENGINES (admin setting `sitesDomainNoindex`): the platform's own addresses for a site —
-        // `<slug>.<sitesDomain>` and this path form — ask not to be indexed. Set on the reply BEFORE any
-        // response below, so the page, its files (a PDF is indexed too), robots.txt and the preview-token page
-        // all carry it. A verified custom domain is the client's own address and stays indexable.
-        // ★ robots.txt stays allow-all: a crawler that may not fetch a page never sees its noindex, and a
-        // blocked URL that is linked from elsewhere can still be listed.
+        // `<slug>.<sitesDomain>` and this path form — are kept out like the rest of the platform. Set on the
+        // reply BEFORE any response below, so the page, its files (a PDF is indexed too), and the preview-token
+        // page all carry it, and the site's robots.txt there shuts crawlers out (noindex + robots.txt, as the
+        // admin asked; platform-robots.ts names the trade-off). A verified custom domain is the client's own
+        // address: no header, and the site's own robots.txt.
         if (sitesDomainNoindex && customDomainRoutes.get(arrivedHost)?.slug !== slug) {
           reply.header('x-robots-tag', 'noindex');
+          if (path === 'robots.txt') {
+            return reply.header('cache-control', 'no-cache').type('text/plain; charset=utf-8').send(DISALLOW_ALL_ROBOTS_TXT);
+          }
         }
         const siteBase = isolatedSiteHost ? '/' : `/sites/${slug}/`;
         // Bundled binary assets under `_assets/` (images inline; a foreign `.js` runs ONLY on the
@@ -10841,7 +10839,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // independently by the version cache + coalescing + failure cooldown.
     app.get<{ Params: { projectId: string; sig: string; '*': string } }>(
       '/preview-site/:projectId/:sig/*',
-      { config: noindexed(rl(PREVIEW_SITE_RL_MAX)) },
+      { config: rl(PREVIEW_SITE_RL_MAX) },
       async (req, reply) => {
         /**
          * The branded "this link does not work" page, 404.
@@ -12163,7 +12161,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // strings, no brand vars) → no injection surface. STATIC apart from the query knobs; rate-limited.
   app.get<{ Querystring: Record<string, string | undefined> }>(
     '/authoring/parallax-preview',
-    { config: noindexed(rl(60)) },
+    { config: rl(60) },
     async (req, reply) => {
       const q = req.query;
       const numPair = (v: string | undefined): [number, number] | null => {
@@ -12201,7 +12199,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // keyword + clamped numeric timing reach the markup (svgAnimAttrs validates) → no injection surface.
   app.get<{ Querystring: Record<string, string | undefined> }>(
     '/authoring/svg-preview',
-    { config: noindexed(rl(60)) },
+    { config: rl(60) },
     async (req, reply) => {
       const q = req.query;
       const int = (v: string | undefined): number | undefined => {
@@ -12228,7 +12226,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // The SVG Animation Studio's live CANVAS document (renders the user's SVG + plays the real runtimes +
   // reports clicks/highlights). STATIC — all content arrives via postMessage from the editor; served
   // under the same sandbox CSP as the previews above (opaque origin, no session).
-  app.get('/authoring/svg-studio-preview', { config: noindexed(rl(60)) }, async (_req, reply) =>
+  app.get('/authoring/svg-studio-preview', { config: rl(60) }, async (_req, reply) =>
     reply
       .header('content-security-policy', 'sandbox allow-scripts')
       .header('x-frame-options', 'SAMEORIGIN')
@@ -12291,6 +12289,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }),
       );
   });
+
+  // The PLATFORM's robots.txt: nothing here is for search engines, except the `/sites/` path form while
+  // hosted sites may be indexed (`sitesDomainNoindex` off). Only the platform's own hosts reach this route:
+  // `rewriteUrl` sends a site host's `/robots.txt` to that site's own file. `no-cache` so flipping the switch
+  // applies at once. Explicit, like security.txt above, so the SPA fallback never answers it with HTML.
+  app.get('/robots.txt', async (_req, reply) =>
+    reply
+      .type('text/plain; charset=utf-8')
+      .header('cache-control', 'no-cache')
+      .send(platformRobotsTxt(!sitesDomainNoindex)),
+  );
 
   app.get('/version', async () => {
     const current = opts.version ?? '0.0.0';
@@ -12587,7 +12596,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/projects/:projectId/snippets/:id/preview',
     // 30/min — this hits the SAME small render-worker pool as render-template, so it shares that
     // route's throughput-aligned cap (the client's hover debounce keeps real usage well under it).
-    { config: noindexed(rl(30)) },
+    { config: rl(30) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:read');
       // `msg` is a fixed set of static in-code strings (never user input) — typed as a union so a

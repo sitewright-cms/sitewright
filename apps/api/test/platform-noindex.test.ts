@@ -1,37 +1,38 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { randomBytes } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { makeTestDb } from './helpers.js';
-import { createApp } from '../src/http/app.js';
 import { RenderPool } from '../src/render/render-pool.js';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
 
 /**
- * PREVIEW PAGES ARE NEVER INDEXED. Every preview surface is a draft, so every response it sends carries
- * `X-Robots-Tag: noindex`, whoever holds the link: the member-only draft site, a share link a client
- * posted somewhere public, the editor's preview documents, and the "link expired" pages too. Nothing to
- * switch on; the published site keeps its own indexing rules (`sites-domain-noindex.test.ts`).
+ * THE PLATFORM IS NEVER INDEXED. Everything it answers outside `/sites/` carries `X-Robots-Tag: noindex`
+ * and its robots.txt disallows it: the editor and its API, the draft site and its share links (a client
+ * may post one somewhere public), the editor's preview documents, media, unknown paths. A hosted site is
+ * the exception while the admin's `sitesDomainNoindex` switch is off; with it on, the site's platform
+ * addresses are kept out too (`sites-domain-noindex.test.ts`).
  */
 
 const workerPath = fileURLToPath(new URL('./fixtures/blocks-render-worker.mjs', import.meta.url));
 const noindex = (res: { headers: Record<string, unknown> }) => res.headers['x-robots-tag'];
 
-describe('preview pages carry noindex', () => {
+describe('the platform is never indexed', () => {
   let root: string;
   let h: Harness;
   let owner: TestClient;
   let projectId: string;
 
   beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), 'sw-preview-noindex-'));
+    root = await mkdtemp(join(tmpdir(), 'sw-platform-noindex-'));
+    await mkdir(join(root, 'editor'));
+    await writeFile(join(root, 'editor', 'index.html'), '<!doctype html><title>Sitewright</title><div id="root"></div>');
     h = await makeHarness({
+      editorDist: join(root, 'editor'),
       previewRoot: join(root, 'preview'),
       publishRoot: join(root, 'sites'),
       mediaRoot: join(root, 'media'),
-      cookieSecret: 'preview-noindex-secret',
+      cookieSecret: 'platform-noindex-secret',
       renderPool: new RenderPool({ size: 1, workerPath }),
     });
     owner = await h.signup({ admin: true });
@@ -97,7 +98,7 @@ describe('preview pages carry noindex', () => {
     expect(page.statusCode).toBe(200);
     expect(page.body).toContain('Draft Home');
     expect(noindex(page)).toBe('noindex');
-    // A crawler's HEAD hits Fastify's auto-generated HEAD route, which copies the GET route's config.
+    // A crawler often asks with HEAD first.
     const head = await h.app.inject({ method: 'HEAD', url: share.url });
     expect(head.statusCode).toBe(200);
     expect(noindex(head)).toBe('noindex');
@@ -155,67 +156,59 @@ describe('preview pages carry noindex', () => {
     }
   });
 
-  it('★ only previews: the published site, the editor API and the app itself stay as they were', async () => {
+  it('★ the editor shell, its API, health checks and unknown paths', async () => {
+    const shell = await visit('/');
+    expect(shell.statusCode).toBe(200);
+    expect(shell.body).toContain('<title>Sitewright</title>'); // presence guard: the SPA shell itself
+    expect(noindex(shell)).toBe('noindex');
+
+    const route = await visit('/login'); // a client-side route answered by the SPA fallback
+    expect(route.statusCode).toBe(200);
+    expect(route.body).toContain('<title>Sitewright</title>');
+    expect(noindex(route)).toBe('noindex');
+
+    const api = await owner.get('/projects');
+    expect(api.statusCode).toBe(200);
+    expect(noindex(api)).toBe('noindex');
+
+    const health = await visit('/health');
+    expect(health.statusCode).toBe(200);
+    expect(noindex(health)).toBe('noindex');
+
+    const media = await visit('/media/site/nothing-here.jpg');
+    expect(media.statusCode).toBe(404);
+    expect(noindex(media)).toBe('noindex');
+  });
+
+  it("★ the platform's robots.txt: only the /sites/ path form is crawlable, and only while sites may be indexed", async () => {
+    const off = await visit('/robots.txt');
+    expect(off.statusCode).toBe(200);
+    expect(String(off.headers['content-type'])).toContain('text/plain');
+    expect(off.headers['cache-control']).toBe('no-cache');
+    expect(off.body).toBe('User-agent: *\nAllow: /sites/\nDisallow: /\n');
+
+    expect((await owner.put('/admin/settings', { sitesDomainNoindex: true })).statusCode).toBe(200);
+    const on = await visit('/robots.txt');
+    expect(on.body).toBe('User-agent: *\nDisallow: /\n'); // applies to the very next request
+
+    expect((await owner.put('/admin/settings', { sitesDomainNoindex: false })).statusCode).toBe(200);
+    expect((await visit('/robots.txt')).body).toContain('Allow: /sites/');
+  });
+
+  it('★ a hosted site is the exception: no header while the switch is off', async () => {
     expect((await owner.post(`/projects/${projectId}/publish`)).statusCode).toBe(200);
     const site = await visit('/sites/site/');
     expect(site.statusCode).toBe(200);
     expect(site.body).toContain('Draft Home'); // presence guard: the published page
     expect(noindex(site)).toBeUndefined();
+    const robots = await visit('/sites/site/robots.txt');
+    expect(robots.statusCode).toBe(200);
+    expect(robots.body).toContain('User-agent: *'); // the site's own file, from its publish
+    expect(robots.body).not.toMatch(/^Disallow:\s*\/\s*$/m);
+    expect(noindex(robots)).toBeUndefined();
 
-    const api = await owner.get(`/projects/${projectId}/preview-url`);
-    expect(api.statusCode).toBe(200);
-    expect(noindex(api)).toBeUndefined();
-
-    const health = await visit('/health');
-    expect(health.statusCode).toBe(200);
-    expect(noindex(health)).toBeUndefined();
-  });
-});
-
-/**
- * The next preview route must not be forgotten. Every GET route with "preview" in its path either is
- * flagged `noindexed` or is named below as not being a page at all.
- */
-const NOT_A_PAGE = new Set([
-  '/authoring/button-preview-css', // a stylesheet for the editor's button picker
-  '/f/:projectId/:formId/preview/challenge', // JSON: a proof-of-work challenge for the dry run
-  '/pay/:projectId/:channelKey/preview/challenge', // JSON, likewise for the cart's dry run
-  '/projects/:projectId/preview-locate', // JSON for the editor
-  '/projects/:projectId/preview-progress', // JSON for the editor
-  '/projects/:projectId/preview-shares', // JSON: the share list
-  '/projects/:projectId/preview-url', // JSON: the signed preview base
-]);
-
-describe('every preview page route is noindexed', () => {
-  it('flags each GET preview route, or names it as not a page', async () => {
-    const seen: Array<{ url: string; noindex: boolean }> = [];
-    const dir = await mkdtemp(join(tmpdir(), 'sw-preview-routes-'));
-    const app = await createApp({
-      db: await makeTestDb(),
-      // Production-shaped (see contract-http.test.ts), so every optional preview route registers.
-      mediaRoot: join(dir, 'media'),
-      publishRoot: join(dir, 'sites'),
-      previewRoot: join(dir, 'preview'),
-      dataDir: dir,
-      encryptionKey: randomBytes(32),
-      onRoute: (route: { method: string | string[]; url: string; config?: { noindex?: boolean } }) => {
-        const methods = Array.isArray(route.method) ? route.method : [route.method];
-        if (methods.includes('GET') && route.url.includes('preview')) {
-          seen.push({ url: route.url, noindex: route.config?.noindex === true });
-        }
-      },
-    });
-    try {
-      await app.ready();
-      expect(seen.map((r) => r.url)).toContain('/preview-site/:projectId/:sig/*'); // presence guard
-      const unflagged = seen.filter((r) => !r.noindex && !NOT_A_PAGE.has(r.url)).map((r) => r.url);
-      expect(unflagged, 'a preview page route without noindexed(...)').toEqual([]);
-      // And nothing named as "not a page" quietly became one.
-      const flaggedButListed = seen.filter((r) => r.noindex && NOT_A_PAGE.has(r.url)).map((r) => r.url);
-      expect(flaggedButListed).toEqual([]);
-    } finally {
-      await app.close();
-      await rm(dir, { recursive: true, force: true });
-    }
+    // With the switch on, the path form is a platform address like any other.
+    expect((await owner.put('/admin/settings', { sitesDomainNoindex: true })).statusCode).toBe(200);
+    expect(noindex(await visit('/sites/site/'))).toBe('noindex');
   });
 });

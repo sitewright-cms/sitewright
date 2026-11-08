@@ -134,6 +134,30 @@ Agency staff (platform **admin** or **developer**) can also mark a hostname veri
 for a domain you control out-of-band or a provider whose TXT records the resolver cannot see. It is the one
 action that asserts ownership with no evidence, so it is logged.
 
+### Keeping platform addresses out of search results
+
+**System Settings → Integrations → Hosted sites in search results** asks search engines not to index sites
+at the platform's own addresses: everything served at `<slug>.<SW_SITES_DOMAIN>` or `/sites/<slug>/` is sent
+with `X-Robots-Tag: noindex`. That covers a staging copy, and a site whose real home is deployed elsewhere
+over FTP/SFTP/Git. It is off by default.
+
+- **A site served at its own verified custom domain stays indexable.** The header is never sent there, and
+  the site's platform address 301s to it anyway. That domain must be the **primary**: the first domain a
+  project claims becomes its primary, and while that one is unverified, every other domain also 301s to the
+  platform address.
+- **A site with no custom domain drops out of search entirely.** Its Local Hosting target says "Hidden from
+  search engines", and the publish status carries `searchHidden: true`.
+- **`robots.txt` stays allow-all on purpose.** A crawler that may not fetch a page never sees its noindex, and
+  a blocked URL that is linked from elsewhere can still be listed.
+- **Pages already indexed go as search engines visit them again,** which can take weeks. Google Search
+  Console's Removals tool hides a URL prefix sooner.
+- **Switching it off again applies to pages at once,** because they are served `no-cache`. Files under
+  `_assets/` are cached as immutable, so a cache in front of the platform can keep serving one with the
+  header until it expires.
+
+The setting does the same as adding `X-Robots-Tag: noindex` for `*.<SW_SITES_DOMAIN>` in your proxy, but it
+also covers the path form and needs no proxy change.
+
 ## First run
 
 - A first admin is seeded on boot: `admin@sitewright.example` / `123456` unless you set `SW_ADMIN_EMAIL` /

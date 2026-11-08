@@ -1933,6 +1933,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // mutable-ref style, pre-resolved to the `frame-ancestors` source list or null. Read by the preview
   // route on each response, so a saved change applies to the next request without a restart.
   let shareFrameAncestors = shareFrameAncestorsFor(await instanceSettingsRepo.getShareEmbedding());
+  // Whether hosted sites at the platform's own addresses ask search engines not to index them (admin instance
+  // setting; off by default). The same mutable-ref style: read by the site route on every response.
+  let sitesDomainNoindex = await instanceSettingsRepo.getSitesDomainNoindex();
   // Additional origins this instance answers on (admin instance setting; empty = single-origin). Same
   // mutable-ref style as hstsPolicy — loaded at boot, refreshed after a settings PUT — so the per-request
   // resolution below does no DB work and an admin change applies without a restart.
@@ -2304,10 +2307,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   let customDomainRoutes = new Map<string, { projectId: string; slug: string }>();
   /** slug → the project's PRIMARY verified host, for the canonical address the site advertises. */
   let primaryCustomHostBySlug = new Map<string, string>();
+  /** Slugs with at least one verified custom domain, primary or not. */
+  let verifiedCustomSlugs = new Set<string>();
   async function refreshCustomDomainRoutes(): Promise<void> {
     const rows = await projectDomainsRepo.listVerifiedRoutes();
     customDomainRoutes = new Map(rows.map((r) => [r.host, { projectId: r.projectId, slug: r.slug }]));
     primaryCustomHostBySlug = new Map(rows.filter((r) => r.isPrimary).map((r) => [r.slug, r.host]));
+    verifiedCustomSlugs = new Set(rows.map((r) => r.slug));
     // The statistics' per-site host sets are derived from this map (and from slugs, which a rename moves).
     invalidateStatsConfig();
   }
@@ -3982,6 +3988,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       hstsPolicy = settings.hsts ?? { ...DEFAULT_HSTS };
       frameAncestors = frameAncestorsFor(settings.embedding);
       shareFrameAncestors = shareFrameAncestorsFor(settings.shareEmbedding);
+      sitesDomainNoindex = settings.sitesDomainNoindex;
       additionalOrigins = settings.additionalOrigins ?? [];
       // Apply a log-level change live (pino's level is mutable) so an admin can dial verbosity without a
       // restart. On CLEAR (settings.logLevel undefined) fall back to the raw ENV level (not opts.logLevel,
@@ -9337,10 +9344,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
    * (a remote FTP/SFTP/Git target uploads to an origin we cannot know). `previewUrl` is always available
    * and is the honest answer to "let me see it" — signed, no login needed, and it serves the DRAFT.
    */
+  /**
+   * Whether one of the site's verified custom domains SERVES it, rather than 301ing to a platform address. The
+   * same rule as the site route's canonical-host redirect: a verified PRIMARY always serves; with no sites domain
+   * there is no platform host to redirect to, so any verified domain serves. (The first claim becomes primary
+   * even while unverified, so "verified" alone is not the test.)
+   */
+  const servedOnCustomDomain = (slug: string): boolean =>
+    primaryCustomHostBySlug.has(slug) || (!sitesDomain && verifiedCustomSlugs.has(slug));
+
   async function hostingState(
     ctx: ProjectContext,
     project: { id: string; slug: string },
-  ): Promise<{ local?: DeployTarget; deployTargets: number; url: string | null; previewUrl: string | null }> {
+  ): Promise<{ local?: DeployTarget; deployTargets: number; url: string | null; previewUrl: string | null; searchHidden: boolean }> {
     const targets = (await contentRepo.list(ctx, 'deploy_target')) as DeployTarget[];
     const local = targets.find((t) => t.protocol === 'local');
     return {
@@ -9348,6 +9364,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       deployTargets: targets.length,
       url: local ? servedSiteUrl(project.slug) : null,
       previewUrl: draftPreviewBase(project.id),
+      // No custom domain of the site's own SERVES it, and the admin asks search engines to skip the platform's
+      // addresses. Said here so the owner learns why the site is not found, not only the admin who flipped it.
+      searchHidden: !!local && sitesDomainNoindex && !servedOnCustomDomain(project.slug),
     };
   }
 
@@ -9457,6 +9476,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             previewUrl: hosting.previewUrl,
             dirty: false,
             localHosting: !!hosting.local,
+            ...(hosting.searchHidden ? { searchHidden: true } : {}),
             deployTargets: hosting.deployTargets,
             ...(hosting.deployTargets === 0
               ? { reason: 'built, but this project has no deploy target — nothing serves it yet. Add one (Local Hosting, FTP/SFTP or Git) to put it online; until then use previewUrl to view it.' }
@@ -9501,6 +9521,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           dirty,
           latestContentAt,
           localHosting: !!hosting.local,
+          // Present only when true: search engines are asked not to index `url` (see hostingState).
+          ...(hosting.searchHidden ? { searchHidden: true } : {}),
           deployTargets: hosting.deployTargets,
           ...(hosting.deployTargets === 0
             ? { reason: 'this project has no deploy target, so nothing serves it — there is no live URL. Add one (Local Hosting, FTP/SFTP or Git) to put it online; until then use previewUrl to view it.' }
@@ -9673,6 +9695,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           const fwdHost = firstForwardedValue(req.headers['x-forwarded-host']) ?? req.headers.host ?? '';
           const port = primaryCustomHost ? '' : (/:(\d+)$/.exec(fwdHost)?.[0] ?? '');
           return reply.redirect(`${proto}://${canonicalSiteHost}${port}/${safePath}${query}`, 301);
+        }
+        // SEARCH ENGINES (admin setting `sitesDomainNoindex`): the platform's own addresses for a site —
+        // `<slug>.<sitesDomain>` and this path form — ask not to be indexed. Set on the reply BEFORE any
+        // response below, so the page, its files (a PDF is indexed too), robots.txt and the preview-token page
+        // all carry it. A verified custom domain is the client's own address and stays indexable.
+        // ★ robots.txt stays allow-all: a crawler that may not fetch a page never sees its noindex, and a
+        // blocked URL that is linked from elsewhere can still be listed.
+        if (sitesDomainNoindex && customDomainRoutes.get(arrivedHost)?.slug !== slug) {
+          reply.header('x-robots-tag', 'noindex');
         }
         const siteBase = isolatedSiteHost ? '/' : `/sites/${slug}/`;
         // Bundled binary assets under `_assets/` (images inline; a foreign `.js` runs ONLY on the

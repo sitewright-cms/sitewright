@@ -66,6 +66,7 @@ import { LocalePickerModal } from './i18n/LocalePickerModal';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
 import { OidcProvidersField, nextOidcProviderKey, type OidcProviderDraft } from './settings/OidcProvidersField';
 import { ShareFramingField } from './settings/ShareFramingField';
+import { SitesNoindexField } from './settings/SitesNoindexField';
 import { RankTrackingSettings, type RankTrackingSettingsHandle } from './settings/RankTrackingSettings';
 import { WebmasterAccountsSettings, type WebmasterAccountsSettingsHandle } from './settings/WebmasterAccountsSettings';
 import { secretFieldProps } from '../lib/secret-field';
@@ -235,6 +236,7 @@ export function InstanceSettings({ initialTab = 'general', focusSection }: { ini
   const [embedError, setEmbedError] = useState<string | null>(null);
   const [shareExpiryDays, setShareExpiryDays] = useState<number>(30);
   const [shareFrameOrigins, setShareFrameOrigins] = useState<string[]>([]);
+  const [sitesNoindex, setSitesNoindex] = useState(false);
   const [extraOrigins, setExtraOrigins] = useState<string[]>([]);
   const [originDraft, setOriginDraft] = useState('');
   const [originError, setOriginError] = useState<string | null>(null);
@@ -491,6 +493,7 @@ export function InstanceSettings({ initialTab = 'general', focusSection }: { ini
     setEmbedAllowSelf(s.embedding?.allowSelf ?? false);
     setEmbedOrigins(s.embedding?.origins ?? []);
     setShareFrameOrigins(s.shareEmbedding?.origins ?? []);
+    setSitesNoindex(s.sitesDomainNoindex === true); // an older server omits it
     setExtraOrigins(s.additionalOrigins ?? []);
     setShareExpiryDays(s.shareExpiryDays ?? 30);
     setEmbedDraft('');
@@ -610,6 +613,7 @@ export function InstanceSettings({ initialTab = 'general', focusSection }: { ini
     input.embedding = { enabled: embedEnabled, origins: embedOrigins, allowSelf: embedAllowSelf };
     // An empty list CLEARS it (share links back to same-origin only), like additionalOrigins below.
     input.shareEmbedding = shareFrameOrigins.length > 0 ? { origins: shareFrameOrigins } : null;
+    input.sitesDomainNoindex = sitesNoindex;
     // An empty list CLEARS the setting (back to single-origin) rather than storing `[]`, matching how
     // every other optional setting reverts to its default.
     input.additionalOrigins = extraOrigins.length > 0 ? extraOrigins : null;
@@ -1168,6 +1172,8 @@ export function InstanceSettings({ initialTab = 'general', focusSection }: { ini
           </div>
         )}
       </fieldset>
+
+      <SitesNoindexField checked={sitesNoindex} onChange={setSitesNoindex} />
 
       <div id={SYSTEM_SETTINGS_SECTION_ID['rank-tracking']} className="scroll-mt-4 rounded-2xl">
         <RankTrackingSettings ref={rankRef} onReady={markRankReady} />

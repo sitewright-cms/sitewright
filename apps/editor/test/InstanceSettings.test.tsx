@@ -65,7 +65,7 @@ vi.mock('../src/api', () => ({
 import { InstanceSettings } from '../src/views/InstanceSettings';
 
 const DEFAULTS: InstanceSettingsPublic = {
-  formModes: DEFAULT_FORM_MODES, paymentsEnabled: false,
+  formModes: DEFAULT_FORM_MODES, paymentsEnabled: false, sitesDomainNoindex: false,
 };
 
 beforeEach(() => {
@@ -318,7 +318,7 @@ describe('InstanceSettings', () => {
 
   it('omits the password when an SMTP edit leaves it blank, but sends it when filled', async () => {
     const withSmtp: InstanceSettingsPublic = {
-      formModes: DEFAULTS.formModes, paymentsEnabled: false,
+      formModes: DEFAULTS.formModes, paymentsEnabled: false, sitesDomainNoindex: false,
       smtp: { host: 'smtp.acme.com', port: 587, secure: false, fromEmail: 'a@acme.com', hasPassword: true },
     };
     getInstanceSettings.mockResolvedValue({ settings: withSmtp });
@@ -399,7 +399,7 @@ describe('InstanceSettings', () => {
 
   it('keeps an existing key (placeholder) and omits it when left blank', async () => {
     const withStock: InstanceSettingsPublic = {
-      formModes: DEFAULTS.formModes, paymentsEnabled: false,
+      formModes: DEFAULTS.formModes, paymentsEnabled: false, sitesDomainNoindex: false,
       stock: { hasUnsplash: true, hasPexels: false, hasPixabay: false },
     };
     getInstanceSettings.mockResolvedValue({ settings: withStock });
@@ -584,7 +584,7 @@ describe('InstanceSettings', () => {
 
   it('hydrates and saves the per-provider PKCE toggle', async () => {
     const withProvider: InstanceSettingsPublic = {
-      formModes: DEFAULTS.formModes, paymentsEnabled: false,
+      formModes: DEFAULTS.formModes, paymentsEnabled: false, sitesDomainNoindex: false,
       oidcProviders: [
         { id: 'acme', label: 'Acme', issuer: 'https://idp.example.com', clientId: 'cid', scopes: ['openid', 'email'], enabled: true, hasClientSecret: true, usePkce: true },
       ],
@@ -902,5 +902,30 @@ describe('InstanceSettings — preview share links in a frame', () => {
     add('https://one-more.example.com');
     expect(screen.getByText('At most 20 sites — remove one first.')).toBeInTheDocument();
     expect(screen.queryByText('https://one-more.example.com')).not.toBeInTheDocument();
+  });
+});
+
+describe('InstanceSettings — hosted sites in search results', () => {
+  const toggle = () => screen.getByLabelText('Keep sites at platform addresses out of search results') as HTMLInputElement;
+
+  it('is off by default, and switching it on saves sitesDomainNoindex: true', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings initialTab="integrations" />);
+    await waitFor(() => expect(toggle()).toBeInTheDocument());
+    expect(toggle().checked).toBe(false);
+    fireEvent.click(toggle());
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    expect((putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput).sitesDomainNoindex).toBe(true);
+  });
+
+  it('loads a stored ON, and switching it off saves false (not an absent field, which would keep it on)', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: { ...DEFAULTS, sitesDomainNoindex: true } });
+    render(<InstanceSettings initialTab="integrations" />);
+    await waitFor(() => expect(toggle().checked).toBe(true));
+    fireEvent.click(toggle());
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    expect((putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput).sitesDomainNoindex).toBe(false);
   });
 });

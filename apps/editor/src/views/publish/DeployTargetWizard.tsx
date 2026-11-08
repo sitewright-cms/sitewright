@@ -6,6 +6,7 @@ import { ghostButton, dangerButton, glassPanel, accentChip } from '../../theme';
 import { DeployModal } from './DeployModal';
 import { TargetConfigForm, type WizardProtocol } from './TargetConfigForm';
 import { localSiteLabel } from '../../lib/local-site-url';
+import { Tooltip } from '../ui/Tooltip';
 
 /** The four wizard entry points. `ftp` opens the FTP/FTPS family (a TLS toggle picks the variant).
  *  Local Hosting's blurb names the address the site will ACTUALLY serve at: with subdomain routing on
@@ -58,6 +59,21 @@ function CustomDomainLine({ domains }: { domains: ProjectDomainView[] }) {
   return <span className="text-xs text-slate-400 dark:text-slate-500">Edit to serve this site at a custom domain</span>;
 }
 
+/**
+ * The Local Hosting row's search line: shown when the instance asks search engines not to index sites at the
+ * platform's own addresses and this site has no custom domain of its own (the server's `searchHidden`).
+ *
+ * ★ Said HERE, on the project, because the switch is an admin's: without it an owner whose site stopped being
+ * found would have nothing on any screen they can open to tell them why.
+ */
+function SearchHiddenLine() {
+  return (
+    <Tooltip tip="This platform asks search engines not to index sites at its own addresses, so this site will not appear in search results. To be found, serve it at a verified custom domain set as its primary. An admin can change this in System Settings.">
+      <span className="text-xs text-amber-600 dark:text-amber-400">Hidden from search engines</span>
+    </Tooltip>
+  );
+}
+
 type Mode = { kind: 'list' } | { kind: 'configure'; protocol: WizardProtocol; editing: DeployTargetView | null };
 
 /**
@@ -70,6 +86,8 @@ export function DeployTargetWizard({ project, sitesDomain, isStaff }: { project:
   /** This project's custom-domain claims, for the Local Hosting row. Empty when none, or when the
    *  caller is not an owner (the route is owner-only) — in both cases the row just says nothing. */
   const [domains, setDomains] = useState<ProjectDomainView[]>([]);
+  /** Search engines are asked not to index this site's address (see SearchHiddenLine). */
+  const [searchHidden, setSearchHidden] = useState(false);
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
   const [deploying, setDeploying] = useState<DeployTargetView | null>(null);
   const [busy, setBusy] = useState(false);
@@ -82,6 +100,14 @@ export function DeployTargetWizard({ project, sitesDomain, isStaff }: { project:
       setTargets(null);
     }
     void loadDomains();
+    void loadSearchHidden();
+  }
+  async function loadSearchHidden() {
+    try {
+      setSearchHidden((await api.publishStatus(project.id)).searchHidden === true);
+    } catch {
+      setSearchHidden(false); // an older server, or transient — the row simply says nothing
+    }
   }
   async function loadDomains() {
     try {
@@ -100,6 +126,10 @@ export function DeployTargetWizard({ project, sitesDomain, isStaff }: { project:
       .listProjectDomains(project.id)
       .then((res) => active && setDomains(res.items))
       .catch(() => active && setDomains([]));
+    api
+      .publishStatus(project.id)
+      .then((res) => active && setSearchHidden(res.searchHidden === true))
+      .catch(() => active && setSearchHidden(false));
     return () => {
       active = false;
     };
@@ -118,7 +148,12 @@ export function DeployTargetWizard({ project, sitesDomain, isStaff }: { project:
           isStaff={isStaff}
           protocol={mode.protocol}
           editing={mode.editing}
-          onCancel={() => setMode({ kind: 'list' })}
+          onCancel={() => {
+            // The domains panel inside this form verifies a domain without a Save, so re-read what the
+            // Local Hosting row says (its domain line and whether search engines skip it) on the way out too.
+            void load();
+            setMode({ kind: 'list' });
+          }}
           onSaved={() => {
             void load();
             setMode({ kind: 'list' });
@@ -140,7 +175,12 @@ export function DeployTargetWizard({ project, sitesDomain, isStaff }: { project:
             {targets.map((t) => (
               <li key={t.id} className={`flex items-center gap-2 ${glassPanel} px-3 py-2 text-sm`}>
                 <span className="font-medium text-slate-800 dark:text-slate-100">{t.name}</span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">{whereLabel(t, project.slug, sitesDomain)}</span>
+                {/* The search line sits UNDER the address it is about, not as another column: at phone width a
+                    fourth column squeezed the domain line into a one-word-wide strip. */}
+                <span className="flex flex-col items-start">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">{whereLabel(t, project.slug, sitesDomain)}</span>
+                  {t.protocol === 'local' && searchHidden && <SearchHiddenLine />}
+                </span>
                 {t.protocol === 'local' && <CustomDomainLine domains={domains} />}
                 {t.minifyHtml && <span className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">minified</span>}
                 <div className="ml-auto flex items-center gap-1">

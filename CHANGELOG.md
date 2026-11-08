@@ -9,6 +9,17 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Keep hosted sites at platform addresses out of search results.** A new admin switch, under System
+  Settings → Integrations → "Hosted sites in search results", asks search engines not to index sites served
+  at `<slug>.<sites domain>` or `/sites/<slug>/`. Everything served there, from pages and files to
+  `robots.txt`, is then sent with `X-Robots-Tag: noindex`. A site served at its own verified custom domain
+  (its primary) stays in search results. A site with no custom domain drops out of search, and its Local Hosting target says
+  "Hidden from search engines" so its owner can see why. The publish status carries `searchHidden: true` for
+  agents. `robots.txt` stays allow-all, because a crawler that may not fetch a page never sees its noindex.
+  Off by default, so nothing changes until an admin switches it on.
+
 ### Changed
 
 - **Slider dots sit in a frosted pill on every slider.** Before, only a single-slide slider got the blurred,

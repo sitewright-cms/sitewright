@@ -97,7 +97,8 @@ describe('★ the feed', () => {
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toBe('text/calendar; charset=utf-8');
     expect(res.headers['cache-control']).toBe('private, no-store');
-    expect(res.headers['x-robots-tag']).toContain('noindex');
+    // Its own stricter value, which the platform-wide noindex must not flatten to plain `noindex`.
+    expect(res.headers['x-robots-tag']).toBe('noindex, nofollow');
     expect(res.body).toContain('X-WR-CALNAME:Studio Nord: bookings');
     const list = events(res.body).map((e) => ({
       uid: String(e.getFirstPropertyValue('uid')),

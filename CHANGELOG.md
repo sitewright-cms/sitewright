@@ -9,6 +9,25 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **The platform itself stays out of search results.** Everything an instance answers outside `/sites/` now
+  sends `X-Robots-Tag: noindex`: the editor and its API, the draft site and its share links, the editor's
+  previews, media, and the sign-in and error pages. A new `/robots.txt` on the platform's own hosts disallows
+  all of it except the `/sites/` path form. A share link a client posts somewhere public therefore stays out
+  of search. It is always on, with nothing to switch. A preview's HTML is untouched (it is a header, not a
+  `<meta>` tag), so it still matches the published page. Hosted sites are the exception: at
+  `<slug>.<sites domain>`, `/sites/<slug>/` or a custom domain they keep their own rules and their own
+  `robots.txt`.
+
+### Changed
+
+- **"Keep sites at platform addresses out of search results" now blocks crawlers in `robots.txt` too.** With the
+  switch on, a site's `robots.txt` at its platform address is `Disallow: /`, alongside the noindex header, and
+  the platform's `robots.txt` no longer allows `/sites/`. A site on its verified custom domain still serves
+  its own `robots.txt` and stays indexable. Pages already in search results can linger, because a crawler
+  turned away by `robots.txt` never sees the noindex. Google Search Console's Removals tool takes them out.
+
 ## [0.77.0] — 2026-11-08
 
 ### Added

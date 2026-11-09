@@ -71,6 +71,13 @@ updates:
         patterns: ["*"]
         dependency-type: "development"
         update-types: ["minor", "patch"]
+    ignore:
+      # SmartPhoto 2 is a REWRITE of the lightbox every gallery site ships, not an upgrade. The
+      # migration is planned as its own task, and 1.6.5 stays until then. Majors are skipped so the PR
+      # doesn't keep reopening; minors/patches of the 1.x line still come through. Why, and the
+      # checklist: docs/lightbox-smartphoto-2.md. Remove this entry when the migration starts.
+      - dependency-name: "smartphoto"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "chore"
       include: "scope"

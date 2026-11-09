@@ -111,6 +111,21 @@ describe('searchIcons — multi-term icon search', () => {
     expect(m).not.toContain('pulse');
     expect(m).not.toContain('airplay');
   });
+  it('matches a tag across a plain inflection, both ways, but never a different word', async () => {
+    // lucide-static 1.66 reworded its tags: "complete" became "completed" and "tick" became "ticked",
+    // so searching the bare word found nothing at all. A stem must find its inflected tag and back.
+    const { searchIcons } = await import('../src/index.js');
+    const checks = (q: string): boolean => searchIcons(q)[0]!.matches.some((m) => m.startsWith('check'));
+    expect(checks('complete')).toBe(true); // tag "completed"
+    expect(checks('tick')).toBe(true); // tag "ticked"
+    expect(searchIcons('locks')[0]!.matches).toContain('lock'); // the other way: query "locks", tag "lock"
+    // -d only follows a final e: carrot's tag "food" is a different word from "foo", not an inflection
+    expect(searchIcons('foo')[0]!.matches).not.toContain('carrot');
+    // never stem + "s": the tag "times" is the × sign, and it must not answer "time" with the X icons
+    expect(searchIcons('time', 200)[0]!.matches).not.toContain('x');
+    // a word that is a tag in its own right is never stripped: "news" is not "new" (file-plus's tag)
+    expect(searchIcons('news', 200)[0]!.matches).not.toContain('file-plus');
+  });
   it('empty/blank query → no groups; caps per term', async () => {
     const { searchIcons } = await import('../src/index.js');
     expect(searchIcons('   ')).toEqual([]);

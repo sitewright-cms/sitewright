@@ -34,6 +34,33 @@ The running version of an instance is reported at `GET /version` (baked into the
   function, before reading. They are removed; the type check confirms nothing read them, so behaviour is
   unchanged. The image-map runtime, a fork of Image Map Pro that sites download, is exempt from the rule
   rather than edited, so no site JavaScript changes.
+- **Dependency refresh** (Dependabot #1246 and #1247; 18 packages, each at the version Dependabot proposed).
+  Production: `@fastify/cookie` 11.1.5, `@fastify/static` 10.1.8, `basic-ftp` 6.2.5, `crawler-user-agents` 1.66,
+  `isomorphic-git` 1.44.9, `lighthouse` 13.6, `mmdb-lib` 3.0.4, `nodemailer` 10.3.1, `otplib` 13.6, `lucide-react`
+  1.66 and `motion` 14.9. Development: `eslint` 10.14, `eslint-plugin-security` 4.2.1, `globals` 17.14,
+  `typescript-eslint` 8.72.1, `@types/node` 26.6.6, `jose` 6.2.15 and `lucide-static` 1.66.
+  - **What reaches published sites: only icons.** `lucide-static` 1.61 → 1.66 adds **121 icon names**: letters
+    `letter-a`…`-z` in plain, circle and square forms, `margin-*` and `square-padding-*`, `calendar-arrow-left`/
+    `-right`, `chart-bell-curve`/`-quadrant`/`-radar`, `archive-arrow-down`/`-up`, `earbuds`, `hot-air-balloon`,
+    `azerbaijani-manat`, `emirati-dirham` and more. No icon was removed.
+  - **21 existing icons were redrawn**, all rendered side by side: the currency symbols (yen, pound, ruble, peso,
+    rupees, lari, riyal, lira, franc) are slimmer and better centred, and the parking signs have a reshaped "P".
+    They mean the same and keep their size. `heading` and `square-m` changed only path syntax (0 pixels differ),
+    and `bold`, `copyright` and `dollar-sign` render through their Phosphor twins, so they look as before.
+  - **Statistics:** the bot list gains one AI crawler (`AIWebIndex`). It matches none of 14 common desktop,
+    mobile and in-app browsers, and no existing pattern changed category.
+  - Lighthouse 13.6 brings Sentry's packages in as dependencies. They are only loaded by Lighthouse's own CLI
+    with error reporting on; the PageSpeed audit uses the Node module, which never initialises them.
+
+### Fixed
+
+- **Icon search finds "complete" and "tick" again.** `lucide-static` 1.66 reworded the search keywords of 978
+  icons, and some bare words lost every match: "complete" found nothing, and "tick" no longer found the check
+  marks, because the tags became "completed" and "ticked". A search word now also matches the verb forms of a
+  keyword (-ed, -ing, and -d after a final e), and a plural or verb form matches its stem ("users" finds the user
+  icons). It never matches a different word that happens to share letters ("time" does not match "times", the
+  × sign). Across 76 common search words, 5 gain results and none lose any. A 24-word search, the most one
+  request takes, also runs 6× faster, because keywords are indexed once instead of re-split on every search.
 
 ## [0.78.0] — 2026-11-08
 

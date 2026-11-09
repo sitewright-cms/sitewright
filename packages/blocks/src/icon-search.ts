@@ -23,6 +23,49 @@ export interface IconSearchGroup {
  *  A real "look up several icons" call needs only a handful; 24 is a generous ceiling. */
 export const MAX_ICON_SEARCH_TERMS = 24;
 
+// Lucide words its tags in inflected forms and rewords them between releases — 1.66 turned "complete"
+// and "tick" into "completed" and "ticked", and the bare word stopped finding anything. So a term also
+// finds the VERB forms of itself (-ed, -ing, and -d after a final e: "car" + "d" is "card", a different
+// word), and an inflected term that is no tag of its own finds its stem ("locks" → "lock"). Never stem +
+// "s": "time" + "s" is the tag "times" — the × sign — and it buried the clocks under nine X icons. And never
+// strip a word that IS a tag: "news", "seed" and "feed" are words in their own right, not "new", "see" and
+// "fee" inflected. Stems under 3 letters never inflect.
+const STEM_SUFFIXES = ['s', 'es', 'ed', 'ing'];
+
+/** The tag tokens `term` matches: itself, its verb forms, and — when it is no tag — the stems it inflects. */
+function tagForms(term: string): string[] {
+  const forms = [term];
+  if (term.length < 3) return forms;
+  forms.push(`${term}ed`, `${term}ing`);
+  if (term.endsWith('e')) forms.push(`${term}d`);
+  if (lucideNamesTagged(term).length > 0) return forms;
+  for (const suffix of STEM_SUFFIXES) {
+    const stem = term.slice(0, -suffix.length);
+    if (term.endsWith(suffix) && stem.length >= 3) forms.push(stem);
+  }
+  if (term.endsWith('ed') && term.length >= 4) forms.push(term.slice(0, -1)); // "completed" → "complete"
+  return forms;
+}
+
+// tag token → the Lucide names carrying it. Built on the first search and reused (the tag table is static),
+// so a term costs a few map lookups instead of re-splitting every icon's tag string.
+let tagIndex: Map<string, string[]> | undefined;
+
+function lucideNamesTagged(token: string): readonly string[] {
+  if (!tagIndex) {
+    const index = new Map<string, string[]>();
+    for (const lu of ICON_NAMES) {
+      for (const tag of new Set(iconTags(lu).split(/\s+/))) {
+        if (tag) index.set(tag, [...(index.get(tag) ?? []), lu]);
+      }
+    }
+    tagIndex = index;
+  }
+  return tagIndex.get(token) ?? [];
+}
+
+const LUCIDE_NAME_SET = new Set(ICON_NAMES);
+
 /** Split a query into individual terms on commas and/or whitespace, capped at {@link MAX_ICON_SEARCH_TERMS}. */
 export function iconSearchTerms(query: string): string[] {
   return query
@@ -55,11 +98,12 @@ export function searchIcons(query: string, limitPerTerm = 24): IconSearchGroup[]
     // Lucide keyword tags (synonyms) → the matching Lucide name's Phosphor equivalent. Match the term as a
     // whole TAG TOKEN (not a raw substring — iconTags is a space-joined string, so `.includes` would match
     // mid-word across unrelated tags, e.g. "onito" inside "monitor", padding results with irrelevant icons).
-    for (const lu of ICON_NAMES) {
-      if (lu === term || iconTags(lu).split(/\s+/).includes(term)) {
-        const ph = isPhosphorName(lu) ? lu : aliasToPhosphor(lu);
-        if (ph) bump(ph, lu === term ? 80 : 35);
-      }
+    // A tag token also matches across a plain inflection ("complete" → "completed"; see tagForms).
+    const lucideHits = new Set(tagForms(term).flatMap(lucideNamesTagged));
+    if (LUCIDE_NAME_SET.has(term)) lucideHits.add(term);
+    for (const lu of lucideHits) {
+      const ph = isPhosphorName(lu) ? lu : aliasToPhosphor(lu);
+      if (ph) bump(ph, lu === term ? 80 : 35);
     }
     // RETIRED names, mapped to what they now draw. Searching "twitter" must offer the X mark, because
     // that is what the name renders — surfacing only Phosphor's retired `twitter-logo` would have the

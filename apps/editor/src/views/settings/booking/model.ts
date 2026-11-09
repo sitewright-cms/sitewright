@@ -55,7 +55,7 @@ export function localTimeZone(): string {
 
 /** Every time zone this browser knows, for the picker. */
 export function timeZones(current: string): string[] {
-  let all: string[] = [];
+  let all: string[];
   try {
     all = Intl.supportedValuesOf('timeZone');
   } catch {

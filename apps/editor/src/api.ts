@@ -731,7 +731,7 @@ async function streamAgentChat(url: string, body: unknown, handlers: AgentChatHa
       throw err;
     }
     if (chunk.done) {
-      buf += decoder.decode(); // flush any trailing multi-byte sequence
+      // No flush: a frame still in `buf` lacks its blank-line terminator, so it is incomplete and dropped.
       break;
     }
     buf += decoder.decode(chunk.value, { stream: true });

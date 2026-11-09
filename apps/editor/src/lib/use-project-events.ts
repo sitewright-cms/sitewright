@@ -38,7 +38,7 @@ function subscribe(projectId: string, listener: Listener): () => void {
     }
     const created: Channel = { source, listeners: new Set() };
     source.addEventListener('content', (e) => {
-      let change: ContentChange | null = null;
+      let change: ContentChange | null;
       try {
         change = JSON.parse((e as MessageEvent).data) as ContentChange;
       } catch {

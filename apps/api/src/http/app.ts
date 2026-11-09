@@ -3928,7 +3928,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // allowlist being configured, which is why it is re-checked at use rather than trusted.
     assertSmtpHostAllowed(stored.smtp.host);
     const config: TransportConfig = { host: stored.smtp.host, port: stored.smtp.port, secure: stored.smtp.secure };
-    let password: string | null = null;
+    let password: string | null;
     try {
       password = await instanceSettingsRepo.getSmtpPassword();
     } catch {
@@ -3949,7 +3949,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (!stored.smtp) return reply.code(404).send({ error: 'no instance SMTP is configured' });
     assertSmtpHostAllowed(stored.smtp.host);
     const config: TransportConfig = { host: stored.smtp.host, port: stored.smtp.port, secure: stored.smtp.secure };
-    let password: string | null = null;
+    let password: string | null;
     try {
       password = await instanceSettingsRepo.getSmtpPassword();
     } catch {
@@ -6673,7 +6673,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const key = `${projectSlug}/${assetId}`;
       const hit = mediaRecordCache.get(key);
       if (hit && Date.now() - hit.at < MEDIA_RECORD_TTL_MS) return hit.asset;
-      let asset: MediaAsset | null = null;
+      let asset: MediaAsset | null;
       try {
         const project = await projects.getBySlug(projectSlug);
         const ctx = { userId: MEDIA_SERVE_USER, projectId: project.id, role: 'owner' as const };
@@ -6699,7 +6699,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const resolvePublicProjectId = async (projectSlug: string): Promise<string | null> => {
       const hit = projectIdCache.get(projectSlug);
       if (hit && Date.now() - hit.at < MEDIA_RECORD_TTL_MS) return hit.id;
-      let id: string | null = null;
+      let id: string | null;
       try {
         id = (await projects.getBySlug(projectSlug)).id;
       } catch {
@@ -7685,7 +7685,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             code,
           );
 
-        let config: unknown = null;
+        let config: unknown;
         const templateId = typeof req.query.template === 'string' ? req.query.template : '';
         if (templateId) {
           if (!isImageMapTemplateId(templateId)) return notice('That demo does not exist.');
@@ -10248,7 +10248,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // The SOURCE prefers the reference cached at import time (stable + fast); falls back to a live
         // render. A live render that (re)builds the canonical reference captures the DEFAULT viewport set
         // and stores it — so the cache is never clobbered with a partial set.
-        let source: Partial<Record<ViewportName, Shot>> = {};
+        let source: Partial<Record<ViewportName, Shot>>;
         let sourceFrom: 'cache' | 'live' = 'cache';
         let capturedAt: number | undefined;
         const cached = wantRefresh ? null : await (sourceRefStore?.get(project.slug, req.params.pageId) ?? Promise.resolve(null));

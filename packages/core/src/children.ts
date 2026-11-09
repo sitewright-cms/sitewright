@@ -95,7 +95,7 @@ function approxChildBytes(child: PageChild): number {
     utf8Bytes(child.locale);
   // `data` is JSON-sourced, so it cannot be circular; the guard is for a value that somehow isn't
   // serializable, which must degrade to "cheap" rather than throw mid-listing.
-  let dataBytes = 0;
+  let dataBytes: number;
   try {
     const json = JSON.stringify(child.data);
     dataBytes = json === undefined ? 0 : utf8Bytes(json);

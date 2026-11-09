@@ -644,7 +644,7 @@ export const ConsentIntegrationSchema = z
       if (!v.src) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['src'], message: 'a custom integration needs a script src' });
       } else {
-        let httpsHost = false;
+        let httpsHost: boolean;
         try {
           httpsHost = new URL(v.src).protocol === 'https:';
         } catch {

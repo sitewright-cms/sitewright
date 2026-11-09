@@ -139,8 +139,8 @@ export const INSPECT_EXTRACT = (args: {
 
   const results: InspectSelectorResult[] = [];
   for (const selector of selectors) {
-    let matches: Element[] = [];
-    let count = 0;
+    let matches: Element[];
+    let count: number;
     try {
       const all = doc.querySelectorAll(selector);
       count = all.length;

@@ -46,7 +46,7 @@ async function dirAges(root: string): Promise<DirAge[]> {
   for (const entry of entries) {
     if (!entry.isDirectory() || !SLUG.test(entry.name)) continue;
     const dir = join(root, entry.name);
-    let newest = 0;
+    let newest: number;
     try {
       const st = await stat(dir);
       newest = st.mtimeMs;

@@ -57,12 +57,12 @@
   "devDependencies": {
     "@playwright/test": "^1.64",
     "@types/html-minifier-terser": "^7",
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "@types/ssh2-sftp-client": "^9.0.6",
     "@types/yauzl": "^3.4.0",
     "@vitest/coverage-v8": "^5.0.5",
     "drizzle-kit": "^0.31",
-    "jose": "^6.2.13",
+    "jose": "^6.2.15",
     "typescript": "^5.7.2",
     "vitest": "^5.0.5"
   }

@@ -183,25 +183,29 @@ export function FormEditorModal({ project, form, enabledModes: modesProp, captch
         <legend className="px-1 text-xs font-bold text-slate-500 dark:text-slate-400">Fields</legend>
         <ul className="flex flex-col gap-2">
           {draft.fields.map((field, i) => (
-            <li key={i} className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/10 pb-2 text-sm last:border-0">
-              <div className="flex flex-wrap items-center gap-2">
+            // ★ `sm:w-32` / `sm:w-40`, not `w-32` / `w-40`: `glassInput` carries `w-full`, which the generated CSS
+            // orders AFTER the fixed widths, so the bare widths never applied and every field stacked five
+            // full-width boxes deep at every screen size. Now: on a phone, name | label, then type | required ✕,
+            // then the placeholder; from `sm` up, the one row it was drawn as.
+            <li key={i} className="flex flex-col gap-2 border-b border-slate-100 dark:border-white/10 pb-2 text-sm last:border-0 sm:gap-1">
+              <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
                 <input
                   aria-label={`Field ${i + 1} name`}
-                  className={`${glassInput} w-32 px-2 py-1 font-mono text-xs`}
+                  className={`${glassInput} min-w-0 px-2 py-1 font-mono text-xs sm:w-32`}
                   value={field.name}
                   onChange={(e) => patchField(i, { name: e.target.value })}
                   placeholder="email"
                 />
                 <input
                   aria-label={`Field ${i + 1} label`}
-                  className={`${glassInput} w-40 px-2 py-1 text-xs`}
+                  className={`${glassInput} min-w-0 px-2 py-1 text-xs sm:w-40`}
                   value={field.label}
                   onChange={(e) => patchField(i, { label: e.target.value })}
                   placeholder="Your email"
                 />
                 <select
                   aria-label={`Field ${i + 1} type`}
-                  className={`${glassInput} w-auto px-2 py-1 text-xs`}
+                  className={`${glassInput} min-w-0 px-2 py-1 text-xs sm:w-auto`}
                   value={field.type}
                   onChange={(e) => patchField(i, { type: e.target.value as FormField['type'] })}
                 >
@@ -211,28 +215,31 @@ export function FormEditorModal({ project, form, enabledModes: modesProp, captch
                     </option>
                   ))}
                 </select>
-                <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-                  <input
-                    type="checkbox"
-                    className={toggleInput}
-                    aria-label={`Field ${i + 1} required`}
-                    checked={field.required}
-                    onChange={(e) => patchField(i, { required: e.target.checked })}
-                  />
-                  required
-                </label>
-                <button
-                  aria-label={`Remove field ${i + 1}`}
-                  className={`${dangerButton} ml-auto px-2 py-0.5 text-xs`}
-                  onClick={() => removeField(i)}
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                {/* One grid cell on a phone (required left, ✕ right); `sm:contents` hands both back to the row. */}
+                <div className="flex items-center justify-between gap-2 sm:contents">
+                  <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                    <input
+                      type="checkbox"
+                      className={toggleInput}
+                      aria-label={`Field ${i + 1} required`}
+                      checked={field.required}
+                      onChange={(e) => patchField(i, { required: e.target.checked })}
+                    />
+                    required
+                  </label>
+                  <button
+                    aria-label={`Remove field ${i + 1}`}
+                    className={`${dangerButton} px-2 py-0.5 text-xs sm:ml-auto`}
+                    onClick={() => removeField(i)}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2 pl-1">
+              <div className="flex flex-wrap items-center gap-2 sm:pl-1">
                 <input
                   aria-label={`Field ${i + 1} placeholder`}
-                  className={`${glassInput} w-40 px-2 py-1 text-xs`}
+                  className={`${glassInput} px-2 py-1 text-xs sm:w-40`}
                   value={field.placeholder ?? ''}
                   onChange={(e) => patchField(i, { placeholder: e.target.value || undefined })}
                   placeholder="placeholder (optional)"

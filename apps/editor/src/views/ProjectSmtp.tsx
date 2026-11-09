@@ -205,7 +205,9 @@ export function ProjectSmtp({ project }: { project: Project }) {
               From name
               <input className={field} aria-label="SMTP from name" value={fromName} onChange={(e) => setFromName(e.target.value)} />
             </label>
-            <label className="col-span-2 flex items-center gap-2 text-sm">
+            {/* ★ `sm:` too: a bare `col-span-2` in the phone's ONE-column grid made the grid an implicit second
+                column, and every field above went two-up at 390px (the host cut off at "smtp.mail-provider.exam"). */}
+            <label className="flex items-center gap-2 text-sm sm:col-span-2">
               <input type="checkbox" className={toggleInput} aria-label="Use implicit TLS" checked={secure} onChange={(e) => setSecure(e.target.checked)} />
               Use implicit TLS (port 465); otherwise STARTTLS
             </label>

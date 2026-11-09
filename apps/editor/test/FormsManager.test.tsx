@@ -78,6 +78,23 @@ describe('FormsManager', () => {
     expect(screen.queryByText(/^INBOX/)).toBeNull();
   });
 
+  it('counts one field as "1 field", and points an email failure at the form’s submissions (there is no Submissions tab)', async () => {
+    const base = { recipient: 'a@b.co', submitLabel: 'Send', successMessage: 'ok', errorMessage: 'no', mode: 'globalSmtp' as const, hcaptcha: false };
+    listForms.mockResolvedValue({
+      items: [
+        { ...base, id: 'newsletter', name: 'Newsletter', fields: [{ name: 'email', label: 'Email', type: 'email' }] },
+        { ...base, id: 'contact', name: 'Contact', fields: [{ name: 'email', label: 'Email', type: 'email' }, { name: 'msg', label: 'Message', type: 'textarea' }] },
+      ],
+    });
+    undeliveredSubmissions.mockResolvedValue({ count: 2, lastError: 'SMTP refused the login' });
+    render(<FormsManager project={project} />);
+    expect(await screen.findByText('1 field')).toBeInTheDocument();
+    expect(screen.getByText('2 fields')).toBeInTheDocument();
+    const owed = screen.getByRole('status');
+    expect(owed).toHaveTextContent('2 submissions could not be emailed — SMTP refused the login Open the form’s submissions to resend them.');
+    expect(owed).not.toHaveTextContent(/Submissions tab/);
+  });
+
   it('lists existing forms', async () => {
     listForms.mockResolvedValue({
       items: [{ id: 'contact', name: 'Contact', fields: [{ name: 'email', label: 'Email', type: 'email' }], recipient: 'a@b.co', submitLabel: 'Send', successMessage: 'ok', errorMessage: 'no', mode: 'globalSmtp', hcaptcha: false }],

@@ -14,6 +14,12 @@ import { Tooltip } from './ui/Tooltip';
  * `formId` scopes the inbox to one form (the Forms tab opens it in a modal per form); omitted,
  * it shows every form's submissions.
  */
+/**
+ * When a lead came in, to the minute, in the reader's own locale ("Nov 9, 2026, 9:30 AM" in en-US, "9 Nov 2026,
+ * 09:30" in en-GB). The seconds were noise that wrapped the line on a phone; the exact instant stays in `<time>`.
+ */
+const submittedAt = (iso: string): string => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+
 export function SubmissionsInbox({ project, formId }: { project: Project; formId?: string }) {
   const { confirm, dialog } = useDialogs();
   const [items, setItems] = useState<FormSubmission[]>([]);
@@ -110,9 +116,11 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
           const summary = Object.values(s.fields)[0] ?? '';
           return (
             <li key={s.id} className={`${glassCard} px-4 py-3 text-sm`}>
-              <div className="flex items-center gap-3">
+              {/* Wraps like a form row: the summary takes the line, and Resend / Delete drop under it, on the
+                  right, when a phone has no room beside it. */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <button
-                  className="flex-1 text-left"
+                  className="min-w-0 flex-1 basis-48 break-words text-left"
                   aria-expanded={open}
                   aria-label={`${open ? 'Collapse' : 'Expand'} submission from ${s.formId}`}
                   onClick={() => setOpenId(open ? null : s.id)}
@@ -121,35 +129,41 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
                     <span className="text-xs text-slate-500 dark:text-slate-400">{forms[s.formId]?.name ?? s.formId}</span>
                   )}{!formId && ' '}
                   <span className="text-slate-700 dark:text-slate-200">{summary.slice(0, 80)}</span>
-                  <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">{new Date(s.createdAt).toLocaleString()}</span>
+                  {/* Day and time, no seconds; on a phone on its own line under the summary. */}
+                  <time dateTime={s.createdAt} className="text-xs text-slate-500 max-sm:block sm:ml-2 dark:text-slate-400">
+                    {submittedAt(s.createdAt)}
+                  </time>
                 </button>
-                {/* ★ Gated on THIS ROW's state, not on the aggregate count. Keying it off the count
-                    put a Resend beside every row the moment any one of them failed — one click on a
-                    delivered row and the recipient gets the same lead twice. The server refuses it
-                    too; this is so the button is not offered in the first place. */}
-                {(s.deliveryState === 'pending' || s.deliveryState === 'failed') && (
+                <span className="ml-auto flex shrink-0 items-center gap-3">
+                  {/* ★ Gated on THIS ROW's state, not on the aggregate count. Keying it off the count
+                      put a Resend beside every row the moment any one of them failed — one click on a
+                      delivered row and the recipient gets the same lead twice. The server refuses it
+                      too; this is so the button is not offered in the first place. */}
+                  {(s.deliveryState === 'pending' || s.deliveryState === 'failed') && (
+                    <button
+                      aria-label={`Resend submission ${s.id}`}
+                      className={`${ghostButton} px-2 py-1 text-xs`}
+                      disabled={resending}
+                      onClick={() => void resend(s.id)}
+                    >
+                      Resend
+                    </button>
+                  )}
                   <button
-                    aria-label={`Resend submission ${s.id}`}
-                    className={`${ghostButton} px-2 py-1 text-xs`}
-                    disabled={resending}
-                    onClick={() => void resend(s.id)}
+                    aria-label={`Delete submission ${s.id}`}
+                    className={dangerButton}
+                    onClick={() => remove(s.id)}
                   >
-                    Resend
+                    Delete
                   </button>
-                )}
-                <button
-                  aria-label={`Delete submission ${s.id}`}
-                  className={dangerButton}
-                  onClick={() => remove(s.id)}
-                >
-                  Delete
-                </button>
+                </span>
               </div>
               {/* The label column is wider than it was for raw names — "Pickup Date in Windhoek"
                   needs room that `arrival_date` did not — but capped, so a long one cannot squeeze
-                  the value it belongs to. */}
+                  the value it belongs to. On a phone two columns left the answer a 150px strip, so there
+                  each label sits over its value instead. */}
               {open && (
-                <dl className="mt-3 grid grid-cols-[minmax(8rem,14rem)_1fr] gap-x-3 gap-y-1 border-t border-slate-100 dark:border-white/10 pt-3 text-xs">
+                <dl className="mt-3 grid grid-cols-1 gap-x-3 border-t border-slate-100 pt-1 text-xs sm:grid-cols-[minmax(8rem,14rem)_1fr] sm:gap-y-1 sm:pt-3 dark:border-white/10">
                   {Object.entries(s.fields).map(([k, v]) => {
                     // No label → the field is not in the definition (what a hand-authored page posts
                     // beyond it). Those keys stay MONOSPACE: they are the raw name, and dressing one
@@ -159,13 +173,15 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
                     return (
                       <div key={k} className="contents">
                         <Tooltip tip={label ? k : undefined}>
+                          {/* ★ A raw name is one unbroken word (`utm_source_campaign_identifier`): `break-all`, or
+                              it runs out of its column over the value beside it. */}
                           <dt
-                            className={`${label ? '' : 'font-mono '}text-slate-500 dark:text-slate-400`}
+                            className={`${label ? 'break-words ' : 'break-all font-mono '}min-w-0 text-slate-500 max-sm:mt-2 dark:text-slate-400`}
                           >
                             {label ?? k}
                           </dt>
                         </Tooltip>
-                        <dd className="whitespace-pre-wrap break-words text-slate-800 dark:text-slate-100">{v}</dd>
+                        <dd className="min-w-0 whitespace-pre-wrap break-words text-slate-800 dark:text-slate-100">{v}</dd>
                       </div>
                     );
                   })}

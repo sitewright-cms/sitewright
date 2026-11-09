@@ -7,8 +7,8 @@
  * editor's FOUC script already carries that maintenance cost; one is enough).
  *
  * Everything here is PROGRESSIVE. Without JS the consent form still submits, the project radios still
- * work, and the issued code is still visible and selectable — the script only adds filtering, the
- * Enter shortcut, and copy-to-clipboard.
+ * work, and the issued values are still shown (in a <noscript> block) — the script only adds filtering,
+ * the Enter shortcut, and copy-to-clipboard.
  */
 export const CONSENT_SCRIPT = `(function(){
   'use strict';
@@ -18,7 +18,10 @@ export const CONSENT_SCRIPT = `(function(){
   var toastTimer = 0;
   function toast(message){
     if(!toastEl) return;
-    toastEl.textContent = message;
+    // Emptied first: a live region announces a CHANGE, so the same words twice (a second copy of the
+    // same value) would otherwise be silent — and with no value on screen, the toast is the only cue.
+    toastEl.textContent = '';
+    setTimeout(function(){ toastEl.textContent = message; }, 30);
     toastEl.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, 2200);
@@ -85,6 +88,20 @@ export const CONSENT_SCRIPT = `(function(){
         if(!value) return;
         var label = btn.getAttribute('data-copied') || 'Copied';
         var ok = function(){ toast(label + ' to clipboard'); };
+        // The values are not on screen (the approval page has buttons, not boxes). When the browser will
+        // not copy at all, SHOW the value, selected, so Ctrl/Cmd+C still has something to copy.
+        var manual = function(){
+          try{
+            var box = el.closest('.code-box');
+            if(box) box.hidden = false;
+            var range = document.createRange();
+            range.selectNodeContents(el);
+            var sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }catch(_){}
+          toast('Press Ctrl/Cmd+C to copy');
+        };
         // navigator.clipboard needs a SECURE CONTEXT; an instance reached over plain HTTP on a LAN
         // has none, so fall back to a hidden textarea + execCommand rather than silently doing nothing.
         var fallback = function(){
@@ -98,8 +115,13 @@ export const CONSENT_SCRIPT = `(function(){
             ta.select();
             var done = document.execCommand('copy');
             document.body.removeChild(ta);
-            if(done) ok(); else toast('Press Ctrl/Cmd+C to copy');
-          }catch(_){ toast('Press Ctrl/Cmd+C to copy'); }
+            // ★ Back to the button: removing the focused textarea dropped focus on <body>, where the Enter
+            // shortcut below copies the CALLBACK URL — so a second Enter after "Copy Authorization Code"
+            // replaced the code on the clipboard with the URL. (Plain-HTTP instances take this path on
+            // every copy: there is no navigator.clipboard outside a secure context.)
+            try{ btn.focus(); }catch(_){}
+            if(done) ok(); else manual();
+          }catch(_){ manual(); }
         };
         if(navigator.clipboard && navigator.clipboard.writeText){
           navigator.clipboard.writeText(value).then(ok, fallback);
@@ -112,14 +134,14 @@ export const CONSENT_SCRIPT = `(function(){
 
   // ---- Enter copies the callback URL -------------------------------------
   // The button is autofocused in the markup, so Enter already activates it natively on arrival — this
-  // covers AFTER focus has moved: selecting the URL text to read it, opening the "just the code"
-  // disclosure, tabbing past. On a screen whose only purpose is "copy this and go back to your
-  // terminal", Enter should mean copy wherever you happen to be standing.
+  // covers AFTER focus has moved off the buttons: a click on the page, a revealed value selected to
+  // read it. On a screen whose only purpose is "copy this and go back to your terminal", Enter should
+  // mean copy wherever you happen to be standing.
   //
   // It fires only when Enter would otherwise do NOTHING: if the target is a control that has its own
-  // Enter behaviour (a button, a link, the disclosure summary, a field), that behaviour wins — so
-  // Enter on "Open it in this browser" still opens, and Enter on the focused Copy URL button copies
-  // once, not twice.
+  // Enter behaviour (a button, a link, a field), that behaviour wins — so Enter on "Continue to …"
+  // still follows the link, Enter on "Copy Authorization Code" copies the code, and Enter on the
+  // focused Copy Callback URL button copies once, not twice.
   var primaryCopy = document.getElementById('sw-copy-url');
   if(primaryCopy){
     document.addEventListener('keydown', function(e){

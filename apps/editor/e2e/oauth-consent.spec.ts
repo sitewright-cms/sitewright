@@ -44,25 +44,29 @@ test('OAuth consent → code → token, then the access token works', async ({ p
   // because a client's callback is frequently unreachable from the browser doing the authorizing.
   await page.getByRole('button', { name: 'Approve' }).click();
   await expect(page.getByRole('heading', { name: /Approved/ })).toBeVisible();
-  // The bare code is folded behind a disclosure (clients disagree about what to paste); open it.
-  await page.getByText('My client asks for just the code').click();
+  // Three actions and no boxes to read: the values sit in hidden boxes the copy buttons read from.
   const code = (await page.locator('#sw-code').textContent())?.trim();
   expect(code).toBeTruthy();
+  await expect(page.locator('#sw-code')).toBeHidden();
+  await expect(page.locator('#sw-url')).toBeHidden();
+  await expect(page.locator('details')).toHaveCount(0);
 
-  // The continue button names the destination host and carries the same code + state a redirect
-  // would have — it is now a CHOICE rather than something that happens to the user.
-  const href = await page.locator('a[href] >> nth=0').getAttribute('href');
-  const back = new URL(href!);
+  // "Continue to <host>" names the destination and carries the same code + state a redirect would
+  // have — it is a CHOICE rather than something that happens to the user.
+  const cont = page.getByRole('link', { name: 'Continue to 127.0.0.1:8976' });
+  await expect(cont).toBeVisible();
+  const back = new URL((await cont.getAttribute('href'))!);
   expect(back.origin).toBe('http://127.0.0.1:8976');
   expect(back.searchParams.get('state')).toBe('cli-state');
   expect(back.searchParams.get('code')).toBe(code);
-  await expect(page.getByRole('button', { name: 'Open it in this browser' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Copy Authorization Code' })).toBeVisible();
 
   // ★ The CALLBACK URL is what Claude Code's manual fallback asks for, so copying it is the primary
-  // path this screen exists to serve — assert the copied value is a usable callback URL, not just
-  // that a button exists.
+  // path this screen exists to serve — and the button is focused, so Enter copies it. Assert the
+  // copied value is a usable callback URL, not just that a button exists.
   await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
-  await page.getByRole('button', { name: 'Copy URL' }).click();
+  await expect(page.getByRole('button', { name: 'Copy Callback URL' })).toBeFocused();
+  await page.keyboard.press('Enter');
   await expect(page.getByText('Callback URL copied to clipboard')).toBeVisible();
   const shownUrl = new URL((await page.locator('#sw-url').textContent())!.trim());
   expect(shownUrl.origin).toBe('http://127.0.0.1:8976');
@@ -74,8 +78,8 @@ test('OAuth consent → code → token, then the access token works', async ({ p
   // fallback path running, which is precisely the case a self-hosted LAN instance hits. Read the
   // clipboard back only where the API is actually available.
   await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
-  await page.getByRole('button', { name: 'Copy code' }).click();
-  await expect(page.getByText('Code copied to clipboard')).toBeVisible();
+  await page.getByRole('button', { name: 'Copy Authorization Code' }).click();
+  await expect(page.getByText('Authorization code copied to clipboard')).toBeVisible();
   const clip = await page.evaluate(() =>
     navigator.clipboard?.readText ? navigator.clipboard.readText() : Promise.resolve(null),
   );

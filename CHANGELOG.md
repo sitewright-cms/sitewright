@@ -21,6 +21,17 @@ The running version of an instance is reported at `GET /version` (baked into the
   value, so that column does not sort. The headers are buttons, so the keyboard sorts too, and screen readers
   hear the order (`aria-sort`). On every screen size the tables are the same size as before.
 
+### Changed
+
+- **The OAuth "Approved" page is three buttons.** After a client (Claude Code, the CLI, an MCP client) is
+  approved:
+  - **"Continue to <callback host>"** is a full-width gradient button that follows the callback.
+  - **"Copy Callback URL"** and **"Copy Authorization Code"** sit side by side under it.
+  - The callback URL box and the "My client asks for just the code" disclosure are gone.
+  - **Enter still copies the callback URL:** that button is focused when the page opens.
+  - **If the browser refuses to copy, the value appears, selected,** so it can be copied by hand.
+  - **With JavaScript off, both values are shown.**
+
 ### Fixed
 
 - **The Forms tab works on a phone.** Measured at 390px wide:

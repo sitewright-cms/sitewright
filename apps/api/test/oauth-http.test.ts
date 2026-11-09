@@ -279,7 +279,8 @@ describe('OAuth Dynamic Client Registration (RFC 7591)', () => {
  * preserved on the way, which is what a client checks before accepting the code.
  */
 function codeFromApprovalPage(html: string, expectedState: string | null = 'xyz-state'): string {
-  const href = /<a href="([^"]+)"/.exec(html)?.[1];
+  // The "Continue to <host>" link — whatever class it carries (it is drawn as the page's gradient button).
+  const href = /<a [^>]*href="([^"]+)"/.exec(html)?.[1];
   if (!href) throw new Error(`no continue link on the approval page: ${html.slice(0, 400)}`);
   const url = new URL(href.replace(/&amp;/g, '&'));
   if (expectedState !== null) expect(url.searchParams.get('state')).toBe(expectedState);

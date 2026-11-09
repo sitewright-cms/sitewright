@@ -9,6 +9,27 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **Dependency refresh** (Dependabot #1230, #1231 and #1232; 16 packages, each at the version Dependabot proposed).
+  Production: `@modelcontextprotocol/sdk` 1.32.2, `nodemailer` 10.1.7 → 10.2.1, `isomorphic-git` 1.44.4,
+  `crawler-user-agents` 1.62 → 1.65, `@codemirror/view` 6.43.15, `motion` 14.1 → 14.6, `lucide-react` 1.61, and
+  `@fastify/static` 10.1.7. Development: `vite` 8.3.5, `turbo` 2.11.10, `typescript-eslint` 8.72, `jose` 6.2.13,
+  and the two icon sources below. CI's `actions/setup-node` moves to 7.1.0.
+  - **What reaches published sites: only icons.** None of the other packages is used by a site's CSS, JS or
+    HTML; they run in the platform, the editor or the build.
+  - **12 new Lucide icon names** render through `{{sw-icon}}`: `avocado`, `bacon`, `brain-off`,
+    `circle-chevrons-down`/`-left`/`-right`/`-up`, `graph-hub`, `letter-spacing`, `line-height`,
+    `smartphone-user-round` and `tombstone` (`lucide-static` 1.59 → 1.61). No icon was removed. Lucide redrew
+    3 existing glyphs: `brain` resolves to its Phosphor twin and looks the same; `brain-circuit` and
+    `brain-cog` render through the Lucide fallback, and compared side by side the new drawings are the same
+    picture with refined paths. The Lucide → Phosphor aliases did not change.
+  - `simple-icons` 16.36 changes none of the bundled brand icons, and no flag changed.
+  - **Statistics:** the bot list gains three crawlers (`9bot`, `IsonAI-User`, `InfoSifter`). None of the new
+    patterns matches a common desktop, mobile or in-app browser, so no real visitor is newly counted as a bot.
+  - The CodeMirror pin moved with the manifest, so the editor runs the new `@codemirror/view`, and the lockfile
+    still holds one copy of every CodeMirror and Lezer package.
+
 ## [0.78.0] — 2026-11-08
 
 ### Added

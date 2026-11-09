@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.78.1] — 2026-11-09
+
 ### Changed
 
 - **Dependency refresh** (Dependabot #1230, #1231 and #1232; 16 packages, each at the version Dependabot proposed).
@@ -6390,7 +6392,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.78.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.78.1...HEAD
+[0.78.1]: https://github.com/sitewright-cms/sitewright/compare/v0.78.0...v0.78.1
 [0.78.0]: https://github.com/sitewright-cms/sitewright/compare/v0.77.0...v0.78.0
 [0.77.0]: https://github.com/sitewright-cms/sitewright/compare/v0.76.1...v0.77.0
 [0.76.1]: https://github.com/sitewright-cms/sitewright/compare/v0.76.0...v0.76.1

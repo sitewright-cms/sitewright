@@ -17,6 +17,7 @@ import { Tooltip } from '../ui/Tooltip';
 import { Panel } from './Breakdowns';
 import { useChartTip } from './ChartTip';
 import { fmt, longDay, shortDay } from './format';
+import { SortHeader, sortRows, useTableSort, type SortColumns } from './table-sort';
 
 /**
  * SEARCH PERFORMANCE — how the site does in Google and Bing search, from the platform's own Search Console and Bing
@@ -131,9 +132,21 @@ function SearchChart({ daily }: { daily: SearchPerformanceDay[] }) {
   );
 }
 
+type TopColumn = 'key' | 'clicks' | 'impressions' | 'ctr' | 'position';
+
+/** What each column sorts by: the key as shown (a page by its path), and a missing rate or position ("—") last. */
+const topColumns = (keyOf: (r: SearchPerformanceRow) => string): SortColumns<SearchPerformanceRow, TopColumn> => ({
+  key: { value: keyOf, first: 'asc' },
+  clicks: { value: (r) => r.clicks, first: 'desc' },
+  impressions: { value: (r) => r.impressions, first: 'desc' },
+  ctr: { value: (r) => r.ctr, first: 'desc' },
+  position: { value: (r) => r.position, first: 'asc' },
+});
+
 /**
  * The top searches or pages: on a phone the key, clicks and impressions; the rate and position from `sm` up.
  * `hrefOf` makes a row's key a link to the live page (in a new tab); it gives null for one that cannot be linked.
+ * Sorted by a header's click; it opens on the server's order, the most clicked first.
  */
 function TopTable({
   title,
@@ -148,6 +161,10 @@ function TopTable({
   keyOf: (r: SearchPerformanceRow) => string;
   hrefOf?: (r: SearchPerformanceRow) => string | null;
 }) {
+  // At most SEARCH_PERFORMANCE_TOP (25) rows: sorted on every render, nothing worth memoising.
+  const columns = topColumns(keyOf);
+  const { sort, toggle } = useTableSort(columns, { key: 'clicks', dir: 'desc' });
+  const sorted = sortRows(rows, columns, sort);
   return (
     <Panel title={title}>
       {rows.length === 0 ? (
@@ -156,25 +173,26 @@ function TopTable({
         <table className="w-full table-fixed text-sm">
           <thead>
             <tr className="text-left text-xs font-semibold text-slate-500 dark:text-slate-400">
-              <th scope="col" className="pb-2 pr-2">
+              <SortHeader column="key" sort={sort} onSort={toggle} className="pb-2 pr-2">
                 {keyLabel}
-              </th>
-              <th scope="col" className="w-16 pb-2 text-right">
+              </SortHeader>
+              <SortHeader column="clicks" sort={sort} onSort={toggle} align="right" className="w-16 pb-2 text-right">
                 Clicks
-              </th>
-              <th scope="col" className="w-24 pb-2 text-right">
+              </SortHeader>
+              <SortHeader column="impressions" sort={sort} onSort={toggle} align="right" className="w-24 pb-2 text-right">
                 Impressions
-              </th>
-              <th scope="col" className="w-14 pb-2 text-right max-sm:hidden">
+              </SortHeader>
+              <SortHeader column="ctr" sort={sort} onSort={toggle} align="right" className="w-14 pb-2 text-right max-sm:hidden">
                 CTR
-              </th>
-              <th scope="col" className="w-16 pb-2 text-right max-sm:hidden">
+              </SortHeader>
+              {/* w-20: "Position" and its sort arrow need 68px (measured); w-16 cut the word off. */}
+              <SortHeader column="position" sort={sort} onSort={toggle} align="right" className="w-20 pb-2 text-right max-sm:hidden">
                 Position
-              </th>
+              </SortHeader>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
+            {sorted.map((r) => {
               const href = hrefOf?.(r) ?? null;
               return (
                 <tr key={r.key} className="border-t border-slate-200/70 text-slate-700 dark:border-white/10 dark:text-slate-200">

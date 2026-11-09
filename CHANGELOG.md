@@ -9,6 +9,18 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Statistics tables sort by any column.** Click a header in Search rankings or in Search performance's Top
+  searches and Top pages to sort by it; click it again to flip the order. The first click puts the best first:
+  the most clicks, impressions and click-through, position 1, the biggest climb, A to Z. A row with no value
+  (a "—") stays last either way. In the rankings, a keyword outside the checked results sorts below every
+  position and one not checked yet goes last; an opened keyword keeps its chart under it. Each table opens on
+  the order it always had (keywords A to Z, the most clicked first), and that header shows it. The sorted
+  column has an arrow, and on wide screens the others show a faint one. The Trend sparklines have no single
+  value, so that column does not sort. The headers are buttons, so the keyboard sorts too, and screen readers
+  hear the order (`aria-sort`). On every screen size the tables are the same size as before.
+
 ## [0.78.1] — 2026-11-09
 
 ### Changed

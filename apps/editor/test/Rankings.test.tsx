@@ -180,11 +180,12 @@ describe('what a client reads', () => {
     render(<RankingsView project={project} />);
     const table = await screen.findByRole('table', { name: /Tracked keywords/ });
     const rows = within(table).getAllByRole('row');
-    expect(rows[1]).toHaveTextContent('plumber windhoek');
-    expect(rows[1]).toHaveTextContent('Windhoek, Khomas Region, Namibia · Desktop · en');
-    expect(rows[1]).toHaveTextContent('up2');
-    expect(within(rows[1]!).getByRole('link', { name: /^\/emergency\/ ?\(opens in a new tab\)$/ })).toHaveAttribute('href', 'https://www.plumbers.na/emergency/');
-    expect(rows[2]).toHaveTextContent('Not in top 100');
+    // A to Z by keyword, as the server sends them: "geyser repair" is the first row.
+    expect(rows[2]).toHaveTextContent('plumber windhoek');
+    expect(rows[2]).toHaveTextContent('Windhoek, Khomas Region, Namibia · Desktop · en');
+    expect(rows[2]).toHaveTextContent('up2');
+    expect(within(rows[2]!).getByRole('link', { name: /^\/emergency\/ ?\(opens in a new tab\)$/ })).toHaveAttribute('href', 'https://www.plumbers.na/emergency/');
+    expect(rows[1]).toHaveTextContent('Not in top 100');
     expect(screen.getByText(/plumbers\.na/, { selector: 'span.font-medium' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Pause|Resume|Remove|Check now|Setup/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Manage keywords/ })).toBeNull();
@@ -205,6 +206,56 @@ describe('what a client reads', () => {
     expect(await screen.findByText(/· page:/)).toBeInTheDocument();
     expect(within(table).getAllByText('javascript:alert(1)')).toHaveLength(2);
     expect(within(table).queryByRole('link')).toBeNull();
+  });
+
+  it('sorts the keywords by the header clicked: not in the results below every position, not checked yet always last', async () => {
+    const checked = (position: number | null, url: string | null) => ({ day: '2026-10-20', checkedAt: '2026-10-20T06:00:00.000Z', position, url, depth: 100 });
+    api.getRankings.mockResolvedValue(
+      rankings({
+        keywords: [
+          keyword(), // plumber windhoek: 3, up 2, best 3, /emergency/
+          keyword({ id: 'k2', keyword: 'geyser repair', latest: checked(null, null), change: null, best: null, series: [] }),
+          keyword({ id: 'k3', keyword: 'blocked drain', latest: null, change: null, best: null, series: [], pending: true }),
+          keyword({ id: 'k4', keyword: 'Water heater', latest: checked(12, 'https://www.plumbers.na/geysers/'), change: -4, best: 9 }),
+        ],
+      }),
+    );
+    render(<RankingsView project={project} />);
+    const table = await screen.findByRole('table', { name: /Tracked keywords/ });
+    const order = (): string[] =>
+      within(table)
+        .getAllByRole('row')
+        .slice(1)
+        .flatMap((r) => (r.querySelector('.font-medium')?.textContent ? [r.querySelector('.font-medium')!.textContent!] : []));
+    const sortBy = (name: string) => fireEvent.click(within(within(table).getByRole('columnheader', { name })).getByRole('button'));
+
+    expect(order()).toEqual(['blocked drain', 'geyser repair', 'plumber windhoek', 'Water heater']); // A to Z, ignoring case
+    expect(within(table).getByRole('columnheader', { name: 'Keyword' })).toHaveAttribute('aria-sort', 'ascending');
+
+    sortBy('Position');
+    expect(order()).toEqual(['plumber windhoek', 'Water heater', 'geyser repair', 'blocked drain']);
+    expect(within(table).getByRole('columnheader', { name: 'Position' })).toHaveAttribute('aria-sort', 'ascending');
+    sortBy('Position');
+    expect(order()).toEqual(['geyser repair', 'Water heater', 'plumber windhoek', 'blocked drain']);
+
+    sortBy('Change');
+    expect(order()).toEqual(['plumber windhoek', 'Water heater', 'geyser repair', 'blocked drain']); // the biggest climb first
+    sortBy('Best');
+    expect(order()).toEqual(['plumber windhoek', 'Water heater', 'geyser repair', 'blocked drain']);
+    sortBy('Page');
+    expect(order()).toEqual(['plumber windhoek', 'Water heater', 'geyser repair', 'blocked drain']); // /emergency/, /geysers/, then none
+    sortBy('Page');
+    expect(order()).toEqual(['Water heater', 'plumber windhoek', 'geyser repair', 'blocked drain']);
+
+    // The sparklines have no one value to sort by.
+    expect(within(within(table).getByRole('columnheader', { name: 'Trend' })).queryByRole('button')).toBeNull();
+
+    // An opened keyword keeps its chart right under it when the order changes.
+    fireEvent.click(within(table).getByRole('button', { name: /plumber windhoek/ }));
+    sortBy('Keyword');
+    const rows = within(table).getAllByRole('row');
+    const at = rows.findIndex((r) => r.textContent?.includes('plumber windhoek'));
+    expect(within(rows[at + 1]!).getByRole('img', { name: /plumber windhoek: 2 checks/ })).toBeInTheDocument();
   });
 
   it('opens a keyword into a chart of its position, with the editor tooltip and no native one', async () => {

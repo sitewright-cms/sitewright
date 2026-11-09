@@ -144,6 +144,64 @@ describe('Search performance', () => {
     expect(screen.getByRole('group', { name: 'Average position' })).toHaveTextContent('—');
   });
 
+  it('sorts a top table by the header clicked, and flips it on a second click', async () => {
+    // The server sends the most clicked first; a missing CTR or position ("—") stays last whichever way.
+    api.getSearchPerformance.mockResolvedValue(
+      view({
+        queries: [
+          { key: 'roof repair', clicks: 40, impressions: 600, ctr: 0.0667, position: 6.5 },
+          { key: 'Gutters', clicks: 25, impressions: 900, ctr: null, position: null },
+          { key: 'awning', clicks: 10, impressions: 100, ctr: 0.1, position: 2.1 },
+        ],
+      }),
+    );
+    render(<SearchPerformanceView projectId="p1" services={['google']} />);
+    const searches = await screen.findByRole('region', { name: 'Top searches' });
+    const order = (): string[] => within(searches).getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell')[0]!.textContent ?? '');
+    const header = (name: string): HTMLElement => within(searches).getByRole('columnheader', { name });
+
+    // It opens on the server's order, and the Clicks header says so.
+    expect(order()).toEqual(['roof repair', 'Gutters', 'awning']);
+    expect(header('Clicks')).toHaveAttribute('aria-sort', 'descending');
+    expect(header('Impressions')).not.toHaveAttribute('aria-sort');
+
+    fireEvent.click(within(header('Impressions')).getByRole('button'));
+    expect(order()).toEqual(['Gutters', 'roof repair', 'awning']); // a count's first click: the most first
+    expect(header('Impressions')).toHaveAttribute('aria-sort', 'descending');
+    expect(header('Clicks')).not.toHaveAttribute('aria-sort');
+
+    fireEvent.click(within(header('Position')).getByRole('button'));
+    expect(order()).toEqual(['awning', 'roof repair', 'Gutters']); // a position's first click: the top of the results first
+    expect(header('Position')).toHaveAttribute('aria-sort', 'ascending');
+    fireEvent.click(within(header('Position')).getByRole('button'));
+    expect(order()).toEqual(['roof repair', 'awning', 'Gutters']); // flipped; no position is still last
+    expect(header('Position')).toHaveAttribute('aria-sort', 'descending');
+
+    fireEvent.click(within(header('CTR')).getByRole('button'));
+    expect(order()).toEqual(['awning', 'roof repair', 'Gutters']);
+
+    fireEvent.click(within(header('Search')).getByRole('button'));
+    expect(order()).toEqual(['awning', 'Gutters', 'roof repair']); // A to Z, ignoring case
+    expect(header('Search')).toHaveAttribute('aria-sort', 'ascending');
+
+    // Each table sorts on its own: Top pages is still on its clicks.
+    expect(within(screen.getByRole('region', { name: 'Top pages' })).getByRole('columnheader', { name: 'Clicks' })).toHaveAttribute('aria-sort', 'descending');
+  });
+
+  it('keeps the chosen sort when another period loads', async () => {
+    const q = (key: string, clicks: number, impressions: number) => ({ key, clicks, impressions, ctr: 0.1, position: 3 });
+    api.getSearchPerformance
+      .mockResolvedValueOnce(view({ queries: [q('alpha', 9, 10), q('beta', 5, 50)] }))
+      .mockResolvedValueOnce(view({ queries: [q('gamma', 8, 20), q('delta', 2, 80)] }));
+    render(<SearchPerformanceView projectId="p1" services={['google']} />);
+    const searches = await screen.findByRole('region', { name: 'Top searches' });
+    fireEvent.click(within(within(searches).getByRole('columnheader', { name: 'Impressions' })).getByRole('button'));
+    fireEvent.click(screen.getByRole('radio', { name: '7 days' }));
+    await waitFor(() => expect(within(searches).getAllByRole('row')[1]).toHaveTextContent('delta'));
+    expect(within(searches).getAllByRole('row')[2]).toHaveTextContent('gamma');
+    expect(within(searches).getByRole('columnheader', { name: 'Impressions' })).toHaveAttribute('aria-sort', 'descending');
+  });
+
   it('says when a search engine has nothing yet, and when it refused', async () => {
     api.getSearchPerformance.mockResolvedValueOnce(
       view({ totals: { clicks: 0, impressions: 0, ctr: null, position: null }, previous: null, daily: [], queries: [], pages: [] }),

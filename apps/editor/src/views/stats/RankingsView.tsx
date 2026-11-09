@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, RefreshCw, Settings2 } from 'lucide-react';
 import type { ProjectRankings, RankKeywordView, RankStatus } from '@sitewright/schema';
 import { api, type Project } from '../../api';
@@ -11,6 +11,7 @@ import { ManageKeywords } from './ManageKeywords';
 import { placeLabel } from './PlacePicker';
 import { RankSettingsForm } from './RankSetup';
 import { longDay, rangeDays, type StatsRangeId } from './format';
+import { SortHeader, sortRows, useTableSort, type SortColumns } from './table-sort';
 
 /**
  * SEARCH RANKINGS — where the site appears in Google for the keywords the agency tracks.
@@ -43,6 +44,20 @@ function pagePath(url: string, domain: string): string {
     return url;
   }
 }
+
+type KeywordColumn = 'keyword' | 'position' | 'change' | 'best' | 'page';
+
+/**
+ * What each column sorts by. A keyword outside the results checked is below every position (Infinity: they are
+ * equal, as nobody knows how far down each is), and one not checked yet has no position at all, so it is last.
+ */
+const keywordColumns = (domain: string): SortColumns<RankKeywordView, KeywordColumn> => ({
+  keyword: { value: (k) => k.keyword, first: 'asc' },
+  position: { value: (k) => (k.latest ? (k.latest.position ?? Infinity) : null), first: 'asc' },
+  change: { value: (k) => k.change, first: 'desc' },
+  best: { value: (k) => k.best, first: 'asc' },
+  page: { value: (k) => (k.latest?.url ? pagePath(k.latest.url, domain) : null), first: 'asc' },
+});
 
 function Change({ value }: { value: number | null }) {
   if (value === null || value === 0) return <span className="text-slate-400 dark:text-slate-500">{value === 0 ? '±0' : '—'}</span>;
@@ -128,6 +143,11 @@ export function RankingsView({
 
   const manage = data?.canManage ?? false;
   const tracking = data?.tracking ?? null;
+  const domain = tracking?.domain ?? '';
+  const columns = useMemo(() => keywordColumns(domain), [domain]);
+  // The server sends the keywords A to Z; the sort chosen stays across ranges and refreshes.
+  const { sort, toggle } = useTableSort(columns, { key: 'keyword', dir: 'asc' });
+  const keywords = useMemo(() => sortRows(data?.keywords ?? [], columns, sort), [data, columns, sort]);
   // The range the DATA is for: while a new range loads, the old answer is still drawn on its own axis.
   const { from, to } = data ? { from: data.from, to: data.to } : rangeDays(range);
   const lastChecked = data?.keywords.reduce<string | null>((max, k) => (k.latest && (!max || k.latest.checkedAt > max) ? k.latest.checkedAt : max), null);
@@ -235,20 +255,30 @@ export function RankingsView({
             <caption className="sr-only">Tracked keywords and where the site ranks for each</caption>
             <thead className="bg-slate-100/70 text-left text-xs font-bold uppercase tracking-wide text-slate-500 dark:bg-white/10 dark:text-slate-400">
               <tr>
-                <th scope="col" className="px-3 py-2">Keyword</th>
-                <th scope="col" className="px-3 py-2">Position</th>
-                <th scope="col" className="px-3 py-2">Change</th>
-                <th scope="col" className="hidden px-3 py-2 md:table-cell">Best</th>
+                <SortHeader column="keyword" sort={sort} onSort={toggle} className="px-3 py-2">
+                  Keyword
+                </SortHeader>
+                <SortHeader column="position" sort={sort} onSort={toggle} className="px-3 py-2">
+                  Position
+                </SortHeader>
+                <SortHeader column="change" sort={sort} onSort={toggle} className="px-3 py-2">
+                  Change
+                </SortHeader>
+                <SortHeader column="best" sort={sort} onSort={toggle} className="hidden px-3 py-2 md:table-cell">
+                  Best
+                </SortHeader>
                 <th scope="col" className="hidden px-3 py-2 md:table-cell">Trend</th>
-                <th scope="col" className="hidden px-3 py-2 md:table-cell">Page</th>
+                <SortHeader column="page" sort={sort} onSort={toggle} className="hidden px-3 py-2 md:table-cell">
+                  Page
+                </SortHeader>
               </tr>
             </thead>
             <tbody>
-              {data.keywords.map((k) => (
+              {keywords.map((k) => (
                 <KeywordRow
                   key={k.id}
                   k={k}
-                  domain={tracking?.domain ?? ''}
+                  domain={domain}
                   depth={k.latest?.depth ?? tracking?.depth ?? 100}
                   open={open === k.id}
                   onToggle={() => setOpen(open === k.id ? null : k.id)}

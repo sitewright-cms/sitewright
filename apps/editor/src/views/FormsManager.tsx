@@ -181,7 +181,8 @@ export function FormsManager({ project }: { project: Project }) {
       {owed.count > 0 && (
         <p className="text-sm text-amber-700 dark:text-amber-400" role="status">
           ⚠ {owed.count} submission{owed.count === 1 ? '' : 's'} could not be emailed
-          {owed.lastError ? ` — ${owed.lastError}` : '.'} Open the Submissions tab to resend.
+          {/* There is no Submissions tab any more: each form's inbox opens from its row. */}
+          {owed.lastError ? ` — ${owed.lastError}` : '.'} Open the form’s submissions to resend them.
         </p>
       )}
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
@@ -196,85 +197,95 @@ export function FormsManager({ project }: { project: Project }) {
             >
               {/* The whole row opens the editor (wrapper onClick + gradient-lift hover + ripple, matching
                   the Datasets/Pages rows); the name stays a real keyboard-accessible button and the
-                  action buttons stopPropagation so they don't also open the editor. */}
+                  action buttons stopPropagation so they don't also open the editor.
+                  Two groups that WRAP: what the form is, then its actions. On one line they did not fit a phone
+                  — the buttons ran off the right edge (Show submissions at 404-448px on a 390px screen) and a
+                  long name broke a word per line. The details take the line (`basis-64`, growing); when the
+                  actions no longer fit beside them they drop to a line of their own, still on the right. */}
               <div
-                className={`group flex items-center gap-3 ${glassCard} ${gradientHover} waves-effect px-4 py-3 text-sm transition ${
+                className={`group flex flex-wrap items-center gap-x-3 gap-y-2 ${glassCard} ${gradientHover} waves-effect px-4 py-3 text-sm transition ${
                   f.managed ? '' : 'cursor-pointer'
                 }`}
                 onClick={f.managed ? undefined : () => openForm(f)}
               >
-                <Tooltip tip={f.managed ? 'Managed by the Shop — edit it in Website settings → Shop' : undefined}>
-                  <button
-                    className="text-left font-medium group-hover:text-white disabled:cursor-default"
-                    disabled={f.managed !== undefined}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openForm(f);
-                    }}
-                  >
-                    {f.name}
-                  </button>
-                </Tooltip>
-                <code className="text-xs text-slate-500 dark:text-slate-400 group-hover:text-white/80">{f.id}</code>
-                <span className="text-xs text-slate-500 dark:text-slate-400 group-hover:text-white/90">{f.fields.length} fields</span>
-                {f.pow && (
-                  <span className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] uppercase transition group-hover:bg-white/25 group-hover:text-white">
-                    PoW
-                  </span>
-                )}
-                {f.captcha && (
-                  <span className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] uppercase transition group-hover:bg-white/25 group-hover:text-white">
-                    Captcha
-                  </span>
-                )}
-                {/* A form the SHOP owns. It is listed because its orders land in the inbox and you need
-                    to recognise them — but it is provisioned from the shop settings on every save, so
-                    editing it here would be overwritten. The badge says where it is actually edited. */}
-                {f.managed === 'shop' && (
-                  <Tooltip tip="Provisioned from Website settings → Shop → Checkout channels. Edit it there; changes made here would be overwritten on the next save.">
-                    <span
-                      className="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] uppercase text-indigo-700 transition dark:bg-indigo-400/15 dark:text-indigo-300 group-hover:bg-white/25 group-hover:text-white"
+                <div className="flex min-w-0 flex-1 basis-64 flex-wrap items-center gap-x-3 gap-y-1">
+                  <Tooltip tip={f.managed ? 'Managed by the Shop — edit it in Website settings → Shop' : undefined} className="min-w-0">
+                    <button
+                      className="min-w-0 break-words text-left font-medium group-hover:text-white disabled:cursor-default"
+                      disabled={f.managed !== undefined}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openForm(f);
+                      }}
                     >
-                      Shop
-                    </span>
+                      {f.name}
+                    </button>
                   </Tooltip>
-                )}
-                {(() => {
-                  const rows = filtered.filter((r) => r.formId === f.id);
-                  const total = rows.reduce((n, r) => n + r.count, 0);
-                  if (total === 0) return null;
-                  const breakdown = rows.map((r) => `${r.count} ${r.reason}`).join(', ');
-                  return (
-                    <Tooltip tip={`Filtered before storage: ${breakdown}. These never became submissions and nobody was emailed.`}>
+                  <code className="min-w-0 break-all text-xs text-slate-500 dark:text-slate-400 group-hover:text-white/80">{f.id}</code>
+                  <span className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400 group-hover:text-white/90">
+                    {f.fields.length} {f.fields.length === 1 ? 'field' : 'fields'}
+                  </span>
+                  {f.pow && (
+                    <span className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] uppercase transition group-hover:bg-white/25 group-hover:text-white">
+                      PoW
+                    </span>
+                  )}
+                  {f.captcha && (
+                    <span className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] uppercase transition group-hover:bg-white/25 group-hover:text-white">
+                      Captcha
+                    </span>
+                  )}
+                  {/* A form the SHOP owns. It is listed because its orders land in the inbox and you need
+                      to recognise them — but it is provisioned from the shop settings on every save, so
+                      editing it here would be overwritten. The badge says where it is actually edited. */}
+                  {f.managed === 'shop' && (
+                    <Tooltip tip="Provisioned from Website settings → Shop → Checkout channels. Edit it there; changes made here would be overwritten on the next save.">
                       <span
-                        className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800 transition dark:bg-amber-400/15 dark:text-amber-300 group-hover:bg-white/25 group-hover:text-white"
+                        className="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] uppercase text-indigo-700 transition dark:bg-indigo-400/15 dark:text-indigo-300 group-hover:bg-white/25 group-hover:text-white"
                       >
-                        {total} filtered
+                        Shop
                       </span>
                     </Tooltip>
-                  );
-                })()}
-                <button
-                  aria-label={`Show submissions for ${f.id}`}
-                  aria-haspopup="dialog"
-                  className={`${ghostButton} ml-auto text-xs`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSubmissionsFor(f.id);
-                  }}
-                >
-                  Show submissions
-                </button>
-                <button
-                  aria-label={`Delete form ${f.id}`}
-                  className={`${dangerButton} group-hover:text-white`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    remove(f.id);
-                  }}
-                >
-                  Delete
-                </button>
+                  )}
+                  {(() => {
+                    const rows = filtered.filter((r) => r.formId === f.id);
+                    const total = rows.reduce((n, r) => n + r.count, 0);
+                    if (total === 0) return null;
+                    const breakdown = rows.map((r) => `${r.count} ${r.reason}`).join(', ');
+                    return (
+                      <Tooltip tip={`Filtered before storage: ${breakdown}. These never became submissions and nobody was emailed.`}>
+                        <span
+                          className="whitespace-nowrap rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800 transition dark:bg-amber-400/15 dark:text-amber-300 group-hover:bg-white/25 group-hover:text-white"
+                        >
+                          {total} filtered
+                        </span>
+                      </Tooltip>
+                    );
+                  })()}
+                </div>
+                <div className="ml-auto flex shrink-0 items-center gap-3">
+                  <button
+                    aria-label={`Show submissions for ${f.id}`}
+                    aria-haspopup="dialog"
+                    className={`${ghostButton} whitespace-nowrap text-xs`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSubmissionsFor(f.id);
+                    }}
+                  >
+                    Show submissions
+                  </button>
+                  <button
+                    aria-label={`Delete form ${f.id}`}
+                    className={`${dangerButton} group-hover:text-white`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      remove(f.id);
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             </li>
           );

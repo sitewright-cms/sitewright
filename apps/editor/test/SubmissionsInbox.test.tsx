@@ -90,6 +90,17 @@ describe('SubmissionsInbox', () => {
     expect(await screen.findByText('No submissions yet.')).toBeInTheDocument();
   });
 
+  it('dates a submission to the minute, without the seconds that wrapped it on a phone', async () => {
+    const createdAt = '2026-11-09T09:30:45.000Z';
+    listSubmissions.mockResolvedValue({ items: [{ id: 's1', formId: 'contact', fields: { email: 'lead@x.co' }, createdAt }], total: 1 });
+    render(<SubmissionsInbox project={project} formId="contact" />);
+    const minute = new Date(createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    const shown = await screen.findByText(minute);
+    expect(shown.tagName).toBe('TIME');
+    expect(shown).toHaveAttribute('dateTime', createdAt); // the exact instant, for two leads in the same minute
+    expect(screen.queryByText(new Date(createdAt).toLocaleString())).toBeNull(); // the old form, with :45
+  });
+
   it('shows an empty state when there are no submissions', async () => {
     listSubmissions.mockResolvedValue({ items: [], total: 0 });
     render(<SubmissionsInbox project={project} />);

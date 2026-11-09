@@ -21,6 +21,26 @@ The running version of an instance is reported at `GET /version` (baked into the
   value, so that column does not sort. The headers are buttons, so the keyboard sorts too, and screen readers
   hear the order (`aria-sort`). On every screen size the tables are the same size as before.
 
+### Fixed
+
+- **The Forms tab works on a phone.** Measured at 390px wide:
+  - **Form rows:** they wrap instead of running off the screen. Before, a form's Show submissions and Delete
+    buttons sat past the right edge, so its inbox could not be opened from a phone, and a long name broke one
+    word per line. Its details now take the line and the buttons move under them. On a wide screen the row
+    looks as before. One field reads "1 field", not "1 fields".
+  - **The form editor's fields:** they are laid out as drawn, at every screen size. The inputs' fixed widths
+    never applied, so each field stacked five full-width boxes deep even on a desktop. A field is now one row
+    on a wide screen. On a phone it is two-up: name and label, then type, required and remove, then the
+    placeholder. The editor is about a third shorter on a desktop and 18% shorter on a phone.
+  - **Submissions:** on a phone each answer sits under its label instead of beside it, where a long message
+    was a narrow strip. A long raw field name (`utm_source_campaign_identifier`) breaks instead of running
+    over its value. The date drops the seconds and keeps the exact time in a `<time>` element. Resend and
+    Delete move under the summary when there is no room beside it.
+  - **Project SMTP:** the settings are one column on a phone, as intended. A stray `col-span-2` had made them
+    two-up, which cut the host name off.
+  - **The delivery warning:** it no longer points to a Submissions tab that no longer exists. It says to open
+    the form's submissions.
+
 ## [0.78.1] — 2026-11-09
 
 ### Changed

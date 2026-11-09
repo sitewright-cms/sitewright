@@ -215,13 +215,45 @@ describe('consent screen — the approved code is shown, not fired at the callba
     expect(res.body).toContain('data-copy="sw-code"');
     expect(res.body).toContain('127.0.0.1:8976'); // the destination is named
 
-    // The displayed URL is a real callback URL carrying the same code + state a redirect would have.
+    // The copied URL is a real callback URL carrying the same code + state a redirect would have.
     const shownUrl = /<span id="sw-url">([^<]+)<\/span>/.exec(res.body)?.[1]?.replace(/&amp;/g, '&');
     const url = new URL(shownUrl!);
     expect(url.origin + url.pathname).toBe('http://127.0.0.1:8976/callback');
     expect(url.searchParams.get('state')).toBe('st');
     const shownCode = /<span id="sw-code">([^<]+)<\/span>/.exec(res.body)?.[1];
     expect(url.searchParams.get('code')).toBe(shownCode); // the two values agree
+  });
+
+  it('offers exactly three actions — Continue to the host, Copy Callback URL, Copy Authorization Code — and no boxes to read', async () => {
+    const { session, ids } = await userWithProjects(['Only']);
+    const res = await approve(session, ids[0]!);
+    const callback = /<span id="sw-url">([^<]+)<\/span>/.exec(res.body)?.[1];
+
+    // 1) The full-width gradient action is a real LINK to the callback (it navigates), named for its host.
+    expect(res.body).toContain(`<a class="btn primary wide" href="${callback}">Continue to 127.0.0.1:8976</a>`);
+    // 2) + 3) The two copy buttons share the row under it, neither with the gradient.
+    const row = /<div class="row halves">([\s\S]*?)<\/div>/.exec(res.body)?.[1] ?? '';
+    expect(row).toMatch(/<button type="button" id="sw-copy-url" data-copy="sw-url"[^>]*>Copy Callback URL<\/button>/);
+    expect(row).toMatch(/<button type="button" id="sw-copy" data-copy="sw-code"[^>]*>Copy Authorization Code<\/button>/);
+    expect(row).not.toContain('primary');
+    expect(res.body.match(/<button\b/g)).toHaveLength(2);
+
+    // No URL box and no "just the code" disclosure: the values sit in HIDDEN boxes the buttons copy from.
+    expect(res.body).not.toContain('<details');
+    expect(res.body).not.toContain('My client asks for just the code');
+    expect(res.body).not.toContain('Open it in this browser');
+    expect(res.body).toContain('<div class="code-box" hidden><span id="sw-url">');
+    expect(res.body).toContain('<div class="code-box" hidden><span id="sw-code">');
+    // ★ .code-box is display:flex, which would beat the UA's [hidden] rule and put them on screen anyway.
+    expect(res.body).toContain('.code-box[hidden]{display:none}');
+    // A clipboard that refuses reveals the value, selected, so there is still something to copy by hand…
+    expect(CONSENT_SCRIPT).toContain("var box = el.closest('.code-box');");
+    expect(CONSENT_SCRIPT).toContain('if(box) box.hidden = false;');
+    // ★ The execCommand path (plain HTTP: no navigator.clipboard) removes a focused textarea; focus must go
+    // back to the button, or the next Enter lands on <body> and the shortcut copies the URL over the code.
+    expect(CONSENT_SCRIPT).toContain('try{ btn.focus(); }catch(_){}');
+    // …and without JS (where the copy buttons cannot work) both values are shown.
+    expect(res.body).toMatch(/<noscript>[\s\S]*Callback URL[\s\S]*Authorization code[\s\S]*<\/noscript>/);
   });
 
   it('★ Enter copies the callback URL: the button is AUTOFOCUSED, and the script covers moved focus', async () => {
@@ -237,11 +269,15 @@ describe('consent screen — the approved code is shown, not fired at the callba
     // clients that ask for it instead).
     expect(res.body).not.toMatch(/<button[^>]*id="sw-copy"[^>]*autofocus/);
 
-    // The script's fallback, for after focus has moved (selecting the URL text, opening the details).
+    // …although "Continue to …" comes first on the page: Enter means copy, the link is a click.
+    expect(res.body.indexOf('Continue to 127.0.0.1:8976')).toBeLessThan(res.body.indexOf('id="sw-copy-url"'));
+    expect(res.body).not.toMatch(/<a [^>]*autofocus/);
+
+    // The script's fallback, for after focus has moved off the buttons (a click on the page).
     expect(CONSENT_SCRIPT).toContain("var primaryCopy = document.getElementById('sw-copy-url')");
     expect(CONSENT_SCRIPT).toContain('primaryCopy.click()');
-    // It must NOT steal Enter from a control that has its own meaning for it — otherwise "Open it in
-    // this browser" would copy instead of opening, and the focused button would copy twice.
+    // It must NOT steal Enter from a control that has its own meaning for it — otherwise "Continue to …"
+    // would copy instead of following the link, and the focused button would copy twice.
     expect(CONSENT_SCRIPT).toContain("t.closest('button, a, summary, input, textarea, select, [contenteditable]')");
     // …nor from a modified chord (Ctrl/Cmd/Alt+Enter is somebody else's shortcut).
     expect(CONSENT_SCRIPT).toContain("if(e.key !== 'Enter' || e.ctrlKey || e.metaKey || e.altKey) return;");

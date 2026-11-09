@@ -289,13 +289,22 @@ export function htmlPage(title: string, body: string, chrome: ConsentChrome = DE
     .expiry{font-size:.78rem}
     /* The recovery steps on the unrecognised-client page: one line per host, the gesture in bold. */
     .recover{margin:.6rem 0 0;padding-left:1.15rem;display:flex;flex-direction:column;gap:.45rem;font-size:.9rem}
-    /* The "just the code" alternative: present but folded away, so the URL (what most clients ask
-       for) is the obvious action and the code is still one click from anyone who needs it. */
-    details.alt{margin-top:.9rem}
-    details.alt summary{cursor:pointer;font-size:.82rem;color:var(--muted)}
-    details.alt summary:hover{color:var(--ink)}
+    /* The approval screen's actions: "Continue to <host>" is a LINK (it navigates), drawn as the full-width
+       gradient button; the two copy buttons share the row under it, half each, without the gradient. */
+    a.btn{display:flex;align-items:center;justify-content:center;text-align:center;font-weight:600;padding:.7rem 1.15rem;
+      border-radius:.7rem;text-decoration:none;overflow-wrap:anywhere}
+    a.btn.primary{color:#fff;background:linear-gradient(135deg,var(--sw-brand-1),var(--sw-brand-2));
+      box-shadow:0 8px 22px color-mix(in srgb,var(--sw-brand-1) 32%,transparent);transition:filter .15s}
+    a.btn.primary:hover{filter:brightness(1.08)}
+    .row.halves{display:grid;grid-template-columns:1fr 1fr;margin-top:.6rem}
+    .row.halves button{width:100%;padding-left:.6rem;padding-right:.6rem}
+    /* ★ .code-box is display:flex, which beats the UA's [hidden]{display:none}: without this the "hidden"
+       values the copy buttons read would be on screen after all. The script un-hides one only when the
+       clipboard refuses, so there is something to select and copy by hand. */
+    .code-box[hidden]{display:none}
+    .lbl.nojs{margin-top:.9rem}
     /* Copy confirmation. Hidden until the script shows it; it never appears without JS, and without JS
-       the code is still visible and selectable, so nothing depends on it. */
+       the values are shown in a <noscript> block instead, so nothing depends on it. */
     .toast{position:fixed;left:50%;bottom:1.5rem;transform:translate(-50%,1rem);opacity:0;pointer-events:none;
       padding:.6rem 1rem;border-radius:.7rem;color:#fff;font-weight:600;font-size:.87rem;
       background:linear-gradient(135deg,var(--sw-brand-1),var(--sw-brand-2));box-shadow:0 10px 30px rgba(15,23,42,.25);
@@ -338,34 +347,40 @@ function redirectHost(redirectUri: string): string {
  *
  * The page is `no-store` + `no-referrer` (see the caller) and both values expire with the code.
  *
- * Copy URL is AUTOFOCUSED, so Enter copies the moment the page lands — the only thing anyone comes
- * here to do, and the whole screen exists because the user is mid-flow in a terminal somewhere else.
- * Plain HTML, so it works with JS disabled; the consent script adds an Enter fallback for after focus
- * has moved (selecting the URL text, opening the code disclosure), and the focus ring is what makes
- * the shortcut discoverable rather than hidden.
+ * THREE ACTIONS and nothing to read: "Continue to <host>" (the full-width gradient one — following the
+ * redirect is the plain path when this browser CAN reach the callback), then "Copy Callback URL" and
+ * "Copy Authorization Code" side by side. The values themselves are not on screen any more (no URL
+ * box, no "just the code" disclosure): they sit in hidden boxes the copy buttons read, and a box is
+ * REVEALED, selected, only when the clipboard refuses, so a refusal still leaves something to copy
+ * by hand. Without JS the copy buttons cannot work, so a `<noscript>` block shows both values.
+ *
+ * Copy Callback URL is AUTOFOCUSED, so Enter copies the URL the moment the page lands — the thing
+ * Claude Code's fallback asks for, from a user mid-flow in a terminal somewhere else. It is focused
+ * although it is not the first button: the focus ring on it is what makes the shortcut discoverable.
+ * The consent script adds an Enter fallback for after focus has moved elsewhere on the page.
  */
 function issuedCodePage(code: string, continueUrl: string, redirectUri: string, chrome: ConsentChrome): string {
   const minutes = Math.max(1, Math.round(AUTH_CODE_TTL_MS / 60000));
+  const host = escapeHtml(redirectHost(redirectUri));
+  const url = escapeHtml(continueUrl);
   return htmlPage(
     'Authorization approved',
-    `<h1>Approved — finish in <strong>${escapeHtml(redirectHost(redirectUri))}</strong></h1>
+    `<h1>Approved — finish in <strong>${host}</strong></h1>
      <p>Most clients (including Claude Code) ask you to paste the whole callback URL. It can be used
         once, and expires in ${minutes} minutes.</p>
      <div class="card">
-       <span class="lbl">Callback URL</span>
-       <div class="code-box"><span id="sw-url">${escapeHtml(continueUrl)}</span></div>
-       <div class="row">
-         <button class="primary" type="button" id="sw-copy-url" data-copy="sw-url" data-copied="Callback URL copied" autofocus>Copy URL</button>
-         <a href="${escapeHtml(continueUrl)}"><button type="button">Open it in this browser</button></a>
+       <a class="btn primary wide" href="${url}">Continue to ${host}</a>
+       <div class="row halves">
+         <button type="button" id="sw-copy-url" data-copy="sw-url" data-copied="Callback URL copied" autofocus>Copy Callback URL</button>
+         <button type="button" id="sw-copy" data-copy="sw-code" data-copied="Authorization code copied">Copy Authorization Code</button>
        </div>
-       <details class="alt">
-         <summary>My client asks for just the code</summary>
-         <div class="code-box"><span id="sw-code">${escapeHtml(code)}</span></div>
-         <div class="row">
-           <button type="button" id="sw-copy" data-copy="sw-code" data-copied="Code copied">Copy code</button>
-         </div>
-       </details>
-       <p class="expiry">Opening it only works if this browser can reach ${escapeHtml(redirectHost(redirectUri))} — otherwise copy and paste.</p>
+       <div class="code-box" hidden><span id="sw-url">${url}</span></div>
+       <div class="code-box" hidden><span id="sw-code">${escapeHtml(code)}</span></div>
+       <noscript>
+         <span class="lbl nojs">Callback URL</span><div class="code-box">${url}</div>
+         <span class="lbl nojs">Authorization code</span><div class="code-box">${escapeHtml(code)}</div>
+       </noscript>
+       <p class="expiry">Continue only works if this browser can reach ${host} — otherwise copy and paste.</p>
      </div>`,
     chrome,
     { script: true },

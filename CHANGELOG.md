@@ -31,6 +31,21 @@ The running version of an instance is reported at `GET /version` (baked into the
   - **Enter still copies the callback URL:** that button is focused when the page opens.
   - **If the browser refuses to copy, the value appears, selected,** so it can be copied by hand.
   - **With JavaScript off, both values are shown.**
+- **Dependency refresh** (Dependabot #1250 and #1251; each at the version Dependabot proposed). Production:
+  `fastify` 5.12.8, `@fastify/multipart` 10.1.7, `isomorphic-git` 1.44.10 and `openid-client` 6.8.9, which
+  bring Fastify's router (`find-my-way` 9.10), serializer, trust-proxy parser, `light-my-request` 6.8 and
+  `pino` 10.4 along. Development: `@vitejs/plugin-react` 6.2.1.
+  - **Nothing reaches published sites.** These packages run the platform's server and the editor's build; no
+    site CSS, JS or HTML comes from them.
+  - **The router was rewritten inside, and answers the same.** 57 URLs (double slashes, `%25`, `%2F`, dot
+    segments, trailing slashes, query strings) on the draft site, a hosted site and the platform give the
+    same status, redirect and content type as before, signed in and out.
+  - **An upload cut off mid-file now fails instead of hanging** (`@fastify/multipart`, GHSA-5849-5m6q-9632).
+    Media upload, media replace and project import awaited a directory before reading the file, so a body
+    that ended inside the file could hold the request open.
+  - **The editor builds byte for byte the same** with the new React plugin.
+  - With an IPv6 range in `TRUST_PROXY`, an IPv4 proxy is now trusted only by an IPv4-mapped range of /96 or
+    longer (`::ffff:10.0.0.0/104`). `TRUST_PROXY=true`, and lists of IPv4 ranges, behave as before.
 
 ### Fixed
 

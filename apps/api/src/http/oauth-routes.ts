@@ -349,7 +349,7 @@ function redirectHost(redirectUri: string): string {
  *
  * THREE ACTIONS and nothing to read: "Continue to <host>" (the full-width gradient one — following the
  * redirect is the plain path when this browser CAN reach the callback), then "Copy Callback URL" and
- * "Copy Authorization Code" side by side. The values themselves are not on screen any more (no URL
+ * "Copy Auth Code" side by side. The values themselves are not on screen any more (no URL
  * box, no "just the code" disclosure): they sit in hidden boxes the copy buttons read, and a box is
  * REVEALED, selected, only when the clipboard refuses, so a refusal still leaves something to copy
  * by hand. Without JS the copy buttons cannot work, so a `<noscript>` block shows both values.
@@ -372,7 +372,7 @@ function issuedCodePage(code: string, continueUrl: string, redirectUri: string, 
        <a class="btn primary wide" href="${url}">Continue to ${host}</a>
        <div class="row halves">
          <button type="button" id="sw-copy-url" data-copy="sw-url" data-copied="Callback URL copied" autofocus>Copy Callback URL</button>
-         <button type="button" id="sw-copy" data-copy="sw-code" data-copied="Authorization code copied">Copy Authorization Code</button>
+         <button type="button" id="sw-copy" data-copy="sw-code" data-copied="Authorization code copied">Copy Auth Code</button>
        </div>
        <div class="code-box" hidden><span id="sw-url">${url}</span></div>
        <div class="code-box" hidden><span id="sw-code">${escapeHtml(code)}</span></div>

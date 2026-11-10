@@ -202,7 +202,7 @@ not try.** You *can* stop it reaching your private network, and that is worth do
 ### Why a destination allowlist does not work here
 
 Fetching arbitrary URLs is a product feature, not an accident. The website importer exists to crawl
-a site you name; `import_image` fetches an image URL you give it; deploy targets and per-project SMTP
+a site you name; `import_media` (also callable as `import_image`) fetches a file URL you give it; deploy targets and per-project SMTP
 point at hosts your clients choose. Any allowlist wide enough to keep those working is wide enough to
 carry data out of, and a compromised dependency could simply use the importer rather than opening its
 own socket. Egress filtering is a real control against a *fixed* set of destinations — this workload
@@ -239,7 +239,7 @@ denies if you use it. None is on by default:
 
 If none of those is configured, the container needs no private egress at all.
 
-For the fetches driven by *tenant* content — the importer, `import_image` — the application already
+For the fetches driven by *tenant* content — the importer, `import_media` — the application already
 guards this: they go through a pinned fetcher that resolves the name, refuses private results,
 connects to the **resolved IP**, and re-checks every redirect hop. A host-level rule is defence in
 depth behind that: a future code path that forgets the guard, or a DNS entry that changes between the

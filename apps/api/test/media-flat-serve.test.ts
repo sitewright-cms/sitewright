@@ -145,6 +145,25 @@ describe('flat media delivery route (/media/<slug>/<id>-<name>)', () => {
     expect(served.headers['content-disposition']).toContain('attachment');
   });
 
+  it('SECURITY: a "video" outside the extension table plays inline only under ONE clean media type', async () => {
+    // The stored type came from the client or a remote server. `video/x,text/html` passes a
+    // startsWith('video/') test, and a browser reads a comma list by its LAST valid type — so served
+    // inline it renders as HTML on the platform origin. It must download instead.
+    const { t, projectId } = await setup('vidtype@e.test');
+    const html = Buffer.from('<script>alert(document.cookie)</script>');
+    const bad = await upload(projectId, t, 'clip.html', 'video/x,text/html', html);
+    const res = await app.inject({ method: 'GET', url: bad.item.url });
+    expect(res.statusCode).toBe(200);
+    expect(String(res.headers['content-type'])).toMatch(/^application\/octet-stream/);
+    expect(String(res.headers['content-disposition'])).toMatch(/^attachment/);
+    // A clean single type outside the table still plays (a .mkv upload keeps working).
+    const mkv = await upload(projectId, t, 'clip.mkv', 'video/x-matroska', Buffer.from('mkv-bytes'));
+    expect(mkv.item.kind).toBe('video');
+    const ok = await app.inject({ method: 'GET', url: mkv.item.url });
+    expect(String(ok.headers['content-type'])).toMatch(/^video\/x-matroska/);
+    expect(ok.headers['content-disposition']).toBeUndefined();
+  });
+
   it('a raw-uploaded PDF (kind:file) is served INLINE application/pdf under a frame-safe CSP', async () => {
     const { t, projectId } = await setup('pdf@flat.test');
     const { item } = await upload(projectId, t, 'brochure.pdf', 'application/pdf', Buffer.from('%PDF-1.4 fake'));

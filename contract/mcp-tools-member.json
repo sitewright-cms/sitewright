@@ -232,6 +232,13 @@
     ]
   },
   {
+    "name": "import_media",
+    "required": [
+      "project",
+      "url"
+    ]
+  },
+  {
     "name": "import_status",
     "required": [
       "jobId",

@@ -11,6 +11,28 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Agents can import any file by URL: `import_media`.** It takes every file the File Manager takes and stores
+  it the way an upload would:
+  - images are optimized (up to 15 MB) and SVGs sanitized;
+  - a **font becomes a usable font**, named by the family, weight, style and fallback the agent gives (before,
+    a font by URL landed as a download-only file no typography slot could use);
+  - video and audio play inline;
+  - **PDFs, documents and archives** are downloads.
+  Video, audio, PDFs, documents and archives may now be 200 MB when the URL names the extension (`.pdf`, `.zip`,
+  `.docx`…), the same as an upload; before, only video and audio could pass 15 MB. A URL with no extension (a CDN
+  id such as `…/v/8f3a`) stays at 15 MB but now gets the right extension from the file's type; before, such a
+  video or PDF was refused after the whole download. Bytes behind a `.mp4` name that are not
+  video are kept as a download, never served as a playable video. `import_image` still works and is now the same
+  tool, so prompts that name it keep working.
+- **When an agent cannot reach an upload link, it sends you to the File Manager.** claude.ai's code sandbox only
+  reaches allowlisted domains, so its upload to the instance is refused even though every tool call works. Each
+  upload link (`create_media_upload`, `create_media_replace`) now comes with what to do instead:
+  - a file up to 256 KB goes inline;
+  - anything bigger, the agent asks you to upload it in the File Manager of that project (named, with the folder),
+    or to use **Replace file** on the named file for a replacement, and finds it afterwards;
+  - it does not retry or hotlink the original, and it tells you which domain you could allow in the sandbox
+    instead.
+
 - **Statistics tables sort by any column.** Click a header in Search rankings or in Search performance's Top
   searches and Top pages to sort by it; click it again to flip the order. The first click puts the best first:
   the most clicks, impressions and click-through, position 1, the biggest climb, A to Z. A row with no value
@@ -49,6 +71,11 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **Security: a file claiming to be a video can no longer run as a web page on the platform's address.** An
+  upload or URL import whose stated type was a list such as `video/x,text/html` was kept as a video and served
+  inline with that type, and browsers read such a list by its last entry, so the file rendered as HTML. A video
+  now plays inline only with a known video extension or one clean `video/…` or `audio/…` type; anything else is
+  served as a download, and URL import stores it as a plain file.
 - **A dialog reopened right after it closed stays open.** Since the animation library update in 0.78.1, a
   closing dialog told the editor it was gone one step after it left the screen. Reopening it in that moment
   (for example "Open the project selector" right after closing the selector) was undone by the late close.

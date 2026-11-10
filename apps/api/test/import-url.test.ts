@@ -284,7 +284,10 @@ describe('POST /projects/:projectId/media/import-url', () => {
     expect(image.statusCode, 'a normal import keeps the short deadline').toBe(400);
   });
 
-  it('still holds a NON-media URL to the image cap (the raise is scoped to playable media)', async () => {
+  it('gives every non-image, non-font file the local-upload ceiling — a PDF, an archive, a document, a video', async () => {
+    // Upload took any of these at 200MB while URL import held all but video/audio to the image cap:
+    // a 20MB brochure was importable from disk and not from its URL. Images and fonts keep the small,
+    // ungated class (they are decoded in-process), and so does a URL with no extension (mostly CDN images).
     const calls: number[] = [];
     const capturing = vi.fn(async (_url: string, opts: { maxBytes: number }) => {
       calls.push(opts.maxBytes);
@@ -292,9 +295,104 @@ describe('POST /projects/:projectId/media/import-url', () => {
     }) as unknown as Fetcher;
     await makeApp(capturing);
     const { t, projectId } = await setup();
-    await post(projectId, t, 'https://cdn.example.com/manual.pdf');
-    await post(projectId, t, 'https://cdn.example.com/no-extension');
-    expect(calls).toEqual([15 * 1024 * 1024, 15 * 1024 * 1024]);
+    const large = ['manual.pdf', 'archive.zip', 'deck.pptx', 'clip.mp4', 'track.m4a'];
+    // A dynamic endpoint is mostly an image: it must not queue behind the 2-slot large gate.
+    const small = ['photo.png', 'photo.JPG', 'logo.svg', 'face.woff2', 'no-extension', 'thumb.php', 'GetImage.aspx'];
+    for (const name of [...large, ...small]) await post(projectId, t, `https://cdn.example.com/${name}`);
+    expect(calls).toEqual([...large.map(() => 200 * 1024 * 1024), ...small.map(() => 15 * 1024 * 1024)]);
+  });
+
+  it('imports a PDF over the image cap as a download-only file', async () => {
+    const pdf = Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.alloc(15 * 1024 * 1024)]);
+    await makeApp(fetcherReturning(ok(pdf, 'application/pdf')));
+    const { t, projectId } = await setup();
+    const res = await post(projectId, t, 'https://cdn.example.com/brochure.pdf');
+    expect(res.statusCode, res.body).toBe(201);
+    expect(res.json().item).toMatchObject({ kind: 'file', filename: 'brochure.pdf', contentType: 'application/pdf' });
+  });
+
+  it('still holds an IMAGE behind a document name to the image cap', async () => {
+    await makeApp(fetcherReturning(ok(Buffer.alloc(15 * 1024 * 1024 + 1), 'image/png')));
+    const { t, projectId } = await setup();
+    const res = await post(projectId, t, 'https://cdn.example.com/decoy.pdf');
+    expect(res.statusCode).toBe(413);
+    expect(res.json().error).toMatch(/15MB limit/);
+  });
+
+  it('stores a FONT by its bytes as a usable font, named by the metadata given', async () => {
+    // It used to land as a download-only file, which no typography slot can use.
+    const woff2 = Buffer.concat([Buffer.from('wOF2'), Buffer.from('x')]);
+    await makeApp(fetcherReturning(ok(woff2, 'font/woff2')));
+    const { t, projectId } = await setup();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/media/import-url`,
+      cookies: { sw_session: t },
+      payload: { url: 'https://fonts.example.com/inter-700.woff2', family: 'Inter', weight: 700 },
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    expect(res.json().item).toMatchObject({ kind: 'font', family: 'Inter' });
+    expect(res.json().item.files[0]).toMatchObject({ weight: 700, format: 'woff2' });
+  });
+
+  it('gives an extensionless URL the extension its type needs, so a CDN video or PDF is not refused', async () => {
+    // A stored asset's URL must END in an extension; `…/v/8f3a` serving video/mp4 was refused as an
+    // "invalid import" after the whole download.
+    await makeApp(fetcherReturning(ok(PNG_1X1, 'video/mp4')));
+    const { t, projectId } = await setup();
+    const video = await post(projectId, t, 'https://cdn.example.com/v/8f3a');
+    expect(video.statusCode, video.body).toBe(201);
+    expect(video.json().item).toMatchObject({ kind: 'video', filename: '8f3a.mp4', contentType: 'video/mp4' });
+
+    await app.close();
+    await makeApp(fetcherReturning(ok(Buffer.from('%PDF-1.4'), 'application/pdf')));
+    const second = await setup('importer2@e2e.test', 'site2');
+    const doc = await post(second.projectId, second.t, 'https://files.example.com/download');
+    expect(doc.statusCode, doc.body).toBe(201);
+    expect(doc.json().item).toMatchObject({ kind: 'file', filename: 'download.pdf' });
+
+    await app.close();
+    await makeApp(fetcherReturning(ok(Buffer.from('opaque'), 'application/x-unknown')));
+    const third = await setup('importer3@e2e.test', 'site3');
+    const blob = await post(third.projectId, third.t, 'https://files.example.com/blob');
+    expect(blob.statusCode, blob.body).toBe(201);
+    expect(blob.json().item).toMatchObject({ kind: 'file', filename: 'blob.bin', contentType: 'application/x-unknown' });
+  });
+
+  it('stores a "video" whose type is not ONE clean media type as a download', async () => {
+    // `video/x,text/html` passes a startsWith('video/') test, and a browser reads the LAST type of a
+    // comma list — served inline, the "video" would render as HTML on the platform origin.
+    await makeApp(fetcherReturning(ok(Buffer.from('<script>alert(1)</script>'), 'video/x,text/html')));
+    const { t, projectId } = await setup();
+    const res = await post(projectId, t, 'https://evil.example.com/x.html');
+    expect(res.statusCode, res.body).toBe(201);
+    expect(res.json().item.kind).toBe('file');
+  });
+
+  it('names a font imported without a family after its file, even when the name is a hash', async () => {
+    // `a34f9d1f-s.p.woff2` is no valid family name — that answered 400 for a file that used to import.
+    const woff2 = Buffer.concat([Buffer.from('wOF2'), Buffer.from('x')]);
+    await makeApp(fetcherReturning(ok(woff2, 'font/woff2')));
+    const { t, projectId } = await setup();
+    const res = await post(projectId, t, 'https://site.example.com/_next/static/media/a34f9d1f-s.p.woff2');
+    expect(res.statusCode, res.body).toBe(201);
+    expect(res.json().item).toMatchObject({ kind: 'font', family: 'a34f9d1f-s p' });
+  });
+
+  it('never sniffs TEXT as a font, even when it starts with "true"', async () => {
+    await makeApp(fetcherReturning(ok(Buffer.from('true story, told in plain text'), 'text/plain')));
+    const { t, projectId } = await setup();
+    const res = await post(projectId, t, 'https://cdn.example.com/notes.txt');
+    expect(res.statusCode, res.body).toBe(201);
+    expect(res.json().item.kind).toBe('file');
+  });
+
+  it('never serves bytes inline as video just because the URL ends in .mp4', async () => {
+    await makeApp(fetcherReturning(ok(Buffer.from('<script>alert(1)</script>'), 'text/html')));
+    const { t, projectId } = await setup();
+    const res = await post(projectId, t, 'https://cdn.example.com/not-a-video.mp4');
+    expect(res.statusCode, res.body).toBe(201);
+    expect(res.json().item.kind, 'download-only, not an inline video').toBe('file');
   });
 
   it('is 403 for a cross-tenant request (importer not a member of the other project)', async () => {

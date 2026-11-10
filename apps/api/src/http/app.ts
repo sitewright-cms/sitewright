@@ -541,6 +541,69 @@ const LARGE_IMPORT_HEADROOM = 0.75;
 // upload still completes.
 const REQUEST_TIMEOUT_MS = 5 * 60_000; // 5 minutes
 const MAX_IMPORT_REDIRECTS = 4; // import-url: follow this many redirects (each re-checked vs the SSRF guard)
+/**
+ * URL extensions import-url gives the LARGE size class (200MB, behind the large-import gate): the files
+ * an upload takes at that size and nothing decodes in-process — video, audio, documents, archives, 3D and
+ * design files. An ALLOWLIST on purpose: everything else, including a URL with no extension and a dynamic
+ * endpoint (`thumb.php?src=`, `GetImage.aspx`), stays in the ungated 15MB class, because those are mostly
+ * images and the large gate has two slots for the whole instance — a clone of a site that serves its
+ * images from a script would otherwise get mostly 503s.
+ */
+const LARGE_IMPORT_EXTS: ReadonlySet<string> = new Set([
+  ...VIDEO_CONTENT_TYPES.keys(),
+  'ogg', 'opus', 'aac', 'flac', 'mkv', 'avi', 'wmv', '3gp',
+  'pdf', 'epub', 'txt', 'csv', 'json', 'xml', 'rtf',
+  'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'key', 'pages', 'numbers',
+  'zip', '7z', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz',
+  'psd', 'ai', 'eps', 'indd', 'sketch', 'fig', 'glb', 'gltf', 'stl', 'usdz',
+]);
+/**
+ * Does this URL path name a file that may be as big as a LOCAL upload (200MB)? Upload accepted every such
+ * file at that size while URL import held all but video/audio to the image cap — a 20MB brochure was
+ * importable from disk and not from its URL.
+ */
+function isLargeImportPath(pathname: string): boolean {
+  const ext = /\.([A-Za-z0-9]{1,12})$/.exec(pathname.split('/').pop() ?? '')?.[1]?.toLowerCase();
+  return ext !== undefined && LARGE_IMPORT_EXTS.has(ext);
+}
+/**
+ * ONE media type, nothing else. The fetcher cuts the header at `;`, so `video/x,text/html` would otherwise
+ * pass a `startsWith('video/')` test — and a browser reads a comma list by its LAST valid type, so that
+ * "video" renders as HTML on the platform origin.
+ */
+const SINGLE_PLAYABLE_TYPE = /^(video|audio)\/[a-z0-9][a-z0-9.+-]*$/;
+/** Content types a font file may arrive with; anything else (text, JSON) is never sniffed as a font. */
+const FONT_CARRIER_TYPE = /^(font\/[a-z0-9.+-]+|application\/(x-)?font(-[a-z0-9.+-]+)?|application\/vnd\.ms-fontobject|(application|binary)\/octet-stream)$/;
+/** A filename stem as a valid font family (FontFamilyNameSchema), for a font imported without one. */
+function familyFromStem(filename: string): string {
+  const stem = filename.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9 '-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return stem.replace(/^[^A-Za-z0-9]+/, '').slice(0, 100).trim() || 'Imported font';
+}
+/**
+ * The extension a non-image asset gets when its URL had none. A stored asset's served URL must END in
+ * one (the media schemas require it), so `https://cdn.example.com/v/8f3a` serving `video/mp4` used to be
+ * refused as an "invalid import" after the whole download.
+ */
+const EXT_FOR_CONTENT_TYPE: ReadonlyMap<string, string> = new Map([
+  ...[...VIDEO_CONTENT_TYPES].reverse().map(([ext, type]): [string, string] => [type, ext]),
+  ['video/mp4', 'mp4'],
+  ['audio/mp4', 'm4a'],
+  ['audio/x-wav', 'wav'],
+  ['audio/wave', 'wav'],
+  ['audio/webm', 'webm'],
+  ['application/pdf', 'pdf'],
+  ['application/zip', 'zip'],
+  ['application/json', 'json'],
+  ['text/plain', 'txt'],
+  ['text/csv', 'csv'],
+  ['application/rtf', 'rtf'],
+  ['application/msword', 'doc'],
+  ['application/vnd.ms-excel', 'xls'],
+  ['application/vnd.ms-powerpoint', 'ppt'],
+  ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'docx'],
+  ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xlsx'],
+  ['application/vnd.openxmlformats-officedocument.presentationml.presentation', 'pptx'],
+]);
 
 /** Font metadata accompanying an upload (query params) — sensible defaults for a generic drop. */
 const FontUploadMeta = z.object({
@@ -7298,9 +7361,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // A REPLACE ticket names its target now, so the holder cannot re-point it. Checking the asset
         // here as well as at redeem time is what makes a typo'd id fail on the tool call the agent can
         // see, rather than on a curl it has already spent the bytes on.
+        let replaceFilename: string | undefined;
         if (replaceAssetId !== undefined) {
           try {
             const target = await contentRepo.getLiveMedia(ctx, replaceAssetId);
+            replaceFilename = target.filename;
             if (target.kind === 'font') {
               return reply.code(400).send({ error: 'a font family is stored as many files — upload a new font instead' });
             }
@@ -7336,6 +7401,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           tickets,
           expiresInSeconds: uploadTickets.ttlSeconds,
           maxBytes: MAX_UPLOAD_BYTES,
+          // For the way round an unreachable ticket URL: the user uploads in THIS project's File Manager
+          // (or uses Replace file on this asset there), and the agent has to be able to say which.
+          projectName: project.name,
+          ...(replaceFilename !== undefined ? { replaceFilename } : {}),
         });
       },
     );
@@ -7455,7 +7524,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // `alt`: what the asset is born described as, held to the stored bound (MediaAltSchema); '' leaves it
     // undescribed — exactly as on the multipart upload and the upload tickets. Every kind stored here
     // (image, SVG, video, file) carries it.
-    const ImportUrlBody = z.object({ url: z.string().url().max(2048), folder: MediaFolderSchema.optional(), alt: MediaAltSchema.optional() });
+    // The font fields are the upload ticket's: what a font file IS (else its filename stem at 400).
+    const ImportUrlBody = z.object({
+      url: z.string().url().max(2048),
+      folder: MediaFolderSchema.optional(),
+      alt: MediaAltSchema.optional(),
+      family: FontFamilyNameSchema.optional(),
+      weight: FontWeightSchema.optional(),
+      style: z.enum(['normal', 'italic']).optional(),
+      fallback: FontFallbackSchema.optional(),
+    });
     // ★ On the AGENT LANE — this is the route `import_image` calls, i.e. the one a clone runs thousands
     // of times. The AMPLIFIER concern that shaped `rl(20)` is real (a few hundred bytes of request makes
     // the server fetch and buffer up to MAX_UPLOAD_BYTES from a third party) — and it is answered by the
@@ -7466,9 +7544,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const parsed = ImportUrlBody.safeParse(req.body);
       if (!parsed.success) return reply.code(400).send({ error: 'invalid request' });
-      const { url } = parsed.data;
+      const { url, family, weight, style, fallback } = parsed.data;
       const folder = parsed.data.folder ?? '';
       const described = altField(parsed.data.alt);
+      const font: UploadFontMeta = {
+        ...(family !== undefined ? { family } : {}),
+        ...(weight !== undefined ? { weight } : {}),
+        ...(style !== undefined ? { style } : {}),
+        ...(fallback !== undefined ? { fallback } : {}),
+      };
       if (!/^https:\/\//i.test(url) || targetsPrivateHost(url)) {
         return reply.code(400).send({ error: 'only public https URLs can be imported' });
       }
@@ -7476,18 +7560,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // content-length pre-check AND a streaming backstop), so it keys off the URL's extension —
       // the content type is not known until the bytes arrive.
       //
-      // Playable media gets the same ceiling the LOCAL upload paths already allow. The store, the
-      // `video` media kind and the createVideoAsset branch below all accept it at that size; only
-      // this route's image-sized cap said otherwise, which made a site's video unreachable by URL
-      // while the identical file uploaded from disk was fine. Measured: an 83 MB source video
-      // 413'd here and imported cleanly through the upload ticket.
+      // Anything that is not an image or a font gets the same ceiling the LOCAL upload paths allow
+      // (isLargeImportPath). The store and the `video`/`file` kinds accept it at that size; only this
+      // route's image-sized cap said otherwise, which made a site's video unreachable by URL while the
+      // identical file uploaded from disk was fine. Measured: an 83 MB source video 413'd here and
+      // imported cleanly through the upload ticket. PDFs, archives and documents had the same gap.
       let importPath = '';
       try {
         importPath = new URL(url).pathname;
       } catch {
         /* a malformed URL falls through to the image cap and fails in the fetcher */
       }
-      const maxImportBytes = isVideoExt(importPath) ? MAX_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES;
+      const maxImportBytes = isLargeImportPath(importPath) ? MAX_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES;
 
       // The slot must span the BUFFER'S WHOLE LIFETIME — fetch AND store — because the payload
       // stays resident until the asset is written; gating only the fetch would leave the peak
@@ -7550,17 +7634,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // The pre-fetch cap was a GUESS from the URL's extension — the only signal available before
         // any bytes arrive. Now that the real Content-Type is known, re-hold the payload to the
         // ceiling that actually matches it, because the two signals can disagree and nothing else
-        // reconciles them: `photo.mp4` answered as `image/png` would otherwise keep the 200MB
-        // playable cap and then go through the full raster decode at 13x the image limit (sharp's
-        // 50MP guard does not bound BYTES). The same in reverse — arbitrary bytes behind a video-like
-        // extension must not be stored and served as `video/*` at 200MB.
+        // reconciles them: `photo.mp4` answered as `image/png` would otherwise keep the 200MB cap
+        // and then go through the full raster decode at 13x the image limit (sharp's 50MP guard does
+        // not bound BYTES). Fonts and SVG are held to their own, smaller caps where they are stored.
         const isPlayablePayload =
-          contentType.startsWith('video/') ||
-          contentType.startsWith('audio/') ||
-          // A real .mp4 is sometimes served as generic binary; the storage dispatch below already
-          // treats that as video, so allow the large ceiling — but only when the extension agrees.
-          (isVideoExt(importPath) && (contentType === 'application/octet-stream' || contentType === ''));
-        const settledCap = isPlayablePayload ? MAX_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES;
+          SINGLE_PLAYABLE_TYPE.test(contentType) ||
+          // A real .mp4 is sometimes served as generic binary — trust the extension only then.
+          // Arbitrary bytes behind a video-like name are stored as a download-only file instead, never
+          // served inline as `video/*`.
+          (isVideoExt(importPath) && contentType === 'application/octet-stream');
+        const settledCap = contentType.startsWith('image/') ? MAX_IMAGE_UPLOAD_BYTES : MAX_UPLOAD_BYTES;
         if (buffer.length > settledCap) {
           return reply.code(413).send({
             error:
@@ -7579,15 +7662,34 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         } catch {
           filename = 'download';
         }
+        const isImage = contentType.startsWith('image/');
+        // Sniffed only when the bytes came as a font or as generic binary: "true…" opens a TrueType file
+        // and also any text that starts with the word.
+        const fontFormat = !isSvg && !isImage && !isPlayablePayload && FONT_CARRIER_TYPE.test(contentType) ? detectFontFormat(buffer) : null;
+        // An extensionless URL (a CDN id, `…/download?id=7`) still needs one on the stored asset.
+        // `.bin` when the type is unknown: still a valid stored name, and the real type is kept.
+        if (!isImage && !isSvg && !/\.[A-Za-z0-9]{1,12}$/.test(filename)) {
+          filename = `${filename}.${fontFormat ?? EXT_FOR_CONTENT_TYPE.get(contentType) ?? 'bin'}`;
+        }
+        const meta = { filename, mimetype: contentType, folder, ...described };
         try {
-          // SVG → sanitized vector image (null if unusable). Other images → optimized raster. Else file.
+          // Same per-type storage as an upload: SVG → sanitized vector image (null if unusable), other
+          // images → optimized raster, a real font (by its magic bytes) → a usable font asset, playable
+          // video/audio → served inline, anything else → a download-only file.
+          if (fontFormat) {
+            // Without a family the font is named after its file, and a hashed name (`a34f9d1f-s.p.woff2`)
+            // is no valid family — that answered 400 where a download-only file used to be stored.
+            const named = font.family === undefined ? { ...font, family: familyFromStem(filename) } : font;
+            const stored = await storeUploadBuffer(ctx, project.slug, buffer, meta, named);
+            return stored.ok ? reply.code(201).send({ item: stored.item }) : reply.code(stored.status).send({ error: stored.error });
+          }
           const saved = isSvg
             ? await createSvgAsset(ctx, project.slug, buffer.toString('utf8'), { filename, folder, ...described })
-            : contentType.startsWith('image/')
-              ? await createMediaAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder, ...described })
-              : isVideoExt(filename) || contentType.startsWith('video/') || contentType.startsWith('audio/')
-                ? await createVideoAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder, ...described })
-                : await createFileAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder, ...described });
+            : isImage
+              ? await createMediaAsset(ctx, project.slug, buffer, meta)
+              : isPlayablePayload
+                ? await createVideoAsset(ctx, project.slug, buffer, meta)
+                : await createFileAsset(ctx, project.slug, buffer, meta);
           if (!saved) return reply.code(400).send({ error: 'invalid or unsafe SVG' });
           return reply.code(201).send({ item: saved });
         } catch (err) {
@@ -9098,9 +9200,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (!bytes) return reply.code(404).send({ error: 'not found' });
         return sendAssetBytes(req, reply, bytes, (r) => CORS(r).type('text/javascript; charset=utf-8'));
       }
-      if (asset.kind === 'video') {
+      // An extension outside our table plays inline only under ONE clean video/audio type. The stored type
+      // came from the upload or the remote server, and `video/x,text/html` renders as HTML; such an asset
+      // falls through to download-only below.
+      if (asset.kind === 'video' && (VIDEO_CONTENT_TYPES.has(ext) || SINGLE_PLAYABLE_TYPE.test(asset.contentType))) {
         // INLINE with its real type — a background video has to play, not download. nosniff still
-        // applies, and the type comes from our own extension table rather than the upload's claim.
+        // applies, and the type comes from our own extension table where it can.
         const bytes = await read();
         if (!bytes) return reply.code(404).send({ error: 'not found' });
         const type = VIDEO_CONTENT_TYPES.get(ext) ?? asset.contentType;
@@ -9130,13 +9235,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
         return sendAssetBytes(req, reply, bytes, (r) => CORS(r).header('accept-ranges', 'bytes').type(type));
       }
-      if (asset.kind === 'file') {
-        // ALWAYS download-only (octet-stream + attachment + nosniff) so an uploaded HTML/SVG/script can
+      if (asset.kind === 'file' || asset.kind === 'video') {
+        // A `video` here is one the inline branch above refused. ALWAYS download-only (octet-stream +
+        // attachment + nosniff) so an uploaded HTML/SVG/script can
         // never render/execute on this origin — EXCEPT a PDF, served inline + same-origin-frameable so a
         // cloned modal <iframe> can show it (browser's sandboxed viewer; nosniff + explicit type).
         const bytes = await read();
         if (!bytes) return reply.code(404).send({ error: 'not found' });
-        if (ext === 'pdf') {
+        if (asset.kind === 'file' && ext === 'pdf') {
           return sendAssetBytes(req, reply, bytes, (r) =>
             r
               .header('x-content-type-options', 'nosniff')

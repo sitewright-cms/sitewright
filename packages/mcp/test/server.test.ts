@@ -146,7 +146,7 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     importWebsite: vi.fn(async () => ({ ok: true, jobId: 'imp_1', status: 'running' })),
     importStatus: vi.fn(async () => ({ id: 'imp_1', url: 'https://x.test/', status: 'running', startedAt: Date.now() - 120_000, progress: ['crawl: 7 pages'] })),
     listMedia: vi.fn(async () => ({ items: [{ id: 'm1', kind: 'image', url: '/media/p/m1/x.webp', alt: '' }] })),
-    importImageUrl: vi.fn(async () => ({ id: 'm2', kind: 'image', url: '/media/p/m2/y.webp' })),
+    importMediaUrl: vi.fn(async () => ({ id: 'm2', kind: 'image', url: '/media/p/m2/y.webp' })),
     createMediaUpload: vi.fn(async () => ({ uploadUrl: 'https://sw.test/media-upload/tok-1', expiresInSeconds: 600, maxBytes: 209715200 })),
     uploadMediaBase64: vi.fn(async () => ({ id: 'm3', kind: 'image', url: '/media/p/m3/icon.svg' })),
     createMediaReplace: vi.fn(async () => ({ uploadUrl: 'https://sw.test/media-upload/tok-2', expiresInSeconds: 600, maxBytes: 209715200 })),
@@ -574,7 +574,7 @@ describe('createSitewrightMcpServer — media tools', () => {
     const imp = await r.callTool({ name: 'import_image', arguments: { url: 'https://example.com/a.jpg' } });
     expect(imp.isError).toBe(true);
     expect(text(imp)).toMatch(/content:write/);
-    expect(callsOf(reader).importImageUrl).not.toHaveBeenCalled();
+    expect(callsOf(reader).importMediaUrl).not.toHaveBeenCalled();
   });
 
   it('import_image imports a public URL (folder forwarded) with a write token', async () => {
@@ -582,7 +582,23 @@ describe('createSitewrightMcpServer — media tools', () => {
     const w = await connect(writer, writeScope);
     const res = await w.callTool({ name: 'import_image', arguments: { url: 'https://example.com/a.jpg', folder: 'team' } });
     expect(res.isError).toBeFalsy();
-    expect(callsOf(writer).importImageUrl).toHaveBeenCalledWith('https://example.com/a.jpg', 'team', undefined);
+    expect(callsOf(writer).importMediaUrl).toHaveBeenCalledWith('https://example.com/a.jpg', { folder: 'team' });
+  });
+
+  it('import_media takes any file by URL — with the font metadata a font needs — and import_image is the same tool', async () => {
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    const res = await w.callTool({
+      name: 'import_media',
+      arguments: { url: 'https://example.com/inter-700.woff2', folder: 'Fonts', family: 'Inter', weight: 700 },
+    });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(writer).importMediaUrl).toHaveBeenCalledWith('https://example.com/inter-700.woff2', { folder: 'Fonts', family: 'Inter', weight: 700 });
+    await w.callTool({ name: 'import_image', arguments: { url: 'https://example.com/brochure.pdf' } });
+    expect(callsOf(writer).importMediaUrl).toHaveBeenLastCalledWith('https://example.com/brochure.pdf', {});
+    const tools = (await w.listTools()).tools;
+    expect(tools.find((t) => t.name === 'import_media')?.description).toMatch(/PDF/);
+    expect(tools.find((t) => t.name === 'import_image')?.description).toMatch(/Same tool as import_media/);
   });
 
   it('import_image carries the alt the asset is born with — held to the stored bound', async () => {
@@ -590,10 +606,10 @@ describe('createSitewrightMcpServer — media tools', () => {
     const w = await connect(writer, writeScope);
     const res = await w.callTool({ name: 'import_image', arguments: { url: 'https://example.com/a.jpg', alt: 'Fishing boats at dusk' } });
     expect(res.isError).toBeFalsy();
-    expect(callsOf(writer).importImageUrl).toHaveBeenCalledWith('https://example.com/a.jpg', undefined, 'Fishing boats at dusk');
+    expect(callsOf(writer).importMediaUrl).toHaveBeenCalledWith('https://example.com/a.jpg', { alt: 'Fishing boats at dusk' });
     const tooLong = await w.callTool({ name: 'import_image', arguments: { url: 'https://example.com/b.jpg', alt: 'x'.repeat(501) } });
     expect(tooLong.isError).toBe(true);
-    expect(callsOf(writer).importImageUrl).toHaveBeenCalledTimes(1);
+    expect(callsOf(writer).importMediaUrl).toHaveBeenCalledTimes(1);
   });
 
   it('create_media_upload mints a one-shot URL for a LOCAL file, gated on content:write', async () => {

@@ -524,12 +524,19 @@ media url in \`source\`:
   explain a gap: openverse is always on; unsplash / pexels / pixabay need a key). Pass each
   hit's OWN \`provider\` back to import_stock_image with its id (downloaded, optimized, attributed);
   \`hasMore\` says whether page+1 is worth fetching.
-- BY URL: import_image with a public https image URL (downloaded + optimized, follows redirects).
+- BY URL: import_media with a public https URL (downloaded + optimized, follows redirects). It takes ANY
+  file the File Manager takes, not just images — see VIDEO / AUDIO / PDF / FONT FROM A URL below.
 - FROM YOUR OWN DISK, SMALL (<=256KB — an SVG logo, an icon, a favicon): upload_media with the bytes
   inline as base64 ({ filename, content_base64, folder? }). One call, no shell needed.
 - FROM YOUR OWN DISK, LARGER: create_media_upload → a one-shot uploadUrl you send the file to yourself
   (curl -T ./photo.jpg "<uploadUrl>?filename=photo.jpg"). Two steps because past ~256KB the bytes must
   NOT travel through the conversation — as base64 a 1MB image is ~370k tokens. Always pass ?filename=.
+  ★ CANNOT REACH the uploadUrl from where you run commands (a sandbox that only reaches allowlisted
+  domains — claude.ai's code execution refuses the instance's host while every tool call still works)?
+  Do NOT retry and do NOT hotlink: follow the ticket's \`ifUnreachable\` — a file up to 256KB goes inline
+  with upload_media; anything bigger, ask the user to upload it in THIS project's File Manager (it names
+  the project) and tell you when done, then find it with list_media. A file at a public URL needs no
+  upload at all: import_media.
   Each ticket is single-use and expires in 10 minutes. MANY FILES → ONE call: count:N (up to 50)
   returns tickets:[{ uploadUrl, alt? }] — send file i to tickets[i]; add alts:[…] (one per ticket, in
   order) and every asset is born with its alt. Redeeming is capped at 60 PUTs a minute per IP (a 429
@@ -557,15 +564,18 @@ project with an image cap an oversized photo would be re-encoded to WebP and is 
 first), and a font cannot be replaced. The old bytes go to the Recycle Bin, so it is undoable. READ
 the receipt's \`previous\`: a replacement with a different aspect ratio reflows every page using it.
 
-VIDEO / AUDIO / PDF FROM A URL — self-host it too, and expect TWO steps. import_image is the only
-URL-based import: it takes an image up to 15MB and a playable video/audio URL up to 200MB, and
-answers 413 for anything larger. A 413 is NOT a dead end and NOT a reason to hotlink — download the
-file yourself and push it through create_media_upload (one-shot ticket, 200MB), then reference the
-returned /media url. Store it as a REAL player (<video controls poster="…" data-src="/media/…">, per
-the lazy rules above), never as a link to the source site: a hotlinked asset dies the moment the
-original changes, and a clone that points at the site it copied is not self-contained. A real clone
-job hit exactly this — an 83MB source video 413'd, the agent left an <a href> to the original, and
-the same file uploaded through the ticket without complaint.
+VIDEO / AUDIO / PDF / FONT FROM A URL — self-host it too: import_media takes it directly. It stores the
+file exactly as an upload would — an image optimized (up to 15MB), an SVG sanitized, a font as a usable
+font (pass family/weight/style/fallback, else it is named after the file at 400), a video or audio track
+served playable, a PDF, document or archive as a download (each up to 200MB when the URL names its
+extension — .mp4, .pdf, .zip…; a URL with NO extension is held to 15MB, though it still gets the right
+extension from its type). A 413 is NOT a dead end and NOT a reason to hotlink —
+download the file yourself and push it through create_media_upload (one-shot ticket, 200MB), then
+reference the returned /media url. Store a video as a REAL player (<video controls poster="…"
+data-src="/media/…">, per the lazy rules above), never as a link to the source site: a hotlinked asset
+dies the moment the original changes, and a clone that points at the site it copied is not
+self-contained. A real clone job hit exactly this — an 83MB source video 413'd, the agent left an
+<a href> to the original, and the same file uploaded through the ticket without complaint.
 
 ORGANIZE — keep the media library tidy with virtual folders (grouping labels only; the asset url
 never changes when you move it). list_media_folders to see what exists; create_media_folder to make
@@ -1654,7 +1664,7 @@ PORT CHECKLIST (per page — preserve the layout at every step):
 7. IMAGES: the importer now RELIABLY self-hosts ALL external images (retrying across multiple IPs + a real
    browser UA), so every imported \`<img>\` ALREADY points at a self-hosted \`/media/...\` URL — including SVG
    logos/illustrations (kept as sanitized, still-animated VECTORS, not rasterized). Keep those src values as
-   they are; NEVER hotlink an external URL. Only fill a genuine GAP the import missed with import_image (from a
+   they are; NEVER hotlink an external URL. Only fill a genuine GAP the import missed with import_media (from a
    public https URL — it downloads + self-hosts) or import_stock_image / search_stock_images (an oversize image
    may have been dropped). An SVG renders as a plain <img>/{{sw-image}} — it needs no size variants (it scales natively).
 8. ASSET FOLDERS: the import dumps every self-hosted file into a TRANSIENT \`imported/\` tree — REORGANIZE it
@@ -2316,8 +2326,9 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'list_revisions', description: "List a content entity's revision history (newest first: id, op, who, when).", capability: 'content:read' },
   { name: 'restore_revision', description: "Restore a content entity to an earlier revision (non-destructive; recreates a deleted entity).", capability: 'content:write' },
   { name: 'import_stock_image', description: "Import a stock photo into the project (downloaded, optimized, self-hosted with attribution).", capability: 'content:write' },
-  { name: 'import_image', description: "Import an image into the project from a public https URL (downloaded, optimized, self-hosted). The ONLY URL-based import: images up to 15MB, playable video/audio URLs up to 200MB. A 413 is not a dead end — download the file and use create_media_upload. Never leave an asset hotlinked because an import failed.", capability: 'content:write' },
-  { name: 'create_media_upload', description: "Upload LARGE local files (on YOUR disk): returns one-shot uploadUrls to send the files to yourself (curl -T), so the bytes never enter the conversation. `count` mints up to 50 tickets in one call; `alt` (one file) or `alts` (one per ticket) set alt text; family/weight/style/fallback describe a font. Use import_image when the file is already at a public URL; upload_media for something small.", capability: 'content:write' },
+  { name: 'import_media', description: "Import ANY file from a public https URL into the media library — the server downloads and self-hosts it and stores it as an upload would: images optimized (15MB), SVG sanitized, fonts usable (family/weight/style/fallback), video/audio playable, PDFs, documents and archives as downloads (200MB when the URL names the extension; 15MB without one). A 413 is not a dead end — download the file and use create_media_upload. Never leave an asset hotlinked because an import failed.", capability: 'content:write' },
+  { name: 'import_image', description: "Same tool as import_media, under its original name (any file by public https URL, self-hosted). Prefer import_media.", capability: 'content:write' },
+  { name: 'create_media_upload', description: "Upload LARGE local files (on YOUR disk): returns one-shot uploadUrls to send the files to yourself (curl -T), so the bytes never enter the conversation. `count` mints up to 50 tickets in one call; `alt` (one file) or `alts` (one per ticket) set alt text; family/weight/style/fallback describe a font. Use import_media when the file is already at a public URL; upload_media for something small. If the uploadUrl is unreachable from your sandbox, follow the ticket's ifUnreachable (the user uploads in the project's File Manager).", capability: 'content:write' },
   { name: 'upload_media', description: "Upload a SMALL local file (<=256KB) by sending its bytes inline as base64 — one call, no shell; takes the same alt and font metadata as create_media_upload. Anything bigger: create_media_upload.", capability: 'content:write' },
   { name: 'replace_media', description: "REPLACE an existing asset's bytes IN PLACE (<=256KB inline base64), keeping its id and URL — so every page, entry and chrome slot pointing at it shows the new file with nothing to repoint. Use this for \"swap this logo/photo/PDF\", NOT a fresh upload (which mints a new id and leaves every reference behind). Same extension only; fonts cannot be replaced. The old bytes go to the Recycle Bin; the receipt's `previous` shows whether the aspect ratio changed. Anything bigger: create_media_replace.", capability: 'content:write' },
   { name: 'create_media_replace', description: "Replace a LARGE local file in place: returns a one-shot uploadUrl, pinned to that asset, which you send the file to yourself (curl -T). The ticket lane for replace_media.", capability: 'content:write' },

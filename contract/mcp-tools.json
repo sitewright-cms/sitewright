@@ -179,6 +179,12 @@
     ]
   },
   {
+    "name": "import_media",
+    "required": [
+      "url"
+    ]
+  },
+  {
     "name": "import_status",
     "required": [
       "jobId"

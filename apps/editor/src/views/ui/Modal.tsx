@@ -127,7 +127,7 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
   // ignored there, because "how wide" has one answer on a phone.
   const isMobile = useIsMobile();
   // Local visibility drives the exit animation: a confirmed close flips this to false, the
-  // panel plays its fade-out-up (rises toward the top), and AnimatePresence's onExitComplete then
+  // panel plays its fade-out-up (rises toward the top), and the end of that exit (notifyClosed below)
   // calls the parent's onClose (which unmounts us). So callers keep the simple
   // `{open && <Modal onClose=…/>}` shape.
   const [visible, setVisible] = useState(true);
@@ -160,6 +160,18 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
   // listener (briefly unregistering ⌘S between renders).
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  // ★ Tell the parent the moment the panel's EXIT animation ends, not when AnimatePresence gets round
+  // to it. Since motion 14.6, onExitComplete fires from a passive-effect cleanup AFTER the commit that
+  // removed the panel, so for a moment the modal was gone from the page while the parent still had it
+  // open: a reopen in that window ("Open the project selector") set `open` to true — a no-op — and the
+  // late onExitComplete then closed it again. The panel's own completion lands in the same update as the
+  // DOM removal. onExitComplete stays as the fallback; `notified` makes sure the parent hears it once.
+  const notified = useRef(false);
+  const notifyClosed = () => {
+    if (notified.current) return;
+    notified.current = true;
+    onCloseRef.current();
+  };
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
   const saveDisabledRef = useRef(saveDisabled);
@@ -273,7 +285,7 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
   return createPortal(
     // When `visible` flips false the panel/back-drop play their exit, then onExitComplete →
     // the parent's onClose (which unmounts this Modal).
-    <AnimatePresence onExitComplete={() => onCloseRef.current()}>
+    <AnimatePresence onExitComplete={notifyClosed}>
       {visible && (
         <div
           // Gutters (px/pb) keep the panel clear of the screen edges so the side-panel tabs peek
@@ -309,6 +321,11 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
             aria-modal="true"
             aria-labelledby={titleId}
             tabIndex={-1}
+            // The exit target is the only one at opacity 0 (the entrance ends at 1), so this is the exit
+            // finishing — the parent can unmount us now. See notifyClosed.
+            onAnimationComplete={(target) => {
+              if (typeof target === 'object' && target !== null && 'opacity' in target && target.opacity === 0) notifyClosed();
+            }}
             // A card DROPS in from above and rises back out; a bottom sheet must do the opposite, or it
             // reads as the panel falling through the bottom of the screen on the way in.
             initial={reduce ? { opacity: 0 } : { opacity: 0, y: isMobile ? 24 : -24 }}

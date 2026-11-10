@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { Modal } from '../src/views/ui/Modal';
 
 describe('Modal', () => {
@@ -13,7 +14,7 @@ describe('Modal', () => {
     expect(screen.getByText('Body content')).toBeInTheDocument();
   });
 
-  // onClose fires after the exit animation (AnimatePresence.onExitComplete), so each path is
+  // onClose fires when the exit animation ends (Modal.notifyClosed), so each path is
   // checked on its own instance with waitFor.
   it('closes (after the exit animation) on the Close button', async () => {
     const onClose = vi.fn();
@@ -24,6 +25,45 @@ describe('Modal', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  // ★ Since motion 14.6, AnimatePresence fires onExitComplete one passive-effect flush AFTER the panel
+  // left the DOM. A parent that reopened in that gap (App's "Open the project selector") had its reopen
+  // undone by the late close — App.test flaked 1 in 4. The parent must already know when the panel goes.
+  it('can be reopened the moment its panel has left the page, and tells the parent only once', async () => {
+    const onClose = vi.fn();
+    function Parent() {
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Reopen
+          </button>
+          {open && (
+            <Modal
+              title="X"
+              onClose={() => {
+                onClose();
+                setOpen(false);
+              }}
+            >
+              <p>hi</p>
+            </Modal>
+          )}
+        </>
+      );
+    }
+    for (let round = 0; round < 12; round++) {
+      render(<Parent />);
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      fireEvent.click(screen.getByRole('button', { name: 'Reopen' }));
+      expect(await screen.findByRole('dialog', { name: 'X' }), `round ${round}`).toBeInTheDocument();
+      await new Promise((r) => setTimeout(r, 50)); // the AnimatePresence fallback has run by now
+      expect(screen.getByRole('dialog', { name: 'X' }), `round ${round}: a late close undid the reopen`).toBeInTheDocument();
+      cleanup();
+    }
+    expect(onClose).toHaveBeenCalledTimes(12);
   });
 
   it('closes on Escape', async () => {

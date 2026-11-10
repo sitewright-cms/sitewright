@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.79.0] — 2026-11-10
+
 ### Added
 
 - **Agents can import any file by URL: `import_media`.** It takes every file the File Manager takes and stores
@@ -6497,7 +6499,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.78.1...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.79.0...HEAD
+[0.79.0]: https://github.com/sitewright-cms/sitewright/compare/v0.78.1...v0.79.0
 [0.78.1]: https://github.com/sitewright-cms/sitewright/compare/v0.78.0...v0.78.1
 [0.78.0]: https://github.com/sitewright-cms/sitewright/compare/v0.77.0...v0.78.0
 [0.77.0]: https://github.com/sitewright-cms/sitewright/compare/v0.76.1...v0.77.0

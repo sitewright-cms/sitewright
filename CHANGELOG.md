@@ -49,6 +49,11 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **A dialog reopened right after it closed stays open.** Since the animation library update in 0.78.1, a
+  closing dialog told the editor it was gone one step after it left the screen. Reopening it in that moment
+  (for example "Open the project selector" right after closing the selector) was undone by the late close.
+  Every editor dialog now reports its close in the same update that removes it. This also made one editor
+  test fail about one run in four.
 - **The Forms tab works on a phone.** Measured at 390px wide:
   - **Form rows:** they wrap instead of running off the screen. Before, a form's Show submissions and Delete
     buttons sat past the right edge, so its inbox could not be opened from a phone, and a long name broke one

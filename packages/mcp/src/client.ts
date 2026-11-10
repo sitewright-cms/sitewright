@@ -374,9 +374,21 @@ export interface UploadTicketOptions extends UploadDescription {
  * already reads), or `tickets` for a batch, each with the alt it will stamp on its file. A batch has
  * no top-level url on purpose, so there is no "the" ticket to send every file to.
  */
-export type UploadTicketGrant =
+export type UploadTicketGrant = (
   | { uploadUrl: string; alt?: string; expiresInSeconds: number; maxBytes: number }
-  | { tickets: Array<{ uploadUrl: string; alt?: string }>; expiresInSeconds: number; maxBytes: number };
+  | { tickets: Array<{ uploadUrl: string; alt?: string }>; expiresInSeconds: number; maxBytes: number }
+) & UnreachableFallback;
+
+/** What the agent does when it cannot reach the ticket URL at all — see {@link unreachableUploadHint}. */
+export interface UnreachableFallback {
+  ifUnreachable: string;
+}
+
+/** URL import's optional extras: where it is filed, its alt, and what a font file IS. */
+export interface ImportMediaOptions extends FontMetadata {
+  folder?: string;
+  alt?: string;
+}
 
 /** A PATCH to one media asset: move, rename, describe, or correct a font's metadata. */
 export interface MediaUpdate extends FontMetadata {
@@ -1323,13 +1335,23 @@ export class SitewrightClient {
     );
   }
 
-  /** Import a PUBLIC url into the media library — optionally filed under `folder` and described by `alt`. */
-  async importImageUrl(url: string, folder?: string, alt?: string): Promise<unknown> {
+  /**
+   * Import a PUBLIC url into the media library — any file the File Manager takes (an image, SVG, font,
+   * video, audio, PDF, document, archive), optionally filed under `folder`, described by `alt`, and for a
+   * font named by its family/weight/style/fallback.
+   */
+  async importMediaUrl(url: string, opts: ImportMediaOptions = {}): Promise<unknown> {
+    const { folder, alt, ...font } = opts;
     const res = await this.request<{ item: unknown }>(
       'POST',
       this.projectPath('/media/import-url'),
       // An empty alt is not sent: the server would store the asset undescribed either way.
-      { url, ...(folder ? { folder } : {}), ...(alt ? { alt } : {}) },
+      {
+        url,
+        ...(folder ? { folder } : {}),
+        ...(alt ? { alt } : {}),
+        ...Object.fromEntries(Object.entries(font).filter(([, v]) => v !== undefined)),
+      },
     );
     return res.item;
   }
@@ -1337,16 +1359,19 @@ export class SitewrightClient {
   /**
    * Mint an UPLOAD TICKET and return it with an ABSOLUTE url the agent can curl.
    *
-   * The absolute form is built from this client's own `baseUrl` — the address MCP is already talking
-   * to, so it is reachable from wherever the agent runs by definition. Deriving it from the server's
-   * configured public URL instead would be wrong exactly when it matters (a LAN instance, a tunnel, a
-   * container talking to a host port).
+   * The absolute form is built from this client's own address (the hosted endpoint absolutizes it
+   * with the request's public origin). Deriving it from the server's configured public URL instead
+   * would be wrong exactly when it matters (a LAN instance, a tunnel, a container talking to a host
+   * port). It is still not reachable from EVERYWHERE the agent runs — see {@link unreachableUploadHint}.
    */
   async createMediaUpload(folder?: string, opts: UploadTicketOptions = {}): Promise<UploadTicketGrant> {
     const minted = await this.mintUploadTickets({ ...(folder ? { folder } : {}), ...opts });
-    const { tickets, expiresInSeconds, maxBytes } = minted;
+    const { tickets, expiresInSeconds, maxBytes, projectName } = minted;
+    const ifUnreachable = this.unreachableUploadHint({ projectName, folder, files: tickets.length });
     // A single ticket echoes its alt exactly as a batch ticket does, so the agent sees what it will stamp.
-    return tickets.length === 1 ? { ...tickets[0]!, expiresInSeconds, maxBytes } : minted;
+    return tickets.length === 1
+      ? { ...tickets[0]!, expiresInSeconds, maxBytes, ifUnreachable }
+      : { tickets, expiresInSeconds, maxBytes, ifUnreachable };
   }
 
   /**
@@ -1354,8 +1379,57 @@ export class SitewrightClient {
    * a new asset. Same mechanism, one more dimension pinned at mint time — the holder still chooses
    * only the bytes, and cannot re-point the ticket at another asset.
    */
-  async createMediaReplace(assetId: string): Promise<{ uploadUrl: string; expiresInSeconds: number; maxBytes: number }> {
-    return this.mintOneTicket({ replaceAssetId: assetId });
+  async createMediaReplace(
+    assetId: string,
+  ): Promise<{ uploadUrl: string; expiresInSeconds: number; maxBytes: number } & UnreachableFallback> {
+    const minted = await this.mintUploadTickets({ replaceAssetId: assetId });
+    return {
+      uploadUrl: minted.tickets[0]!.uploadUrl,
+      expiresInSeconds: minted.expiresInSeconds,
+      maxBytes: minted.maxBytes,
+      ifUnreachable: this.unreachableUploadHint({ projectName: minted.projectName, replaceFilename: minted.replaceFilename ?? assetId }),
+    };
+  }
+
+  /**
+   * The way round a ticket URL the agent CANNOT REACH. Tool calls and uploads can leave from different
+   * places: claude.ai calls this MCP from Anthropic's servers, but its code sandbox — where a `curl -T`
+   * runs — only reaches allowlisted domains, so the upload is refused while every tool call works. An
+   * agent left to itself retries, or hotlinks the original. Instead: the inline lane for a small file,
+   * and for anything bigger the user puts the file in THIS project's File Manager themselves.
+   */
+  private unreachableUploadHint(o: { projectName?: string; folder?: string; files?: number; replaceFilename?: string }): string {
+    let host = 'this Sitewright instance';
+    try {
+      if (this.publicOrigin) host = new URL(this.publicOrigin).host;
+    } catch {
+      /* keep the generic name */
+    }
+    // These names reach the agent inside an instruction, and a replaced file's name can come from a
+    // scraped site: no quotes, control characters or line breaks, and a bounded length.
+    const clean = (v: string): string =>
+      [...v]
+        .map((c) => (c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f || '"`\u201c\u201d'.includes(c) ? ' ' : c))
+        .join('')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 80);
+    const project = o.projectName && clean(o.projectName) ? `the project "${clean(o.projectName)}"` : 'this project';
+    const kb = Math.round(MCP_INLINE_UPLOAD_MAX_BYTES / 1024);
+    const ask =
+      o.replaceFilename !== undefined
+        ? `A replacement up to ${kb} KB can go inline with replace_media instead. For a bigger one, ask the user to open the ` +
+          `File Manager of ${project} in the Sitewright editor and use "Replace file" on "${clean(o.replaceFilename)}", and to tell ` +
+          'you when it is done.'
+        : `A file up to ${kb} KB can go inline with upload_media instead. For anything bigger, ask the user to upload ` +
+          `${o.files !== undefined && o.files > 1 ? 'the files' : 'the file'} in the File Manager of ${project} in the ` +
+          `Sitewright editor${o.folder && clean(o.folder) ? ` (into the folder "${clean(o.folder)}")` : ''}, and to tell you when it is done; then ` +
+          'find them with list_media.';
+    return (
+      `If you cannot reach ${host} from where you run commands (for example claude.ai's code sandbox, which only ` +
+      `reaches allowlisted domains), do not retry the upload and do not hotlink the original. ${ask} Unused tickets ` +
+      `expire by themselves. The user can also allow ${host} in that sandbox's network settings.`
+    );
   }
 
   /** Mint exactly one ticket — the inline upload/replace paths, which send one file and no more. */
@@ -1364,22 +1438,30 @@ export class SitewrightClient {
     return { uploadUrl: tickets[0]!.uploadUrl, expiresInSeconds, maxBytes };
   }
 
-  private async mintUploadTickets(
-    body: Record<string, unknown>,
-  ): Promise<{ tickets: Array<{ uploadUrl: string; alt?: string }>; expiresInSeconds: number; maxBytes: number }> {
+  private async mintUploadTickets(body: Record<string, unknown>): Promise<{
+    tickets: Array<{ uploadUrl: string; alt?: string }>;
+    expiresInSeconds: number;
+    maxBytes: number;
+    projectName?: string;
+    replaceFilename?: string;
+  }> {
     const res = await this.request<{
       uploadPath?: string;
       tickets?: Array<{ uploadPath: string; alt?: string }>;
       expiresInSeconds: number;
       maxBytes: number;
+      projectName?: string;
+      replaceFilename?: string;
     }>('POST', this.projectPath('/media/upload-ticket'), body);
     // A server that predates batches answers with `uploadPath` alone (the retired stdio bridge can
-    // still be pointed at one).
+    // still be pointed at one), and one that predates the fallback names no project.
     const minted = res.tickets ?? [{ uploadPath: res.uploadPath ?? '' }];
     return {
       tickets: minted.map((t) => ({ uploadUrl: `${this.baseUrl}${t.uploadPath}`, ...(t.alt ? { alt: t.alt } : {}) })),
       expiresInSeconds: res.expiresInSeconds,
       maxBytes: res.maxBytes,
+      ...(res.projectName ? { projectName: res.projectName } : {}),
+      ...(res.replaceFilename ? { replaceFilename: res.replaceFilename } : {}),
     };
   }
 

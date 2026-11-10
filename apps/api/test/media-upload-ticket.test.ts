@@ -317,4 +317,16 @@ describe('media upload tickets — batches, alt text and font metadata', () => {
     expect((await mint(t, projectId, { replaceAssetId: asset.item.id, weight: 700 })).statusCode).toBe(400);
     expect((await mint(t, projectId, { replaceAssetId: asset.item.id })).statusCode).toBe(201);
   });
+
+  it('names the project — and for a replace, the file — so an agent that cannot reach the URL can send the user to them', async () => {
+    // claude.ai's code sandbox only reaches allowlisted domains: its curl to the ticket URL is refused
+    // while every tool call works. The MCP then tells the user to upload in THIS project's File Manager.
+    const { t, projectId } = await setup('names@e.test');
+    const grant = (await mint(t, projectId)).json() as { uploadPath: string; projectName?: string; replaceFilename?: string };
+    expect(grant.projectName).toBe('Site');
+    expect(grant.replaceFilename).toBeUndefined();
+    const asset = (await redeem(grant.uploadPath, 'hero.png', PNG_1X1)).json() as { item: { id: string; filename: string } };
+    const replace = (await mint(t, projectId, { replaceAssetId: asset.item.id })).json() as { projectName?: string; replaceFilename?: string };
+    expect(replace).toMatchObject({ projectName: 'Site', replaceFilename: asset.item.filename });
+  });
 });

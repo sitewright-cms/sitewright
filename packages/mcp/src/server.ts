@@ -47,7 +47,7 @@ import {
 } from '@sitewright/schema';
 import { searchIcons, searchTextures, textureCss, scopeHtml, parseSelector } from '@sitewright/blocks';
 import { deployProject } from './deploy.js';
-import { SitewrightApiError, isMemberScope, MCP_INLINE_UPLOAD_MAX_BYTES, MCP_INLINE_UPLOAD_MAX_B64_CHARS, type AccountCapability, type Capability, type Scope, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView, type PagespeedAuditResult, type PagespeedAuditPair, type PagespeedMainThread, type TextEdit, type MediaUpdate } from './client.js';
+import { SitewrightApiError, isMemberScope, MCP_INLINE_UPLOAD_MAX_BYTES, MCP_INLINE_UPLOAD_MAX_B64_CHARS, type AccountCapability, type Capability, type Scope, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView, type PagespeedAuditResult, type PagespeedAuditPair, type PagespeedMainThread, type TextEdit, type MediaUpdate, type ImportMediaOptions } from './client.js';
 import { searchGoogleFonts, resolveGoogleFamily, suggestGoogleFamilies } from './google-fonts.js';
 import { captureImageBlocks, captureSummary } from './preview-captures.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
@@ -2250,18 +2250,34 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     ),
   );
 
+  // URL import: the server downloads the file, so the bytes never pass through the agent at all — the
+  // one media path that works from ANY sandbox, as long as the file sits at a public URL.
+  const importMediaInput = {
+    url: z.string().url().max(2048),
+    folder: z.string().max(1024).optional(),
+    alt: MediaAltSchema.optional().describe('Alt text the stored asset is born with — describe the picture, so a gallery never ships alt="".'),
+    ...FONT_METADATA_INPUT,
+  };
+  const importMedia = gate('content:write', ({ url, ...opts }: { url: string } & ImportMediaOptions) => client.importMediaUrl(url, opts));
+  server.registerTool(
+    'import_media',
+    {
+      description:
+        'Import ANY file into the project media library from a PUBLIC https URL — the server downloads and self-hosts it (never a hotlink) and returns the stored asset (use its `url` in your markup). It takes every file the File Manager takes and stores it the same way an upload would: an image is optimized (up to 15MB), an SVG is sanitized, a font becomes a usable font (give family/weight/style/fallback, else the filename stem at 400), a video or audio track is served playable, and a PDF, document or archive is a download (each up to 200MB when the URL ends in its extension — .mp4, .pdf, .zip; a URL with no extension is held to 15MB). For STOCK photos use search_stock_images + import_stock_image instead. Anything over its cap answers 413 — that is not a dead end: download the file yourself and send it through create_media_upload. NEVER leave a remote asset hotlinked because an import failed; a hotlinked file breaks when the source site changes.',
+      inputSchema: importMediaInput,
+    },
+    importMedia,
+  );
+  // The original name, kept for the prompts and workflows that call it. It is not deprecated: it
+  // simply grew into import_media, and an old prompt importing a PDF now gets the PDF.
   server.registerTool(
     'import_image',
     {
       description:
-        'Import an image into the project from a PUBLIC https URL — the server downloads, optimizes, and self-hosts it (never a hotlink), returning the stored asset (use its `url` in your <img src>). For STOCK photos use search_stock_images + import_stock_image instead. This is the ONLY URL-based import, and it holds an IMAGE to 15MB; a playable video/audio URL (.mp4/.webm/.mov/.m4a…) is allowed up to 200MB. Anything else over the cap answers 413 — that is not a dead end: download the file yourself and send it through create_media_upload (one-shot ticket, up to 200MB). NEVER leave a remote asset hotlinked because an import failed; a hotlinked file breaks when the source site changes.',
-      inputSchema: {
-        url: z.string().url().max(2048),
-        folder: z.string().max(1024).optional(),
-        alt: MediaAltSchema.optional().describe('Alt text the stored asset is born with — describe the picture, so a gallery never ships alt="".'),
-      },
+        'Same tool as import_media (kept under its original name): import any image, SVG, font, video, audio, PDF or other file from a PUBLIC https URL into the media library — self-hosted, never a hotlink. Prefer import_media.',
+      inputSchema: importMediaInput,
     },
-    gate('content:write', ({ url, folder, alt }) => client.importImageUrl(url, folder, alt)),
+    importMedia,
   );
 
   // Upload a LOCAL file. The only media path that does not require the bytes to already be reachable
@@ -2274,7 +2290,8 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         'MANY FILES: pass `count` (up to 50) to get that many tickets in ONE call, as `tickets: [{ uploadUrl, alt? }]` — send one file to each. ' +
         'ALT TEXT: `alt` describes the single file of a 1-ticket call; for a batch pass `alts` (one per ticket, in order — each ticket echoes the alt it will stamp, so send the matching file to it). A `{{#sw-folder}}` gallery binds each asset\'s alt, so describe photos here or later with set_media_alt. ' +
         'FONTS: `family`/`weight`/`style`/`fallback` say what a font file IS (otherwise it is recorded as the filename stem at weight 400); they apply to every ticket of the call and only when the file is a font — mint separately per weight. ' +
-        'Each ticket is single-use and expires after 10 minutes (see expiresInSeconds). A project holds at most 200 unused tickets and an unused one cannot be handed back — it holds its slot until it expires — so mint only what you are about to upload. Redeeming is limited to 60 PUTs a minute (a 429 there leaves the ticket unspent — wait and retry). It is deliberately not a single tool call: the bytes would have to pass through this conversation as base64, which for a 1MB image is roughly 370k tokens.',
+        'Each ticket is single-use and expires after 10 minutes (see expiresInSeconds). A project holds at most 200 unused tickets and an unused one cannot be handed back — it holds its slot until it expires — so mint only what you are about to upload. Redeeming is limited to 60 PUTs a minute (a 429 there leaves the ticket unspent — wait and retry). It is deliberately not a single tool call: the bytes would have to pass through this conversation as base64, which for a 1MB image is roughly 370k tokens. ' +
+        'CANNOT REACH THE uploadUrl from where you run commands (a sandbox that only reaches allowlisted domains, such as claude.ai\'s code execution)? Do not retry and do not hotlink: the response\'s `ifUnreachable` says what to do — a small file inline with upload_media, anything bigger uploaded by the user in this project\'s File Manager.',
       inputSchema: {
         folder: z.string().max(1024).optional(),
         count: z.number().int().min(1).max(50).optional().describe('How many single-use tickets to mint (default 1; the length of `alts` when given).'),
@@ -2329,7 +2346,8 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'create_media_replace',
     {
       description:
-        'REPLACE a LARGE local file in place (the ticket lane for replace_media — a photo, a video, a PDF). TWO STEPS: (1) call this with the asset `id` to get a one-shot `uploadUrl`, (2) send the file to it yourself, e.g. `curl -T ./hero.jpg "<uploadUrl>?filename=hero.jpg"` — always pass ?filename=, since a raw upload carries no name and the extension is checked against the asset it replaces. The response of THAT request is the receipt ({ item, previous, snapshotId }); read `previous` to see whether the aspect ratio changed. The ticket is single-use, expires (see expiresInSeconds) and is pinned to THIS asset, so mint one per replacement immediately before sending it. Same rules as replace_media: the extension cannot change, and a font cannot be replaced.',
+        'REPLACE a LARGE local file in place (the ticket lane for replace_media — a photo, a video, a PDF). TWO STEPS: (1) call this with the asset `id` to get a one-shot `uploadUrl`, (2) send the file to it yourself, e.g. `curl -T ./hero.jpg "<uploadUrl>?filename=hero.jpg"` — always pass ?filename=, since a raw upload carries no name and the extension is checked against the asset it replaces. The response of THAT request is the receipt ({ item, previous, snapshotId }); read `previous` to see whether the aspect ratio changed. The ticket is single-use, expires (see expiresInSeconds) and is pinned to THIS asset, so mint one per replacement immediately before sending it. Same rules as replace_media: the extension cannot change, and a font cannot be replaced. ' +
+        'CANNOT REACH THE uploadUrl from where you run commands? Do not retry: the response\'s `ifUnreachable` says what to do — a small file inline with replace_media, anything bigger replaced by the user with "Replace file" in this project\'s File Manager.',
       inputSchema: { id: z.string().describe('Asset id whose bytes this ticket will overwrite.') },
     },
     gate('content:write', ({ id }) => client.createMediaReplace(id)),

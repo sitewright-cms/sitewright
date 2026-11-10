@@ -45,6 +45,21 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Changed
 
+- **A cold full-site preview builds about twice as fast.** Measured on a copy of a 1,085-page project with
+  7,692 images, in a 768 MB container: 16–22 s → 9 s with its thumbnails cached, and 31–32 s → 12 s when 339 of
+  them had to be encoded. Every one of the preview's 11,271 files is byte-identical to before. No extra workers:
+  the build stopped doing per-page work it only needed once, and stopped waiting on one thing at a time.
+  - **Media list and page lookups are built once per build, not once per page.** Every page rebuilt a list of
+    all 7,859 media items and an index over it, and the page map for its translations and parents.
+  - **Files are copied by the operating system, several at a time,** instead of one by one through memory: a
+    reflink on a copy-on-write disk. This covers the project's documents, videos and fonts (2.6 s → 0.3 s) and
+    its cached thumbnails.
+  - **Pages are written while the next pages render,** instead of each render waiting for the disk.
+  - **Images are processed while the pages render,** not after the last one, and a build encodes several images
+    at once when there is free memory for them. Admission counts what the build itself already uses, so a
+    small container takes fewer at a time; one always runs, so a build is never slower than before. Public
+    thumbnail requests keep their own limit of three at a time.
+  - Node's file and image thread pool is sized to the machine (4 to 16 threads) instead of always 4.
 - **The OAuth "Approved" page is three buttons.** After a client (Claude Code, the CLI, an MCP client) is
   approved:
   - **"Continue to <callback host>"** is a full-width gradient button that follows the callback.

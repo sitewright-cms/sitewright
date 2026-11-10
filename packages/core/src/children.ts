@@ -1,5 +1,5 @@
 import { isLinkPage, type JsonValue, type Page } from '@sitewright/schema';
-import { pagePath, pagesById } from './routes.js';
+import { pageIndex, pagePath } from './routes.js';
 import { byNavOrder, plainNavLabel } from './nav.js';
 import { localeOf } from './i18n.js';
 
@@ -157,7 +157,7 @@ export interface ParentPageView {
  */
 export function parentPageView(pages: readonly Page[], page: Page, defaultLocale: string): ParentPageView | undefined {
   if (!page.parent) return undefined;
-  const byId = pagesById(pages);
+  const byId = pageIndex(pages);
   const parent = byId.get(page.parent);
   // A nav PLACEHOLDER (kind:'link', path:'') is grouping/menu chrome, not a real page — it has no
   // route or content, so it's not a meaningful `page.parent` (its view would be a degenerate empty
@@ -197,7 +197,7 @@ export function childrenOf(pages: readonly Page[], page: Page, defaultLocale: st
 export function childrenView(pages: readonly Page[], page: Page, defaultLocale: string, limits?: ChildrenLimits): ChildrenView {
   const budget = Math.max(0, Math.min(limits?.maxBytes ?? MAX_PAGE_CHILDREN_BYTES, MAX_PAGE_CHILDREN_BYTES));
   const atLeastOne = limits?.atLeastOne ?? true;
-  const byId = pagesById(pages);
+  const byId = pageIndex(pages);
   const pageLocale = localeOf(page, defaultLocale);
   const listable = pages
     // `page.children` is a CONTENT listing (title/description/image/data) — exclude nav PLACEHOLDERS

@@ -10,6 +10,8 @@ import {
   resolveThumbForHead,
   rebaseMediaHeadUrl,
   materializeImageThumbs,
+  ThumbMaterializer,
+  encodeEstimateBytes,
   type ThumbRefs,
 } from '../src/publish/media-thumbs.js';
 
@@ -348,5 +350,140 @@ describe('materializeImageThumbs', () => {
       throw Object.assign(new Error('missing'), { code: 'ENOENT' });
     }, idAlias);
     expect(existsSync(join(dir, '_assets', 'a2-q-xl.webp'))).toBe(false);
+  });
+});
+
+describe('ThumbMaterializer — incremental, parallel, by path', () => {
+  let png: Buffer = Buffer.alloc(0);
+  const roots: string[] = [];
+  const image = (id: string): MediaAsset => ({
+    kind: 'image',
+    id,
+    filename: `${id}.png`,
+    folder: '',
+    bytes: 100,
+    format: 'png',
+    width: 100,
+    height: 80,
+    hasAlpha: false,
+    animated: false,
+    original: `${id}.png`,
+    url: `/media/x/${id}/${id}.png`,
+  });
+  const media = ['a1', 'a2', 'a3', 'a4'].map(image);
+  const listing = async (root: string): Promise<Record<string, string>> => {
+    const { readdir } = await import('node:fs/promises');
+    const { createHash } = await import('node:crypto');
+    const out: Record<string, string> = {};
+    for (const f of (await readdir(join(root, '_assets'))).sort()) {
+      out[f] = createHash('sha256').update(await readFile(join(root, '_assets', f))).digest('hex');
+    }
+    return out;
+  };
+  beforeAll(async () => {
+    png = await renderTrustedSvgToPng('<svg xmlns="http://www.w3.org/2000/svg" width="100" height="80"><rect width="100" height="80" fill="#a07"/></svg>', 100, 80);
+  });
+  afterAll(async () => {
+    for (const r of roots) await rm(r, { recursive: true, force: true });
+  });
+
+  it('★ scheduled in pieces, in parallel and by path, it writes EXACTLY the files of the one-shot pass', async () => {
+    // A store with the originals and one cached derivative (a2's sm), on disk for the path lane.
+    const { writeFile } = await import('node:fs/promises');
+    const store = await mkdtemp(join(tmpdir(), 'sw-mat-store-'));
+    roots.push(store);
+    for (const m of media) await writeFile(join(store, `${m.id}-${m.id}.png`), png);
+    const cachedSm = Buffer.from('cached-derivative-bytes');
+    await writeFile(join(store, 'a2-a2-sm.webp'), cachedSm);
+    const path = (id: string, file: string): string => join(store, `${id}-${file}`);
+    const read = async (id: string, file: string): Promise<Buffer> => readFile(path(id, file));
+    const all: ThumbRefs = new Map([
+      ['a1', { thumbs: new Set(['sm:webp', 'md:webp']), original: true }],
+      ['a2', { thumbs: new Set(['sm:webp']), original: false }],
+      ['a3', { thumbs: new Set(['lg:avif']), original: false }],
+      ['a4', { thumbs: new Set(['xs:webp']), original: true }],
+    ]);
+
+    const oneShot = await mkdtemp(join(tmpdir(), 'sw-mat-one-'));
+    roots.push(oneShot);
+    await materializeImageThumbs(oneShot, media, all, read, idAlias);
+
+    const pieces = await mkdtemp(join(tmpdir(), 'sw-mat-pieces-'));
+    roots.push(pieces);
+    const estimates: number[] = [];
+    let running = 0;
+    let peak = 0;
+    const m = new ThumbMaterializer(pieces, media, read, idAlias, undefined, {
+      filePath: path,
+      encodeConcurrency: 3,
+      runEncode: async (bytes, fn) => {
+        estimates.push(bytes);
+        running += 1;
+        peak = Math.max(peak, running);
+        try {
+          return await fn();
+        } finally {
+          running -= 1;
+        }
+      },
+    });
+    // As a build does: what the first pages wanted, then more of the same images, then the rest.
+    m.schedule(new Map([['a1', { thumbs: new Set(['sm:webp']), original: false }]]));
+    m.schedule(new Map([['a1', { thumbs: new Set(['sm:webp', 'md:webp']), original: true }], ['a2', { thumbs: new Set(['sm:webp']), original: false }]]));
+    m.schedule(all);
+    m.schedule(all); // repeated scheduling queues nothing twice
+    const progress: number[] = [];
+    await m.finish((done) => progress.push(done));
+
+    expect(await listing(pieces)).toEqual(await listing(oneShot));
+    expect((await readFile(join(pieces, '_assets', 'a2-a2-sm.webp'))).equals(cachedSm)).toBe(true); // a hit is copied
+    // Every MISS is encoded through the admission, with its estimate: a1 sm + md, a3 lg, a4 xs (a2 sm was a hit).
+    expect(estimates).toEqual(Array(4).fill(encodeEstimateBytes(100, 80)));
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(3);
+    expect(Math.max(...progress)).toBeLessThanOrEqual(all.size);
+    expect(progress.at(-1)).toBe(all.size);
+  });
+
+  it('a failure starts nothing more, and fails the pass once what was running has settled', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'sw-mat-fail-'));
+    roots.push(out);
+    const reads: string[] = [];
+    const read = async (id: string): Promise<Buffer> => {
+      reads.push(id);
+      if (id === 'a1') throw Object.assign(new Error('disk exploded'), { code: 'EIO' });
+      return png;
+    };
+    const refs: ThumbRefs = new Map(media.map((a) => [a.id, { thumbs: new Set<string>(), original: true }]));
+    const m = new ThumbMaterializer(out, media, read, idAlias, undefined, { ioConcurrency: 1 });
+    m.schedule(refs);
+    await expect(m.finish()).rejects.toThrow('disk exploded');
+    expect(reads).toEqual(['a1']); // the queued copies after the failure never started
+  });
+
+  it('★ a progress callback that throws (an aborted build) fails the pass — it never escapes as an unhandled rejection', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'sw-mat-abort-'));
+    roots.push(out);
+    const refs: ThumbRefs = new Map(media.map((a) => [a.id, { thumbs: new Set<string>(), original: true }]));
+    const m = new ThumbMaterializer(out, media, async () => png, idAlias);
+    m.schedule(refs);
+    let calls = 0;
+    await expect(
+      m.finish(() => {
+        calls += 1;
+        if (calls > 1) throw new Error('aborted');
+      }),
+    ).rejects.toThrow('aborted');
+  });
+
+  it('cancel() skips what has not started', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'sw-mat-cancel-'));
+    roots.push(out);
+    const reads: string[] = [];
+    const m = new ThumbMaterializer(out, media, async (id) => (reads.push(id), png), idAlias, undefined, { ioConcurrency: 1 });
+    m.schedule(new Map(media.map((a) => [a.id, { thumbs: new Set<string>(), original: true }])));
+    m.cancel();
+    await m.finish();
+    expect(reads).toEqual([]);
   });
 });

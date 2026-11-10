@@ -7,7 +7,7 @@
 // and resolved here by an auto locale-suffix convention, with explicit
 // `<slug>_<locale>` addressing still available (underscore — a dataset slug is a Handlebars path).
 import { isLinkPage, type Page } from '@sitewright/schema';
-import { pagePath, pagesById } from './routes.js';
+import { pageIndex, pagePath, pagesById } from './routes.js';
 import { nextOrderAfter } from './ordering.js';
 
 /** The site/locale HOME is the slugless page in that locale — NEVER a slugless link placeholder. */
@@ -86,7 +86,7 @@ export function translationsOf(
   defaultLocale: string,
 ): TranslationLink[] {
   if (!page.translationGroup) return [];
-  const byId = pagesById(pages);
+  const byId = pageIndex(pages);
   return pages
     .filter((p) => p.translationGroup === page.translationGroup)
     .map((p) => ({ locale: p.locale ?? defaultLocale, path: pagePath(p, byId), title: p.title }))

@@ -150,3 +150,15 @@ describe('resolvedPages / allRoutes', () => {
     expect(resolvedPages(b).map((p) => p.id)).toEqual(['home']);
   });
 });
+
+describe('pageIndex — the shared, read-only page lookup', () => {
+  it('is built once per pages array and is a different index for a different array', async () => {
+    const { pageIndex, pagesById } = await import('../src/routes.js');
+    const pages = [{ id: 'a', path: '', title: 'A' }, { id: 'b', path: 'b', title: 'B', parent: 'a' }] as never[];
+    const first = pageIndex(pages);
+    expect(pageIndex(pages)).toBe(first); // the same object: no rebuild per page
+    expect([...first.keys()]).toEqual(['a', 'b']);
+    expect(pageIndex([...pages])).not.toBe(first); // a new list is a new key — never a stale index
+    expect(pagesById(pages)).not.toBe(pagesById(pages)); // the mutable variant stays fresh per call
+  });
+});

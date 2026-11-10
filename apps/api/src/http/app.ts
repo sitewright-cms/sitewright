@@ -3,7 +3,7 @@ import { gzip as gzipCb } from 'node:zlib';
 import { promisify } from 'node:util';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdtemp, mkdir, open, rm, readFile, readdir, stat } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { availableParallelism, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { newId, isShortAssetId } from '../id.js';
@@ -380,6 +380,7 @@ import { AgentGrantsRepository } from '../repo/agent-grants.js';
 import { ApiKeyRepository, type ResolvedApiKey } from '../repo/api-keys.js';
 import { MemberTokenRepository, type ResolvedMemberToken } from '../repo/member-tokens.js';
 import { sharedMemoryBudget, type Reservation } from '../runtime/memory-budget.js';
+import { BuildEncodeGate, type BuildEncodeCount } from '../publish/build-encode-gate.js';
 import { FairGate, GateFullError, TenantShareError } from '../runtime/fair-gate.js';
 import { hashApiToken, isMemberTokenFormat } from '../auth/api-keys.js';
 import { OAuthRepository } from '../repo/oauth.js';
@@ -807,6 +808,25 @@ async function withOptimizeSlot<T>(tenant: string, fn: () => Promise<T>): Promis
       reservation.release();
     }
   });
+}
+
+/**
+ * The ceiling on encodes BUILDS run at once, instance-wide — a CPU bound; free memory decides below it
+ * (BuildEncodeGate). Every encode holds a libuv pool thread, and so do the public thumbnail encodes, so
+ * it leaves room for those AND for file I/O. The entrypoint sizes the pool to the machine; with Node's
+ * default of 4 this is 1, exactly what a build ran before.
+ */
+const UV_POOL_SIZE = Number(process.env.UV_THREADPOOL_SIZE) || 4;
+const MAX_BUILD_ENCODES = Math.max(1, Math.min(availableParallelism(), UV_POOL_SIZE - 2 - MAX_CONCURRENT_OPTIMIZE));
+const buildEncodeGate = new BuildEncodeGate(
+  MAX_BUILD_ENCODES,
+  async () => (memoryBudgetReady ? memoryBudget.snapshot() : undefined),
+  (bytes) => memoryBudget.forceReserve(bytes, 'build image encode'),
+);
+/** One build's share of {@link buildEncodeGate} — each build can always run one encode. */
+function buildEncodeAdmission(): <T>(reserveBytes: number, fn: () => Promise<T>) => Promise<T> {
+  const encodes: BuildEncodeCount = { running: 0 };
+  return (reserveBytes, fn) => buildEncodeGate.run(encodes, reserveBytes, fn);
 }
 
 /**
@@ -9424,6 +9444,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       storeMedia: mediaStorage
         ? (assetId, file, data) => mediaStorage.storeFile(project.slug, assetId, file, data)
         : undefined,
+      // Copy by path (kernel copies) and encode through the instance's image gate. See BuildSiteOptions.
+      mediaFilePath: mediaStorage ? (assetId, file) => mediaStorage.resolveStoredPath(project.slug, assetId, file) : undefined,
+      runEncode: buildEncodeAdmission(),
+      encodeConcurrency: MAX_BUILD_ENCODES,
     });
     warnCappedUtilities(project.id, manifest);
     return manifest;
@@ -10054,6 +10078,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         storeMedia: mediaStorage
           ? (assetId, file, data) => mediaStorage.storeFile(project.slug, assetId, file, data)
           : undefined,
+        mediaFilePath: mediaStorage
+          ? (assetId, file) => mediaStorage.resolveStoredPath(project.slug, assetId, file)
+          : undefined,
+        runEncode: buildEncodeAdmission(),
+        encodeConcurrency: MAX_BUILD_ENCODES,
       });
       await persistShopCatalog(project.id, 'draft', manifest);
       warnCappedUtilities(project.id, manifest);

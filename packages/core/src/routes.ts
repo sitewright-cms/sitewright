@@ -54,9 +54,26 @@ export function pathToSlug(path: string): string | undefined {
   return slug === '' ? undefined : slug;
 }
 
-/** Index pages by id for parent-chain lookups (e.g. {@link pagePath}). */
+/** Index pages by id for parent-chain lookups (e.g. {@link pagePath}). A fresh, mutable Map. */
 export function pagesById(pages: readonly Page[]): Map<string, Page> {
   return new Map(pages.map((p) => [p.id, p]));
+}
+
+const pageIndexCache = new WeakMap<readonly Page[], ReadonlyMap<string, Page>>();
+
+/**
+ * {@link pagesById}, built ONCE per pages array and shared — read-only, so no caller can change it
+ * under another. The per-page helpers (translations, parent/children views, dataset page refs) are
+ * handed the same build-wide array for every page; rebuilding the index on each call was O(pages²):
+ * measured 0.26 s on a 1,085-page project's build. Keyed by array IDENTITY, like `mediaIndex`, so a
+ * new or edited list is a new key and never sees a stale index.
+ */
+export function pageIndex(pages: readonly Page[]): ReadonlyMap<string, Page> {
+  const hit = pageIndexCache.get(pages);
+  if (hit) return hit;
+  const index: ReadonlyMap<string, Page> = pagesById(pages);
+  pageIndexCache.set(pages, index);
+  return index;
 }
 
 /**

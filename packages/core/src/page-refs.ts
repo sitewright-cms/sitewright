@@ -15,7 +15,7 @@
 // the same published page set. A resolution wired into only some of them, or fed different pages,
 // renders a loop correctly on one surface and blank (or differently linked) on another.
 import type { Dataset, Entry, Field, Page } from '@sitewright/schema';
-import { pagePath, pagesById } from './routes.js';
+import { pageIndex, pagePath } from './routes.js';
 import { localeVariantOf } from './i18n.js';
 
 /** What a `page` field reads as in a template — the lean always-present attributes of a page.
@@ -44,7 +44,7 @@ export function hasPageField(fields: readonly Field[] | undefined, depth = 0): b
 
 /** Where a stored id is read: the page index, plus the reader's locale when the surface has one. */
 interface RefScope {
-  byId: Map<string, Page>;
+  byId: ReadonlyMap<string, Page>;
   pages: readonly Page[];
   defaultLocale: string;
   locale?: string;
@@ -131,7 +131,7 @@ export function resolveDatasetPageRefs<E extends Entry>(
   for (const ds of schemas) if (hasPageField(ds.fields)) withPageFields.set(ds.slug, ds.fields);
   if (withPageFields.size === 0) return datasets;
 
-  const scope: RefScope = { byId: pagesById(pages), pages, defaultLocale, locale };
+  const scope: RefScope = { byId: pageIndex(pages), pages, defaultLocale, locale };
   const out: Record<string, readonly E[]> = {};
   for (const [slug, entries] of Object.entries(datasets)) {
     const fields = withPageFields.get(slug) ?? withPageFields.get(slug.replace(/_[a-z0-9_]+$/, ''));

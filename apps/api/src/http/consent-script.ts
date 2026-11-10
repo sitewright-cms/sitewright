@@ -116,7 +116,7 @@ export const CONSENT_SCRIPT = `(function(){
             var done = document.execCommand('copy');
             document.body.removeChild(ta);
             // ★ Back to the button: removing the focused textarea dropped focus on <body>, where the Enter
-            // shortcut below copies the CALLBACK URL — so a second Enter after "Copy Authorization Code"
+            // shortcut below copies the CALLBACK URL — so a second Enter after "Copy Auth Code"
             // replaced the code on the clipboard with the URL. (Plain-HTTP instances take this path on
             // every copy: there is no navigator.clipboard outside a secure context.)
             try{ btn.focus(); }catch(_){}
@@ -140,7 +140,7 @@ export const CONSENT_SCRIPT = `(function(){
   //
   // It fires only when Enter would otherwise do NOTHING: if the target is a control that has its own
   // Enter behaviour (a button, a link, a field), that behaviour wins — so Enter on "Continue to …"
-  // still follows the link, Enter on "Copy Authorization Code" copies the code, and Enter on the
+  // still follows the link, Enter on "Copy Auth Code" copies the code, and Enter on the
   // focused Copy Callback URL button copies once, not twice.
   var primaryCopy = document.getElementById('sw-copy-url');
   if(primaryCopy){

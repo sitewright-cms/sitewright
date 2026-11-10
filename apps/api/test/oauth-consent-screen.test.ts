@@ -224,7 +224,7 @@ describe('consent screen — the approved code is shown, not fired at the callba
     expect(url.searchParams.get('code')).toBe(shownCode); // the two values agree
   });
 
-  it('offers exactly three actions — Continue to the host, Copy Callback URL, Copy Authorization Code — and no boxes to read', async () => {
+  it('offers exactly three actions — Continue to the host, Copy Callback URL, Copy Auth Code — and no boxes to read', async () => {
     const { session, ids } = await userWithProjects(['Only']);
     const res = await approve(session, ids[0]!);
     const callback = /<span id="sw-url">([^<]+)<\/span>/.exec(res.body)?.[1];
@@ -234,7 +234,7 @@ describe('consent screen — the approved code is shown, not fired at the callba
     // 2) + 3) The two copy buttons share the row under it, neither with the gradient.
     const row = /<div class="row halves">([\s\S]*?)<\/div>/.exec(res.body)?.[1] ?? '';
     expect(row).toMatch(/<button type="button" id="sw-copy-url" data-copy="sw-url"[^>]*>Copy Callback URL<\/button>/);
-    expect(row).toMatch(/<button type="button" id="sw-copy" data-copy="sw-code"[^>]*>Copy Authorization Code<\/button>/);
+    expect(row).toMatch(/<button type="button" id="sw-copy" data-copy="sw-code"[^>]*>Copy Auth Code<\/button>/);
     expect(row).not.toContain('primary');
     expect(res.body.match(/<button\b/g)).toHaveLength(2);
 

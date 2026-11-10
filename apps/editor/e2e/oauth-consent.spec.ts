@@ -59,7 +59,7 @@ test('OAuth consent → code → token, then the access token works', async ({ p
   expect(back.origin).toBe('http://127.0.0.1:8976');
   expect(back.searchParams.get('state')).toBe('cli-state');
   expect(back.searchParams.get('code')).toBe(code);
-  await expect(page.getByRole('button', { name: 'Copy Authorization Code' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Copy Auth Code' })).toBeVisible();
 
   // ★ The CALLBACK URL is what Claude Code's manual fallback asks for, so copying it is the primary
   // path this screen exists to serve — and the button is focused, so Enter copies it. Assert the
@@ -78,7 +78,7 @@ test('OAuth consent → code → token, then the access token works', async ({ p
   // fallback path running, which is precisely the case a self-hosted LAN instance hits. Read the
   // clipboard back only where the API is actually available.
   await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
-  await page.getByRole('button', { name: 'Copy Authorization Code' }).click();
+  await page.getByRole('button', { name: 'Copy Auth Code' }).click();
   await expect(page.getByText('Authorization code copied to clipboard')).toBeVisible();
   const clip = await page.evaluate(() =>
     navigator.clipboard?.readText ? navigator.clipboard.readText() : Promise.resolve(null),

@@ -1,10 +1,11 @@
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import { copyFile, mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { dirname, join, resolve, sep } from 'node:path';
 import { minify as minifyHtmlDocument } from 'html-minifier-terser';
 import { thumbFileName, type SizeToken } from '@sitewright/image-pipeline';
 import {
-  materializeImageThumbs,
+  ThumbMaterializer,
   rewriteMediaUrlsFlat,
   resolveThumbForHead,
   rebaseMediaHeadUrl,
@@ -13,6 +14,7 @@ import {
   type ThumbRefs,
 } from './media-thumbs.js';
 import { buildAliasMap, aliasResolver, flatMediaName } from './asset-alias.js';
+import { PageWriter } from './page-writer.js';
 import { rewriteTextureUrls, materializeTextures } from './publish-textures.js';
 import {
   allRoutes,
@@ -343,6 +345,12 @@ const SAFE_OUT_SEGMENT = /^[A-Za-z0-9._~-]+$/;
 // looked like it was missing content that was in fact present. 512 MiB matches the import worker's
 // ceiling and leaves room for a large multilingual site; SW_MAX_OUTPUT_MB overrides it.
 const DEFAULT_MAX_OUTPUT_BYTES = 512 * 1024 * 1024;
+/** Media files copied into a build at once (I/O-bound: the CPU only waits on them). */
+const MEDIA_COPY_CONCURRENCY = 8;
+/** Page files being written while the next pages render — bounds the HTML held in memory. */
+const PAGE_WRITE_CONCURRENCY = 16;
+/** Hand the thumbnails found so far to the materializer after every this many pages. */
+const THUMB_SCHEDULE_EVERY = 25;
 
 /** Operator override, in MiB (`SW_MAX_OUTPUT_MB=1024`). Invalid/absent → the default above. */
 export function configuredMaxOutputBytes(env: NodeJS.ProcessEnv = process.env): number {
@@ -380,6 +388,20 @@ export interface BuildSiteOptions {
    * has no writable store — the isolated worker, for one — and it simply encodes every time.
    */
   storeMedia?: (assetId: string, file: string, data: Buffer) => Promise<void>;
+  /**
+   * The validated on-disk path of a stored media file. With it the build COPIES media and cached
+   * derivatives with the kernel (a reflink where the filesystem has them) instead of reading each
+   * file into the heap and writing it back, and encodes read originals from disk. Omit where there is
+   * no shared filesystem (the isolated worker); `readMedia` is used then.
+   */
+  mediaFilePath?: (assetId: string, file: string) => string;
+  /**
+   * Admission for one image encode, with its expected memory cost — the instance's image gate. With it
+   * the build encodes up to `encodeConcurrency` images at once; without it, one at a time.
+   */
+  runEncode?: <T>(estimateBytes: number, fn: () => Promise<T>) => Promise<T>;
+  /** Encodes the build may have in flight at once (only with `runEncode`; default 1). */
+  encodeConcurrency?: number;
   /** Max total HTML/CSS bytes written before aborting (default 100 MiB). */
   maxOutputBytes?: number;
   /**
@@ -503,12 +525,14 @@ async function copyMedia(
   media: readonly MediaAsset[],
   readMedia: (assetId: string, file: string) => Promise<Buffer>,
   alias: (id: string) => string,
+  filePath?: (assetId: string, file: string) => string,
 ): Promise<void> {
   const dir = join(base, ASSET_DIR);
   /* v8 ignore next -- defensive: constant `_assets` can't escape base */
   if (!resolve(dir).startsWith(base + sep)) return;
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant `_assets` under base
   await mkdir(dir, { recursive: true });
+  const jobs: Array<{ id: string; file: string; target: string }> = [];
   for (const asset of media) {
     // Images are materialized separately (on-demand thumbnails); skip them here.
     if (asset.kind === 'image') continue;
@@ -518,17 +542,37 @@ async function copyMedia(
       const target = resolve(dir, flatMediaName(a, file));
       /* v8 ignore next -- defensive: validated id + file name can't escape */
       if (!target.startsWith(resolve(dir) + sep)) continue;
+      jobs.push({ id: asset.id, file, target });
+    }
+  }
+  // Several at a time, and by the KERNEL where there is a shared filesystem: one at a time, each read
+  // whole into the heap and written back, a project's 165 files (272 MB) took 2.6 s of a cold preview
+  // with the CPU idle. A reflink makes the copy near-free on a copy-on-write store.
+  let failure: unknown;
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (failure === undefined && next < jobs.length) {
+      const { id, file, target } = jobs[next++]!;
       try {
-        const data = await readMedia(asset.id, file);
-        // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to base/_assets
-        await writeFile(target, data);
+        if (filePath) {
+          // The store path is validated by filePath; the target is confined above.
+          await copyFile(filePath(id, file), target, fsConstants.COPYFILE_FICLONE);
+        } else {
+          const data = await readMedia(id, file);
+          // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to base/_assets
+          await writeFile(target, data);
+        }
       } catch (err) {
         // A missing variant is tolerable; any other I/O error (disk full,
         // permissions) must fail the build so a partial artifact isn't swapped in.
-        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') failure ??= err;
       }
     }
-  }
+  };
+  // Every copy in flight settles before a failure is raised — nothing may still be writing into a
+  // directory the caller is about to remove.
+  await Promise.all(Array.from({ length: Math.min(MEDIA_COPY_CONCURRENCY, jobs.length) }, worker));
+  if (failure !== undefined) throw failure;
 }
 
 /**
@@ -740,6 +784,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   await rm(tmp, { recursive: true, force: true });
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- tmp derives from a resolved, validated dir
   await mkdir(tmp, { recursive: true });
+  // Work still running in the background (thumbnails, page writes). A failed build waits for it before
+  // removing the temp dir, so nothing is still writing into a directory that is being deleted.
+  let drainBackground: () => Promise<void> = async () => {};
   try {
     // Draft ENTRIES appear in the preview but NOT in a published build, so `{{#each dataset.x}}` loops +
     // keyed `{{item.x.key}}` show published entries only once the site is live. Unlike draft PAGES (which
@@ -1131,7 +1178,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // `media.length` counted assets this step never touches — a 33-asset project with 30 images
       // would have shown "3 of 33" and stalled there.
       report({ phase: 'media' });
-      await copyMedia(tmp, media, opts.readMedia, alias);
+      await copyMedia(tmp, media, opts.readMedia, alias, opts.mediaFilePath);
     }
 
     // Favicon / PWA icon set + Web App Manifest, derived ONCE from the single Corporate-Identity
@@ -1163,7 +1210,30 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const writtenPaths = new Set<string>();
     // Pages a DRAFT build rendered an error document for instead of aborting on — see the catch below.
     const pageFailures: PageBuildFailure[] = [];
+    // Thumbnails are materialized WHILE pages render: copies and encodes run off the main thread,
+    // which is busy rendering, so they overlap instead of queueing after the last page.
+    const thumbs = opts.readMedia
+      ? new ThumbMaterializer(tmp, media, opts.readMedia, alias, opts.storeMedia, {
+          filePath: opts.mediaFilePath,
+          runEncode: opts.runEncode,
+          encodeConcurrency: opts.runEncode ? Math.max(1, opts.encodeConcurrency ?? 1) : 1,
+        })
+      : undefined;
+    // A page's file is written while the next page renders, instead of the render waiting on the disk
+    // (measured: 2.2 s of a 1,085-page cold preview). Bounded, ordered per path, and drained before
+    // anything reads the pages back.
+    const pageWrites = new PageWriter(PAGE_WRITE_CONCURRENCY);
+    drainBackground = async () => {
+      // Skip what has not started; wait only for what is running.
+      thumbs?.cancel();
+      await Promise.allSettled([pageWrites.drain(), thumbs?.finish()]);
+    };
     {
+      // The slim media projection every page's render context carries. ONE array for the whole build:
+      // built per route it was 7,859 fresh objects for each of a 1,085-page project's pages (measured: a
+      // second of garbage collection), and because `mediaIndex` caches by array IDENTITY, every
+      // {{sw-image}} then rebuilt its id/url lookup from scratch — 1.25 s more.
+      const renderMedia = mediaForRender(media);
       const renderRoute = async (route: (typeof routes)[number], full: string): Promise<void> => {
         // Code-first: the page renders from its Handlebars `source` (resolved below into `bodyHtml`).
         const page = route.page;
@@ -1344,7 +1414,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           nav: navForPage as unknown as Record<string, unknown>,
           // Project media (slim) for {{#sw-folder}} galleries/file lists. Asset `url`s (`/media/<slug>/…`)
           // are rebased to the bundled `_assets/…` by the media rewrite below — portable in the export.
-          media: mediaForRender(media),
+          media: renderMedia,
           // Site-wide AVIF delivery: {{sw-image}} emits a <picture> with an AVIF tier when the project
           // opts in (website.imageDelivery === 'avif'); otherwise a single WebP <img>.
           imageAvif: website?.imageDelivery === 'avif',
@@ -1645,8 +1715,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             ? gateAuthorIframes(portableHtml, { defaultCategory: website?.consent?.defaultEmbedCategory ?? DEFAULT_EMBED_CATEGORY })
             : portableHtml;
         const finalHtml = opts.minifyHtml ? await minifyPageHtml(gatedHtml) : gatedHtml;
-        // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
-        await writeFile(full, finalHtml, 'utf8');
+        // Confined to tmp (checked by the caller); written while the next page renders.
+        await pageWrites.write(full, finalHtml);
         bytes += Buffer.byteLength(finalHtml);
 
         // ---- Site-search corpus -------------------------------------------------------------
@@ -1685,6 +1755,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       for (const route of routes) {
         report({ phase: 'pages', done: renderedRoutes, total: routes.length });
         renderedRoutes += 1;
+        if (renderedRoutes % THUMB_SCHEDULE_EVERY === 0) thumbs?.schedule(thumbRefs);
         const outSlug = route.slug;
         const path = `/${outSlug ?? ''}`;
         const full = resolve(tmp, relPathForSlug(outSlug));
@@ -1712,8 +1783,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           const message = err instanceof Error ? err.message : String(err);
           pageFailures.push({ page: route.page.id, path, message });
           const doc = previewErrorPage({ page: route.page.id, path, message }, route.page.title);
-          // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
-          await writeFile(full, doc, 'utf8');
+          // Through the same writer, so it lands AFTER any write of this page already queued — a page
+          // that failed after writing must end up as the error document, as it always did.
+          await pageWrites.write(full, doc);
           bytes += Buffer.byteLength(doc);
         }
         // The output cap is a property of the BUILD, not of one page, so it is checked out here and
@@ -1725,6 +1797,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         }
       }
     }
+    // Every page is on disk before anything reads the pages back (the styles relink does).
+    await pageWrites.drain();
+    thumbs?.schedule(thumbRefs);
 
     // Materialize exactly the thumbnails (+ any referenced originals) the rendered output points at,
     // from the retained originals — so the export is COMPLETE (every referenced variant is produced)
@@ -1765,13 +1840,17 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       dataFiles = built.files;
     }
 
-    if (opts.readMedia && thumbRefs.size > 0) {
+    if (thumbs) {
       // Usually the longest single step on a cold project — every referenced size of every referenced
-      // image is encoded here — which is exactly why it gets its own label.
-      report({ phase: 'media', done: 0, total: thumbRefs.size });
-      await materializeImageThumbs(tmp, media, thumbRefs, opts.readMedia, alias, opts.storeMedia, (done) =>
-        report({ phase: 'media', done, total: thumbRefs.size }),
-      );
+      // image is encoded here — which is exactly why it gets its own label. The data files above add
+      // references of their own; everything found while the pages rendered is already running.
+      thumbs.schedule(thumbRefs);
+      if (thumbRefs.size > 0) {
+        report({ phase: 'media', done: 0, total: thumbRefs.size });
+        await thumbs.finish((done) => report({ phase: 'media', done, total: thumbRefs.size }));
+      } else {
+        await thumbs.finish();
+      }
     }
 
     // Copy the platform textures any page referenced into `_assets/_textures/` so the export is
@@ -2101,6 +2180,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     return manifest;
   } catch (err) {
     // Build failed → discard the temp dir; the previous live site is untouched.
+    await drainBackground().catch(() => undefined);
     await rm(tmp, { recursive: true, force: true });
     throw err;
   }

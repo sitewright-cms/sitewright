@@ -47,6 +47,13 @@ describe('docker-entrypoint: allocator + diagnostics', () => {
     expect(env.MALLOC_CONF).not.toContain('background_thread:true');
   });
 
+  it('sizes the libuv pool to the machine — at least 4 (the default), at most 16 — unless the operator set one', async () => {
+    const pool = Number((await entrypointEnv()).UV_THREADPOOL_SIZE);
+    const cores = Number((await run('nproc', [])).stdout.trim());
+    expect(pool).toBe(Math.min(16, Math.max(4, cores)));
+    expect((await entrypointEnv({ UV_THREADPOOL_SIZE: '6' })).UV_THREADPOOL_SIZE).toBe('6');
+  });
+
   it('lets the operator override MALLOC_CONF entirely', async () => {
     const env = await entrypointEnv({ MALLOC_CONF: 'background_thread:false' });
     expect(env.MALLOC_CONF).toBe('background_thread:false');

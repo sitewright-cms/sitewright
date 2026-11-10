@@ -82,6 +82,24 @@ if [ -z "$MALLOC_CONF" ]; then
   export MALLOC_CONF
 fi
 
+# Size Node's libuv thread pool to the machine.
+#
+# Every sharp encode runs on a pool thread, and so does file I/O. The pool defaults to 4 whatever the
+# host, so image work could never use more than ~4 cores. MEASURED on 20 cores: WebP thumbnails at 6/12
+# at once took 62/49 ms each with the default pool and 34/25 ms with 16 threads. The image gate keeps
+# its concurrency two below this, so I/O always has threads left. It can only be set before Node
+# starts, which is why it lives here. Idle pool threads cost next to nothing.
+#
+# Only set when the operator has not chosen a value.
+if [ -z "$UV_THREADPOOL_SIZE" ]; then
+  pool=$(nproc 2>/dev/null || echo 4)
+  case "$pool" in ''|*[!0-9]*) pool=4 ;; esac
+  if [ "$pool" -lt 4 ]; then pool=4; fi
+  if [ "$pool" -gt 16 ]; then pool=16; fi
+  UV_THREADPOOL_SIZE=$pool
+  export UV_THREADPOOL_SIZE
+fi
+
 if [ -z "$NODE_OPTIONS" ]; then
   limit=""
   if [ -r /sys/fs/cgroup/memory.max ]; then

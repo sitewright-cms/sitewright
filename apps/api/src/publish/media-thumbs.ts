@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import {
   THUMB_SIZES,
@@ -256,63 +257,252 @@ export async function materializeImageThumbs(
    *  "Processing images… 12 of 30" rather than an unmoving label. Re-encoding a cold project's
    *  images is the longest step of a draft preview, and it was the least legible. */
   onProgress?: (done: number) => void,
+  opts: ThumbMaterializerOptions = {},
 ): Promise<void> {
-  const dir = join(base, ASSET_DIR);
-  if (!resolve(dir).startsWith(base + sep)) return; // defensive
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant `_assets` under base
-  await mkdir(dir, { recursive: true });
+  const materializer = new ThumbMaterializer(base, media, readMedia, alias, storeMedia, opts);
+  materializer.schedule(refs);
+  await materializer.finish(onProgress);
+}
 
-  const writeConfined = async (file: string, data: Buffer): Promise<void> => {
-    const target = resolve(dir, file);
-    if (!target.startsWith(resolve(dir) + sep)) return; // defensive
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to base/_assets
-    await writeFile(target, data);
-  };
+/** How {@link ThumbMaterializer} may reach the store and the CPU — every field optional. */
+export interface ThumbMaterializerOptions {
+  /**
+   * The validated path of a stored file. With it a cached derivative or original is COPIED by the
+   * kernel (a reflink where the filesystem has them) instead of read into the heap and written back,
+   * and an encode reads its original from disk. Without it (the isolated worker), bytes go through
+   * `readMedia`.
+   */
+  filePath?: (assetId: string, file: string) => string;
+  /**
+   * Admission for ONE encode, given what it is expected to cost in memory: the instance's image gate
+   * (a CPU ceiling, and memory reserved from live headroom). Absent → encodes run one at a time, as
+   * they always did.
+   */
+  runEncode?: <T>(estimateBytes: number, fn: () => Promise<T>) => Promise<T>;
+  /** Encodes in flight at once (default 1; only worth raising with `runEncode` bounding them). */
+  encodeConcurrency?: number;
+  /** Copies in flight at once (default 8). */
+  ioConcurrency?: number;
+}
 
-  let processed = 0;
-  for (const [assetId, want] of refs) {
-    // Reported BEFORE the work (like the pages phase), so the count is right no matter which of the
-    // early `continue`s below this iteration takes.
-    onProgress?.(processed);
-    processed += 1;
-    const asset = media.find((a) => a.id === assetId && a.kind === 'image');
-    if (!asset || asset.kind !== 'image') continue;
-    const a = alias(assetId);
+/**
+ * What one encode is expected to hold in memory, from the SOURCE's pixel count. MEASURED in a 768MB
+ * container with the server's allocator and libvips threads: a 24MP original cost 37-66MB per encode
+ * in flight (more with more at once), a small one ~20MB. 2.5 bytes a pixel plus a fixed 16MB covers both.
+ */
+export function encodeEstimateBytes(width: number | undefined, height: number | undefined): number {
+  const MB = 1024 * 1024;
+  const pixels = (width ?? 0) * (height ?? 0);
+  return Math.min(128 * MB, Math.max(16 * MB, Math.round(pixels * 2.5 + 16 * MB)));
+}
 
-    // Pass 1 — serve what the store already holds, and note what it doesn't.
-    const missing: Array<{ size: SizeToken; format: ThumbFormat; width: number; name: string }> = [];
-    for (const key of want.thumbs) {
-      const [size, format] = key.split(':') as [SizeToken, ThumbFormat];
-      const width = THUMB_SIZES[size];
-      if (!width) continue;
-      const name = thumbFileName(asset.original, size, format);
-      try {
-        await writeConfined(flatMediaName(a, name), await readMedia(assetId, name));
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
-        missing.push({ size, format, width, name });
-      }
-    }
-    // Every variant was cached and the original isn't shipped — nothing to decode, don't even read it.
-    if (missing.length === 0 && !want.original) continue;
-
-    let original: Buffer;
+/** A tiny FIFO limiter: at most `limit` tasks run at once. */
+function limiter(limit: number): <T>(task: () => Promise<T>) => Promise<T> {
+  let active = 0;
+  const waiting: Array<() => void> = [];
+  return async <T>(task: () => Promise<T>): Promise<T> => {
+    // A released slot is HANDED to the next waiter rather than freed, so a newcomer can never slip in
+    // between and run one over the limit.
+    if (active >= limit) await new Promise<void>((r) => waiting.push(r));
+    else active += 1;
     try {
-      original = await readMedia(assetId, asset.original);
+      return await task();
+    } finally {
+      const next = waiting.shift();
+      if (next) next();
+      else active -= 1;
+    }
+  };
+}
+
+/**
+ * Materializes thumbnails INCREMENTALLY: `schedule` may be called as pages are rendered, so copies and
+ * encodes run while later pages are still being built, and `finish` waits for the rest. Same output as
+ * the one-shot pass (each derivative is one file with deterministic bytes; only the order changes).
+ *
+ * Each (image, size, format) is one unit: copy the cached derivative, or — on a miss — encode it from
+ * the retained original and put it back in the store. A wanted original is copied. A missing original
+ * is tolerated (that image simply 404s); any other I/O error fails the build, after every unit in
+ * flight has settled, so nothing is still writing into a directory the caller is about to remove.
+ */
+export class ThumbMaterializer {
+  private readonly dir: string;
+  private readonly byId: Map<string, MediaAsset>;
+  private readonly scheduled = new Set<string>();
+  private readonly pending: Array<Promise<void>> = [];
+  private readonly outstanding = new Map<string, number>();
+  private readonly completed = new Set<string>();
+  private readonly ready: Promise<void>;
+  private readonly io: <T>(task: () => Promise<T>) => Promise<T>;
+  private readonly encodeSlot: <T>(task: () => Promise<T>) => Promise<T>;
+  private firstError: unknown;
+  private failed = false;
+  private cancelled = false;
+  private done = 0;
+  private onProgress?: (done: number) => void;
+
+  constructor(
+    private readonly base: string,
+    media: readonly MediaAsset[],
+    private readonly readMedia: (assetId: string, file: string) => Promise<Buffer>,
+    private readonly alias: AliasFn,
+    private readonly storeMedia?: (assetId: string, file: string, data: Buffer) => Promise<void>,
+    private readonly opts: ThumbMaterializerOptions = {},
+  ) {
+    this.dir = join(base, ASSET_DIR);
+    // A Map, not `media.find` per reference: a 7,859-asset project scanned the whole list per image.
+    this.byId = new Map(media.map((a) => [a.id, a]));
+    this.io = limiter(Math.max(1, opts.ioConcurrency ?? 8));
+    this.encodeSlot = limiter(Math.max(1, opts.encodeConcurrency ?? 1));
+    // Its failure is recorded, never left as a rejection nobody is awaiting yet (that would end the process).
+    this.ready = resolve(this.dir).startsWith(base + sep)
+      ? // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant `_assets` under base
+        mkdir(this.dir, { recursive: true }).then(
+          () => undefined,
+          (err: unknown) => this.fail(err),
+        )
+      : Promise.resolve();
+  }
+
+  /** Queue every unit of `refs` not already queued. Safe to call repeatedly as `refs` grows. */
+  schedule(refs: ThumbRefs): void {
+    if (!resolve(this.dir).startsWith(this.base + sep)) return; // defensive
+    for (const [assetId, want] of refs) {
+      const asset = this.byId.get(assetId);
+      if (!asset || asset.kind !== 'image') continue;
+      for (const key of want.thumbs) {
+        const [size, format] = key.split(':') as [SizeToken, ThumbFormat];
+        const width = THUMB_SIZES[size];
+        if (!width) continue;
+        this.enqueue(assetId, `t:${key}`, () => this.thumb(asset, size, format, width));
+      }
+      if (want.original) this.enqueue(assetId, 'o', () => this.original(asset));
+    }
+  }
+
+  /**
+   * Wait for every queued unit; rethrows the first failure once ALL have settled. A unit never rejects
+   * (its failure is recorded instead), so no rejection is ever left unhandled — a stray one ends the
+   * process — and nothing is still writing when this returns.
+   */
+  async finish(onProgress?: (done: number) => void): Promise<void> {
+    this.onProgress = onProgress;
+    this.progress();
+    // An array iterator re-reads the length, so a unit queued while waiting is awaited too.
+    for (const unit of this.pending) await unit;
+    if (this.failed) throw this.firstError;
+  }
+
+  /** Start nothing new: queued units are skipped, the ones running finish. For a build that failed or was aborted. */
+  cancel(): void {
+    this.cancelled = true;
+  }
+
+  private get stopped(): boolean {
+    return this.failed || this.cancelled;
+  }
+
+  private fail(err: unknown): void {
+    if (!this.failed) {
+      this.failed = true;
+      this.firstError = err;
+    }
+  }
+
+  /** The progress callback can throw — a build's `report` does once it is aborted — and that is a failure. */
+  private progress(): void {
+    try {
+      this.onProgress?.(this.done);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue;
-      throw err;
+      this.fail(err);
     }
+  }
 
-    if (want.original) await writeConfined(flatMediaName(a, asset.original), original);
+  private enqueue(assetId: string, unit: string, run: () => Promise<void>): void {
+    const key = `${assetId}\u0000${unit}`;
+    if (this.scheduled.has(key)) return;
+    this.scheduled.add(key);
+    this.outstanding.set(assetId, (this.outstanding.get(assetId) ?? 0) + 1);
+    // A later page can want another size of an image already finished: it is open again until then.
+    if (this.completed.delete(assetId)) this.done -= 1;
+    const settle = (): void => {
+      const left = (this.outstanding.get(assetId) ?? 1) - 1;
+      this.outstanding.set(assetId, left);
+      if (left === 0 && !this.completed.has(assetId)) {
+        this.completed.add(assetId);
+        this.done += 1;
+        this.progress();
+      }
+    };
+    this.pending.push(
+      this.ready
+        .then(() => (this.stopped ? undefined : run()))
+        .then(settle, (err: unknown) => {
+          this.fail(err);
+          settle();
+        }),
+    );
+  }
 
-    // Pass 2 — encode only the misses, and put each one back so the NEXT build (and any preview
-    // request for the same variant) is a copy. Caching is best-effort: a read-only or full store
-    // must not fail a build that has the bytes in hand.
-    for (const { format, width, name } of missing) {
-      const { buffer } = await generateThumbnail(original, { width, format });
-      await writeConfined(flatMediaName(a, name), buffer);
-      if (storeMedia) await storeMedia(assetId, name, buffer).catch(() => undefined);
-    }
+  private target(file: string): string | undefined {
+    const target = resolve(this.dir, file);
+    return target.startsWith(resolve(this.dir) + sep) ? target : undefined; // defensive
+  }
+
+  /** Copy a stored file into the output. Resolves false when the store has no such file. */
+  private copyStored(assetId: string, name: string, target: string): Promise<boolean> {
+    // ONE slot per copy, read and write together, so a queue of copies never holds a batch of files in memory.
+    return this.io(async () => {
+      if (this.stopped) return true; // checked right before the work: a stopped pass starts nothing more
+      try {
+        if (this.opts.filePath) {
+          // The store path is validated by filePath; the target is confined by `target()`.
+          await copyFile(this.opts.filePath(assetId, name), target, fsConstants.COPYFILE_FICLONE);
+        } else {
+          const data = await this.readMedia(assetId, name);
+          // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to base/_assets
+          await writeFile(target, data);
+        }
+        return true;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
+        this.fail(err); // BEFORE the slot is handed on, so the next queued unit sees it and stops
+        throw err;
+      }
+    });
+  }
+
+  private async thumb(asset: Extract<MediaAsset, { kind: 'image' }>, size: SizeToken, format: ThumbFormat, width: number): Promise<void> {
+    const name = thumbFileName(asset.original, size, format);
+    const target = this.target(flatMediaName(this.alias(asset.id), name));
+    if (!target) return;
+    if (await this.copyStored(asset.id, name, target)) return;
+    // A miss: encode it from the retained original, and put it back so the NEXT build (and any preview
+    // request for the same variant) is a copy. Caching is best-effort: a read-only or full store must
+    // not fail a build that has the bytes in hand. The original is read INSIDE the encode slot: queued
+    // misses must not each hold one in memory.
+    const buffer = await this.encodeSlot(async (): Promise<Buffer | null> => {
+      if (this.stopped) return null;
+      try {
+        const source = this.opts.filePath ? this.opts.filePath(asset.id, asset.original) : await this.readMedia(asset.id, asset.original);
+        const encode = (): Promise<Buffer> => generateThumbnail(source, { width, format }).then((r) => r.buffer);
+        return await (this.opts.runEncode ? this.opts.runEncode(encodeEstimateBytes(asset.width, asset.height), encode) : encode());
+      } catch (err) {
+        // A missing original is tolerated (that image simply 404s): ENOENT from the store, or sharp's
+        // own message for a path source.
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT' || /Input file is missing/i.test(String((err as Error)?.message))) return null;
+        this.fail(err);
+        throw err;
+      }
+    });
+    if (!buffer || this.stopped) return;
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to base/_assets
+    await this.io(() => writeFile(target, buffer));
+    if (this.storeMedia) await this.storeMedia(asset.id, name, buffer).catch(() => undefined);
+  }
+
+  private async original(asset: Extract<MediaAsset, { kind: 'image' }>): Promise<void> {
+    const target = this.target(flatMediaName(this.alias(asset.id), asset.original));
+    if (target) await this.copyStored(asset.id, asset.original, target);
   }
 }

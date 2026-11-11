@@ -22,7 +22,6 @@ import {
 } from '@sitewright/schema';
 import { SHADER_BG_CSS, SHADER_BG_JS } from '@sitewright/blocks';
 import { CONSENT_SCRIPT } from './consent-script.js';
-import { AUTH_CODE_TTL_MS } from '../repo/oauth.js';
 
 /** The built-in public client for the `sitewright` CLI (loopback redirect, PKCE, no secret). */
 export const CLI_CLIENT_ID = 'sitewright-cli';
@@ -247,6 +246,7 @@ export function htmlPage(title: string, body: string, chrome: ConsentChrome = DE
     .mark.logo{object-fit:contain;background:none;box-shadow:none}
     h1{font-size:1.2rem;line-height:1.35;margin:0 0 .35rem;letter-spacing:-.01em}
     h1 strong{background:linear-gradient(135deg,var(--sw-brand-1),var(--sw-brand-2));-webkit-background-clip:text;background-clip:text;color:transparent}
+    h1 strong.solid{background:none;color:var(--sw-brand-1)}
     p{margin:.35rem 0;color:var(--muted);font-size:.9rem}
     .card{margin-top:1rem;padding:1.35rem;border:1px solid var(--line);border-radius:1rem;background:var(--panel);
       backdrop-filter:blur(14px);box-shadow:0 18px 45px rgba(15,23,42,.10)}
@@ -345,7 +345,9 @@ function redirectHost(redirectUri: string): string {
  * What they buy is a way to finish when the callback is unreachable from this browser — an agent in a
  * container or on another machine — which is exactly when the automatic redirect strands the user.
  *
- * The page is `no-store` + `no-referrer` (see the caller) and both values expire with the code.
+ * The page is `no-store` + `no-referrer` (see the caller) and both values expire with the code. The
+ * heading names the callback host in the brand's PRIMARY colour, not the gradient the consent
+ * screen's client name wears; there is no explanatory paragraph under it (the buttons say it).
  *
  * THREE ACTIONS and nothing to read: "Continue to <host>" (the full-width gradient one — following the
  * redirect is the plain path when this browser CAN reach the callback), then "Copy Callback URL" and
@@ -354,24 +356,21 @@ function redirectHost(redirectUri: string): string {
  * REVEALED, selected, only when the clipboard refuses, so a refusal still leaves something to copy
  * by hand. Without JS the copy buttons cannot work, so a `<noscript>` block shows both values.
  *
- * Copy Callback URL is AUTOFOCUSED, so Enter copies the URL the moment the page lands — the thing
- * Claude Code's fallback asks for, from a user mid-flow in a terminal somewhere else. It is focused
- * although it is not the first button: the focus ring on it is what makes the shortcut discoverable.
- * The consent script adds an Enter fallback for after focus has moved elsewhere on the page.
+ * Enter copies the callback URL the moment the page lands — the thing Claude Code's fallback asks
+ * for, from a user mid-flow in a terminal somewhere else. That is the consent script's page-level
+ * Enter shortcut, NOT focus: nothing on the page is focused on arrival, so no button is drawn
+ * highlighted (Copy Callback URL used to be autofocused, and its focus ring read as "selected").
  */
 function issuedCodePage(code: string, continueUrl: string, redirectUri: string, chrome: ConsentChrome): string {
-  const minutes = Math.max(1, Math.round(AUTH_CODE_TTL_MS / 60000));
   const host = escapeHtml(redirectHost(redirectUri));
   const url = escapeHtml(continueUrl);
   return htmlPage(
     'Authorization approved',
-    `<h1>Approved — finish in <strong>${host}</strong></h1>
-     <p>Most clients (including Claude Code) ask you to paste the whole callback URL. It can be used
-        once, and expires in ${minutes} minutes.</p>
+    `<h1>Approved — finish on <strong class="solid">${host}</strong></h1>
      <div class="card">
        <a class="btn primary wide" href="${url}">Continue to ${host}</a>
        <div class="row halves">
-         <button type="button" id="sw-copy-url" data-copy="sw-url" data-copied="Callback URL copied" autofocus>Copy Callback URL</button>
+         <button type="button" id="sw-copy-url" data-copy="sw-url" data-copied="Callback URL copied">Copy Callback URL</button>
          <button type="button" id="sw-copy" data-copy="sw-code" data-copied="Authorization code copied">Copy Auth Code</button>
        </div>
        <div class="code-box" hidden><span id="sw-url">${url}</span></div>

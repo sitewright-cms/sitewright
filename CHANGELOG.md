@@ -9,6 +9,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **The OAuth "Approved" page is quieter.**
+  - **No button is highlighted when it opens.** "Copy Callback URL" is no longer focused, so its focus ring
+    is gone. **Enter still copies the callback URL,** on HTTPS and on plain-HTTP instances alike, and the
+    button stays unringed afterwards.
+  - The heading reads **"Approved — finish on <host>"**, with the host in the brand's primary colour
+    instead of the gradient.
+  - The sentence under the heading ("Most clients … expires in 10 minutes") is gone.
+
 ## [0.79.0] — 2026-11-10
 
 ### Added

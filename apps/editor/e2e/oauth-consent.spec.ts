@@ -62,10 +62,10 @@ test('OAuth consent → code → token, then the access token works', async ({ p
   await expect(page.getByRole('button', { name: 'Copy Auth Code' })).toBeVisible();
 
   // ★ The CALLBACK URL is what Claude Code's manual fallback asks for, so copying it is the primary
-  // path this screen exists to serve — and the button is focused, so Enter copies it. Assert the
-  // copied value is a usable callback URL, not just that a button exists.
+  // path this screen exists to serve — Enter copies it, although NOTHING is focused (a focused button
+  // is drawn highlighted). Assert the copied value is a usable callback URL, not just that a button exists.
   await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
-  await expect(page.getByRole('button', { name: 'Copy Callback URL' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Copy Callback URL' })).not.toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.getByText('Callback URL copied to clipboard')).toBeVisible();
   const shownUrl = new URL((await page.locator('#sw-url').textContent())!.trim());

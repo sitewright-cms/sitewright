@@ -250,30 +250,26 @@ describe('consent screen — the approved code is shown, not fired at the callba
     expect(CONSENT_SCRIPT).toContain("var box = el.closest('.code-box');");
     expect(CONSENT_SCRIPT).toContain('if(box) box.hidden = false;');
     // ★ The execCommand path (plain HTTP: no navigator.clipboard) removes a focused textarea; focus must go
-    // back to the button, or the next Enter lands on <body> and the shortcut copies the URL over the code.
-    expect(CONSENT_SCRIPT).toContain('try{ btn.focus(); }catch(_){}');
+    // back to the button, or the next Enter lands on <body> and the shortcut copies the URL over the code
+    // (proved in a real browser in oauth-approved-focus.browser.test.ts).
+    expect(CONSENT_SCRIPT).toContain('var back = before && before !== document.body ? before : btn === primaryCopy ? null : btn;');
     // …and without JS (where the copy buttons cannot work) both values are shown.
     expect(res.body).toMatch(/<noscript>[\s\S]*Callback URL[\s\S]*Authorization code[\s\S]*<\/noscript>/);
   });
 
-  it('★ Enter copies the callback URL: the button is AUTOFOCUSED, and the script covers moved focus', async () => {
+  it('★ Enter copies the callback URL — from the script, with NOTHING focused (no highlighted button)', async () => {
     // The one thing anyone comes to this screen to do. The user is mid-flow in a terminal somewhere
     // else, so the hand is on the keyboard, not the mouse.
     const { session, ids } = await userWithProjects(['Only']);
     const res = await approve(session, ids[0]!);
 
-    // Plain HTML autofocus, so Enter works on arrival even with JS disabled — and the focus ring is
-    // what makes the shortcut discoverable instead of hidden.
-    expect(res.body).toMatch(/<button[^>]*id="sw-copy-url"[^>]*autofocus[^>]*>/);
-    // …and it is the CALLBACK URL that gets focus, not the bare code (which is a click away, for the
-    // clients that ask for it instead).
-    expect(res.body).not.toMatch(/<button[^>]*id="sw-copy"[^>]*autofocus/);
+    // No autofocus anywhere: an autofocused Copy Callback URL was drawn with its focus ring, which read
+    // as the page highlighting it. "Continue to …" is not focused either — Enter means copy, the link is
+    // a click.
+    expect(res.body).not.toContain('autofocus');
 
-    // …although "Continue to …" comes first on the page: Enter means copy, the link is a click.
-    expect(res.body.indexOf('Continue to 127.0.0.1:8976')).toBeLessThan(res.body.indexOf('id="sw-copy-url"'));
-    expect(res.body).not.toMatch(/<a [^>]*autofocus/);
-
-    // The script's fallback, for after focus has moved off the buttons (a click on the page).
+    // The page-level Enter shortcut does the copying instead, on arrival and after focus has moved off
+    // the buttons (a click on the page).
     expect(CONSENT_SCRIPT).toContain("var primaryCopy = document.getElementById('sw-copy-url')");
     expect(CONSENT_SCRIPT).toContain('primaryCopy.click()');
     // It must NOT steal Enter from a control that has its own meaning for it — otherwise "Continue to …"
@@ -307,10 +303,17 @@ describe('consent screen — the approved code is shown, not fired at the callba
     expect(res.headers['referrer-policy']).toBe('no-referrer');
   });
 
-  it('states the expiry it actually has', async () => {
+  it('heads the page "finish on <host>" in the primary colour, with no paragraph under it', async () => {
     const { session, ids } = await userWithProjects(['Only']);
     const res = await approve(session, ids[0]!);
-    expect(res.body).toContain(`${Math.round(AUTH_CODE_TTL_MS / 60000)} minutes`);
+    expect(res.body).toContain('<h1>Approved — finish on <strong class="solid">127.0.0.1:8976</strong></h1>\n     <div class="card">');
+    expect(res.body).not.toContain('Most clients');
+    expect(res.body).not.toContain('minutes');
+    // The host is ONE colour, the brand primary — not the gradient the consent screen's client name wears.
+    expect(res.body).toContain('h1 strong.solid{background:none;color:var(--sw-brand-1)}');
+  });
+
+  it('the code lives long enough to copy by hand', () => {
     // ★ A minute is not enough time for a human to read a page, copy a code and paste it elsewhere;
     // that is the whole reason this screen exists, so the lifetime has to allow for it.
     expect(AUTH_CODE_TTL_MS).toBeGreaterThanOrEqual(5 * 60 * 1000);

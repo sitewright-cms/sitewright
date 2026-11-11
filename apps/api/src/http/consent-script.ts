@@ -79,6 +79,7 @@ export const CONSENT_SCRIPT = `(function(){
   // label. Generic because the approval screen offers TWO values: the callback URL (what Claude Code
   // asks for) and the bare code (what some other clients ask for).
   // NOTE: no backticks anywhere in this file's template literal — they close the string.
+  var primaryCopy = document.getElementById('sw-copy-url');
   var copyButtons = document.querySelectorAll('[data-copy]');
   for(var b=0;b<copyButtons.length;b++){
     (function(btn){
@@ -105,6 +106,7 @@ export const CONSENT_SCRIPT = `(function(){
         // navigator.clipboard needs a SECURE CONTEXT; an instance reached over plain HTTP on a LAN
         // has none, so fall back to a hidden textarea + execCommand rather than silently doing nothing.
         var fallback = function(){
+          var before = document.activeElement;
           try{
             var ta = document.createElement('textarea');
             ta.value = value;
@@ -115,11 +117,14 @@ export const CONSENT_SCRIPT = `(function(){
             ta.select();
             var done = document.execCommand('copy');
             document.body.removeChild(ta);
-            // ★ Back to the button: removing the focused textarea dropped focus on <body>, where the Enter
-            // shortcut below copies the CALLBACK URL — so a second Enter after "Copy Auth Code"
-            // replaced the code on the clipboard with the URL. (Plain-HTTP instances take this path on
+            // ★ Focus goes back where it was: removing the focused textarea dropped focus on <body>, where
+            // the Enter shortcut below copies the CALLBACK URL — so a second Enter after "Copy Auth Code"
+            // replaced the code on the clipboard with the URL. A copy that STARTED on <body> (the Enter
+            // shortcut itself) stays there: focusing the button after a key press would draw its focus
+            // ring, the highlight this page does not show. (Plain-HTTP instances take this path on
             // every copy: there is no navigator.clipboard outside a secure context.)
-            try{ btn.focus(); }catch(_){}
+            var back = before && before !== document.body ? before : btn === primaryCopy ? null : btn;
+            if(back){ try{ back.focus(); }catch(_){} }
             if(done) ok(); else manual();
           }catch(_){ manual(); }
         };
@@ -133,16 +138,15 @@ export const CONSENT_SCRIPT = `(function(){
   }
 
   // ---- Enter copies the callback URL -------------------------------------
-  // The button is autofocused in the markup, so Enter already activates it natively on arrival — this
-  // covers AFTER focus has moved off the buttons: a click on the page, a revealed value selected to
-  // read it. On a screen whose only purpose is "copy this and go back to your terminal", Enter should
-  // mean copy wherever you happen to be standing.
+  // Nothing is focused when the page lands (no autofocus: a focused button is drawn highlighted), so
+  // this is what makes Enter copy on arrival — and after focus has moved off the buttons: a click on
+  // the page, a revealed value selected to read it. On a screen whose only purpose is "copy this and
+  // go back to your terminal", Enter should mean copy wherever you happen to be standing.
   //
   // It fires only when Enter would otherwise do NOTHING: if the target is a control that has its own
   // Enter behaviour (a button, a link, a field), that behaviour wins — so Enter on "Continue to …"
-  // still follows the link, Enter on "Copy Auth Code" copies the code, and Enter on the
+  // still follows the link, Enter on "Copy Auth Code" copies the code, and Enter on a
   // focused Copy Callback URL button copies once, not twice.
-  var primaryCopy = document.getElementById('sw-copy-url');
   if(primaryCopy){
     document.addEventListener('keydown', function(e){
       if(e.key !== 'Enter' || e.ctrlKey || e.metaKey || e.altKey) return;

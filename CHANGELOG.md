@@ -19,6 +19,14 @@ The running version of an instance is reported at `GET /version` (baked into the
     instead of the gradient.
   - The sentence under the heading ("Most clients … expires in 10 minutes") is gone.
 
+### Security
+
+- **`hono` 4.13.17 and `@hono/node-server` 2.1.6,** pinned past six new moderate advisories (middleware
+  bypasses in `hono`'s router, `mount()`, `csrf()` and `validator('form')`; a path-separator bypass and a
+  crash on a reset WebSocket upgrade in `@hono/node-server`). Both come in through the MCP SDK, whose Node
+  transport uses them. The platform's MCP endpoint runs the SDK's web-standard transport, which loads
+  neither, so nothing the platform runs changes.
+
 ## [0.79.0] — 2026-11-10
 
 ### Added

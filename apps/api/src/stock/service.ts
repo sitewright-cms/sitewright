@@ -8,7 +8,54 @@ import {
   type StockSearchProvider,
   type StockSearchResult,
 } from '@sitewright/schema';
-import { StockProviderError, type ProviderAttribution, type StockProvider } from './providers.js';
+import {
+  StockProviderError,
+  StockProviderTimeoutError,
+  durationLabel,
+  type ProviderAttribution,
+  type StockProvider,
+} from './providers.js';
+
+/**
+ * How long a stock search waits on an upstream. The providers are third-party APIs, and one slow one
+ * used to hold the whole answer: an `all` search waited for every provider with no limit at all, so a
+ * degraded Openverse (5–17 s a search and some 504s, from about 2026-10-20) kept Unsplash, Pexels and
+ * Pixabay results off the screen for just as long.
+ * - `providerMs`: the most one provider call (a search, or the lookup an import starts with) may take;
+ *   it is aborted after that. Above Openverse's own gateway timeout (it answers 504 after ~17 s), so
+ *   any answer an upstream can still give arrives; only a request that would hang is cut off.
+ * - `patienceMs`: in an `all` search, once this much has passed and at least one provider has answered,
+ *   the rest are given up on and reported in `errors`. While nobody has answered it keeps waiting (up to
+ *   `providerMs`), so an instance whose only provider is a slow Openverse still gets its results.
+ */
+export interface StockSearchLimits {
+  providerMs: number;
+  patienceMs: number;
+}
+export const STOCK_SEARCH_LIMITS: StockSearchLimits = { providerMs: 30_000, patienceMs: 8_000 };
+
+/** One provider call, aborted after `ms` or when `cancel` fires — it never outlives either. */
+async function within<T>(
+  provider: StockProviderName,
+  ms: number,
+  call: (signal: AbortSignal) => Promise<T>,
+  cancel?: AbortSignal,
+): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new StockProviderTimeoutError(provider, ms)), ms);
+  const stop = (): void => controller.abort(cancel?.reason);
+  cancel?.addEventListener('abort', stop, { once: true });
+  // Raced against the abort as well, so a provider (or a body read) that ignores the signal still ends here.
+  const aborted = new Promise<never>((_, reject) => {
+    controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true });
+  });
+  try {
+    return await Promise.race([call(controller.signal), aborted]);
+  } finally {
+    clearTimeout(timer);
+    cancel?.removeEventListener('abort', stop);
+  }
+}
 
 /** Max bytes the import will download (matches the media upload cap). */
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
@@ -98,6 +145,7 @@ export class StockService {
     private readonly providers: Map<StockProviderName, StockProvider>,
     private readonly settings: StockSettings,
     private readonly downloadImage: ImageDownloader = defaultDownloadImage,
+    private readonly limits: StockSearchLimits = STOCK_SEARCH_LIMITS,
   ) {}
 
   /** Which providers are usable (keyless ones always; keyed ones iff configured). */
@@ -125,7 +173,8 @@ export class StockService {
    * the top of the grid is a mix rather than one provider's page followed by another's. It is also
    * fault-TOLERANT: a provider that errors is reported in `errors` and the rest still return —
    * only a total wipeout throws. A single-provider search keeps its strict behaviour (an upstream
-   * failure propagates and the route maps it to 502).
+   * failure propagates and the route maps it to 502). Neither waits on a provider past
+   * {@link STOCK_SEARCH_LIMITS} (a timeout is a 504 alone, an entry in `errors` in a fan-out).
    */
   async search(name: StockSearchProvider, query: string, page: number): Promise<StockSearchResult> {
     const p = Math.max(1, Math.min(Number.isFinite(page) ? page : 1, 100));
@@ -133,7 +182,7 @@ export class StockService {
       const provider = this.provider(name);
       const key = await this.keyFor(name);
       if (provider.requiresKey && !key) throw await this.notConfiguredError(name);
-      const results = await provider.search(query, p, key);
+      const results = await within(name, this.limits.providerMs, (signal) => provider.search(query, p, key, signal));
       // A FULL page means "there is probably another". Inferred from the mapped count rather than an
       // upstream total, which the three providers each report differently — the cost is that a page
       // whose last row was DROPPED by the mapper (a non-https URL, a missing id) reads as the last
@@ -149,21 +198,20 @@ export class StockService {
     }
     if (usable.length === 0) throw new StockNotConfiguredError('no stock providers are configured');
 
-    const settled = await Promise.all(
-      usable.map(async ({ provider, key }) => {
-        try {
-          return { provider, results: await provider.search(query, p, key), error: null as string | null };
-        } catch (err) {
-          return { provider, results: [] as StockResult[], error: err instanceof Error ? err.message : 'search failed' };
-        }
-      }),
-    );
+    const settled = await this.fanOut(usable, query, p);
     const errors = settled
       .filter((s) => s.error !== null)
       .map((s) => ({ provider: s.provider.name, error: s.error as string }));
     // Every provider failed → there is nothing to show and no partial result to salvage, so surface
     // it as a provider failure (502) instead of an empty "no results", which would read as a bad query.
-    if (errors.length === settled.length) throw new StockProviderError('every stock provider failed');
+    // When every one of them timed out, say THAT (a 504 naming who), as a single-provider search does.
+    if (errors.length === settled.length) {
+      const timeouts = settled.map((s) => s.failure).filter((f): f is StockProviderTimeoutError => f instanceof StockProviderTimeoutError);
+      if (timeouts.length === settled.length) {
+        throw settled.length === 1 ? timeouts[0]! : new StockProviderTimeoutError('all', this.limits.providerMs);
+      }
+      throw new StockProviderError('every stock provider failed');
+    }
     return {
       provider: 'all',
       page: p,
@@ -188,7 +236,7 @@ export class StockService {
     const effectiveKey = key ?? (await this.keyFor(name));
     if (provider.requiresKey && !effectiveKey) return { ok: false, error: `${name} has no key configured` };
     try {
-      await provider.search('nature', 1, effectiveKey ?? null);
+      await within(name, this.limits.providerMs, (signal) => provider.search('nature', 1, effectiveKey ?? null, signal));
       return { ok: true };
     } catch (err) {
       // The whole point of this button is to say WHY. An auth-shaped status means the key itself was
@@ -209,10 +257,53 @@ export class StockService {
     const provider = this.provider(name);
     const key = await this.keyFor(name);
     if (provider.requiresKey && !key) throw await this.notConfiguredError(name);
-    const resolved = await provider.resolve(id, key);
+    const resolved = await within(name, this.limits.providerMs, (signal) => provider.resolve(id, key, signal));
     if (!resolved) return null;
     const { buffer, contentType } = await this.downloadImage(resolved.downloadUrl);
     return { buffer, contentType, attribution: resolved.attribution };
+  }
+
+  /**
+   * Every usable provider at once, each within `providerMs`. Returns when all have answered — or, once
+   * `patienceMs` has passed, as soon as at least one has: the rest are aborted and come back as errors.
+   */
+  private async fanOut(
+    usable: ReadonlyArray<{ provider: StockProvider; key: string | null }>,
+    query: string,
+    page: number,
+  ): Promise<Array<{ provider: StockProvider; results: StockResult[]; error: string | null; failure?: unknown }>> {
+    type Outcome = { provider: StockProvider; results: StockResult[]; error: string | null; failure?: unknown };
+    const outcomes: Array<Outcome | undefined> = usable.map(() => undefined);
+    const cancel = new AbortController();
+    await new Promise<void>((done) => {
+      let open = usable.length;
+      let patient = true;
+      const timer = setTimeout(() => {
+        patient = false;
+        if (outcomes.some((o) => o?.error === null)) done();
+      }, this.limits.patienceMs);
+      usable.forEach(({ provider, key }, i) => {
+        void within(provider.name, this.limits.providerMs, (signal) => provider.search(query, page, key, signal), cancel.signal)
+          .then(
+            (results): Outcome => ({ provider, results, error: null }),
+            (err: unknown): Outcome => ({ provider, results: [], error: err instanceof Error ? err.message : 'search failed', failure: err }),
+          )
+          .then((outcome) => {
+            outcomes[i] = outcome;
+            open -= 1;
+            if (open === 0 || (!patient && outcome.error === null)) {
+              clearTimeout(timer);
+              done();
+            }
+          });
+      });
+    });
+    // Whatever is still running is given up on: its upstream request is aborted, not left to finish.
+    cancel.abort(new Error('the search finished without it'));
+    const gaveUp = durationLabel(this.limits.patienceMs);
+    return usable.map(
+      ({ provider }, i) => outcomes[i] ?? { provider, results: [], error: `${provider.name} did not answer within ${gaveUp}` },
+    );
   }
 
   private provider(name: StockProviderName): StockProvider {

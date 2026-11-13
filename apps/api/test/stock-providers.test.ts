@@ -315,3 +315,21 @@ describe('provider mappers — fallback branches', () => {
     expect(hit).toMatchObject({ id: 'ov2', thumbUrl: 'https://cdn/ov2.jpg', author: 'Unknown', license: 'CC', sourceUrl: 'https://cdn/ov2.jpg' });
   });
 });
+
+describe('every provider hands the service its abort signal (the search time limit aborts the request)', () => {
+  it.each([
+    ['openverse', (f: FetchLike) => new OpenverseProvider(f), null],
+    ['unsplash', (f: FetchLike) => new UnsplashProvider(f), 'k'],
+    ['pexels', (f: FetchLike) => new PexelsProvider(f), 'k'],
+    ['pixabay', (f: FetchLike) => new PixabayProvider(f), 'k'],
+  ] as const)('%s', async (_name, make, key) => {
+    const seen: Array<AbortSignal | undefined> = [];
+    const capture: FetchLike = async (_url, init) => {
+      seen.push(init?.signal);
+      return { ok: true, status: 200, json: async () => ({ results: [], photos: [], hits: [] }), arrayBuffer: async () => new ArrayBuffer(0), headers: { get: () => null } };
+    };
+    const signal = new AbortController().signal;
+    await make(capture).search('cats', 1, key, signal);
+    expect(seen).toEqual([signal]);
+  });
+});

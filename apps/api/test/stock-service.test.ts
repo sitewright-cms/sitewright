@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { StockService, StockNotConfiguredError, StockUnknownProviderError, STOCK_IMPORT_CAP } from '../src/stock/service.js';
-import { StockProviderError, type StockProvider, type ResolvedStock } from '../src/stock/providers.js';
+import { StockService, StockNotConfiguredError, StockUnknownProviderError, STOCK_IMPORT_CAP, STOCK_SEARCH_LIMITS } from '../src/stock/service.js';
+import { StockProviderError, StockProviderTimeoutError, type StockProvider, type ResolvedStock } from '../src/stock/providers.js';
 import type { StockKeyedProvider, StockProviderName, StockResult } from '@sitewright/schema';
 
 const PAGE_SIZE = 4;
@@ -208,7 +208,155 @@ describe('StockService — `all` fan-out', () => {
     );
     const res = await svc.search('all', 'cats', 3);
     expect(res.page).toBe(3);
-    expect(openverse.search).toHaveBeenCalledWith('cats', 3, null);
-    expect(unsplash.search).toHaveBeenCalledWith('cats', 3, 'UK');
+    expect(openverse.search).toHaveBeenCalledWith('cats', 3, null, expect.any(AbortSignal));
+    expect(unsplash.search).toHaveBeenCalledWith('cats', 3, 'UK', expect.any(AbortSignal));
+  });
+});
+
+/**
+ * A provider that answers after `ms` (with `results`, or by throwing them), and records how its request
+ * ended. `honoursAbort: false` models an upstream (or a body read) that ignores the abort signal.
+ */
+function timedProvider(
+  name: StockProviderName,
+  ms: number,
+  opts: { requiresKey?: boolean; results?: StockResult[]; honoursAbort?: boolean } = {},
+): StockProvider & { aborted: () => boolean } {
+  let abortedFlag = false;
+  return {
+    name,
+    requiresKey: opts.requiresKey ?? name !== 'openverse',
+    pageSize: PAGE_SIZE,
+    aborted: () => abortedFlag,
+    search: vi.fn(
+      (_q: string, _p: number, _k: string | null, signal?: AbortSignal) =>
+        new Promise<StockResult[]>((resolve, reject) => {
+          const timer = setTimeout(() => resolve(opts.results ?? hits(name, 2)), ms);
+          signal?.addEventListener('abort', () => {
+            abortedFlag = true;
+            if (opts.honoursAbort === false) return;
+            clearTimeout(timer);
+            reject(new Error('aborted'));
+          });
+        }),
+    ),
+    resolve: vi.fn(async () => null),
+  };
+}
+
+function timedService(providers: StockProvider[], limits: { providerMs: number; patienceMs: number }) {
+  return new StockService(
+    new Map(providers.map((p) => [p.name, p])),
+    { getStockKey: async () => 'k' },
+    async () => ({ buffer: Buffer.from('img'), contentType: 'image/jpeg' }),
+    limits,
+  );
+}
+
+describe('StockService — no provider holds a search up (a degraded Openverse took 5–17 s, some 504s)', () => {
+  it('★ an `all` search gives up on a slow provider once another has answered and the patience has run out', async () => {
+    const slow = timedProvider('openverse', 5_000);
+    const fast = timedProvider('unsplash', 10);
+    const svc = timedService([slow, fast], { providerMs: 10_000, patienceMs: 60 });
+    const started = Date.now();
+    const res = await svc.search('all', 'cats', 1);
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(res.results.map((r) => r.provider)).toEqual(['unsplash', 'unsplash']);
+    expect(res.errors).toEqual([{ provider: 'openverse', error: 'openverse did not answer within 60 ms' }]);
+    // …and its upstream request is aborted, not left running.
+    expect(slow.aborted()).toBe(true);
+  });
+
+  it('a provider that answers within the patience is waited for, so a normal search loses nothing', async () => {
+    const a = timedProvider('openverse', 10);
+    const b = timedProvider('unsplash', 40);
+    const svc = timedService([a, b], { providerMs: 10_000, patienceMs: 500 });
+    const res = await svc.search('all', 'cats', 1);
+    expect(res.results.map((r) => r.provider)).toEqual(['openverse', 'unsplash', 'openverse', 'unsplash']);
+    expect(res.errors).toBeUndefined();
+  });
+
+  it('★ while NOBODY has answered it keeps waiting, so an instance whose only provider is slow still gets results', async () => {
+    const only = timedProvider('openverse', 150);
+    const svc = timedService([only], { providerMs: 2_000, patienceMs: 20 });
+    const res = await svc.search('all', 'cats', 1);
+    expect(res.results).toHaveLength(2);
+    expect(res.errors).toBeUndefined();
+  });
+
+  it('past the patience, the FIRST answer ends the search — the rest are not waited for', async () => {
+    const slowest = timedProvider('openverse', 5_000);
+    const late = timedProvider('unsplash', 120);
+    const svc = timedService([slowest, late], { providerMs: 10_000, patienceMs: 20 });
+    const started = Date.now();
+    const res = await svc.search('all', 'cats', 1);
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(res.results.map((r) => r.provider)).toEqual(['unsplash', 'unsplash']);
+    expect(res.errors?.map((e) => e.provider)).toEqual(['openverse']);
+  });
+
+  it('★ an `all` search whose only provider timed out says so (a timeout naming it), after at most the limit', async () => {
+    const svc = timedService([timedProvider('openverse', 5_000)], { providerMs: 80, patienceMs: 20 });
+    const started = Date.now();
+    const err = await svc.search('all', 'cats', 1).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(StockProviderTimeoutError);
+    expect((err as Error).message).toBe('openverse did not answer within 80 ms');
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  it('every provider timing out is one timeout for the whole search; a mix with real failures stays a plain failure', async () => {
+    const allSlow = timedService([timedProvider('openverse', 5_000), timedProvider('unsplash', 5_000)], { providerMs: 80, patienceMs: 20 });
+    const err = await allSlow.search('all', 'cats', 1).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(StockProviderTimeoutError);
+    expect((err as Error).message).toBe('no stock provider answered within 80 ms');
+
+    const broken = timedProvider('unsplash', 1);
+    broken.search = vi.fn(async () => {
+      throw new StockProviderError('provider request failed (500)');
+    });
+    const mixed = timedService([timedProvider('openverse', 5_000), broken], { providerMs: 80, patienceMs: 20 });
+    const mixedErr = await mixed.search('all', 'cats', 1).catch((e: unknown) => e);
+    expect(mixedErr).toBeInstanceOf(StockProviderError);
+    expect(mixedErr).not.toBeInstanceOf(StockProviderTimeoutError);
+  });
+
+  it('★ a single-provider search times out with a StockProviderTimeoutError naming the provider and the limit', async () => {
+    const svc = timedService([timedProvider('openverse', 5_000)], { providerMs: 60, patienceMs: 20 });
+    const err = await svc.search('openverse', 'cats', 1).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(StockProviderTimeoutError);
+    expect((err as Error).message).toBe('openverse did not answer within 60 ms');
+  });
+
+  it('★ a provider that IGNORES the abort still ends at the limit (the call is raced, not just signalled)', async () => {
+    const deaf = timedProvider('openverse', 5_000, { honoursAbort: false });
+    const svc = timedService([deaf], { providerMs: 60, patienceMs: 20 });
+    const started = Date.now();
+    await expect(svc.search('openverse', 'cats', 1)).rejects.toBeInstanceOf(StockProviderTimeoutError);
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(deaf.aborted()).toBe(true);
+  });
+
+  it('the key test times out too, and says so instead of hanging', async () => {
+    const svc = timedService([timedProvider('unsplash', 5_000)], { providerMs: 60, patienceMs: 20 });
+    expect(await svc.testKey('unsplash', 'k')).toEqual({ ok: false, error: 'unsplash did not answer within 60 ms' });
+  });
+
+  it('★ the lookup by id an import starts with times out too, instead of holding the request', async () => {
+    const hanging = timedProvider('openverse', 5_000);
+    let lookupSignal: AbortSignal | undefined;
+    hanging.resolve = vi.fn(
+      (_id: string, _k: string | null, signal?: AbortSignal) =>
+        new Promise<ResolvedStock | null>((_, reject) => {
+          lookupSignal = signal;
+          signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        }),
+    );
+    const svc = timedService([hanging], { providerMs: 60, patienceMs: 20 });
+    await expect(svc.fetchForImport('openverse', 'x')).rejects.toBeInstanceOf(StockProviderTimeoutError);
+    expect(lookupSignal?.aborted).toBe(true);
+  });
+
+  it('ships with a 30 s limit per provider and 8 s of patience in a fan-out', () => {
+    expect(STOCK_SEARCH_LIMITS).toEqual({ providerMs: 30_000, patienceMs: 8_000 });
   });
 });

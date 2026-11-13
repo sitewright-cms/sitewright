@@ -9,6 +9,22 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **A slow stock-photo provider no longer holds up the search.** Openverse has been answering slowly since
+  about 20 October (5–17 seconds a search, sometimes a gateway timeout, an outage on Openverse's side), and
+  an "All" search waited for every provider with no time limit. So Unsplash, Pexels and Pixabay results
+  stayed off the screen for as long as Openverse took.
+  - **An "All" search waits up to 8 seconds for every provider.** After that it shows what has arrived
+    and says which provider did not respond, as it already did for a provider that failed. If nothing has
+    arrived yet, it shows the first provider that answers.
+  - **No provider call waits more than 30 seconds,** in an "All" search, in a search of one provider, in
+    the key test in System settings, and in the lookup an import starts with. That is longer than Openverse
+    itself takes to give up (it answers "gateway timeout" after about 17 seconds), so any answer it can
+    still give arrives; only a request that would hang is cut off. A search nobody answered in time now
+    says so ("openverse did not answer within 30 s — try another provider, or again later") instead of
+    waiting indefinitely.
+
 ## [0.80.0] — 2026-11-13
 
 ### Changed

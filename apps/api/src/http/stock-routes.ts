@@ -9,7 +9,7 @@ import {
   type StockSearchResult,
 } from '@sitewright/schema';
 import { STOCK_IMPORT_CAP, StockImageTooLargeError, StockNotConfiguredError, StockUnknownProviderError } from '../stock/service.js';
-import { StockProviderError } from '../stock/providers.js';
+import { StockProviderError, StockProviderTimeoutError } from '../stock/providers.js';
 import { MediaValidationError } from '../media/errors.js';
 import { EncryptionUnavailableError } from '../repo/instance-settings.js';
 import type { ProjectContext } from '../repo/context.js';
@@ -127,6 +127,11 @@ function mapStockError(err: unknown, reply: FastifyReply) {
   if (err instanceof StockImageTooLargeError) return reply.code(413).send({ error: err.message });
   if (err instanceof StockUnknownProviderError) return reply.code(404).send({ error: err.message });
   if (err instanceof EncryptionUnavailableError) return reply.code(503).send({ error: err.message });
+  // Our own sentence (which provider, how long), so it is safe to pass through — and it says what to do.
+  if (err instanceof StockProviderTimeoutError) {
+    const next = err.provider === 'all' ? 'try again later' : 'try another provider, or again later';
+    return reply.code(504).send({ error: `${err.message} — ${next}` });
+  }
   if (err instanceof StockProviderError) return reply.code(502).send({ error: 'stock provider unavailable — please try again' });
   throw err;
 }

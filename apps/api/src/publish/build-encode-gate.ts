@@ -9,6 +9,8 @@
  *   pages, and 340 parallel encodes OOM-killed a 768MB container.
  * - Each admitted encode is also BOOKED with the shared ledger, so the instance's other memory gates
  *   (uploads, list calls, screenshots) see it.
+ * - The single-page preview borrows room that is free right now (`runIfFree`) for the images of a page
+ *   a member just rendered; when there is none it takes the public thumbnail gate as before.
  */
 export interface EncodeMemorySnapshot {
   availableBytes: number;
@@ -44,21 +46,42 @@ export class BuildEncodeGate {
         const snap = await this.snapshot();
         if (build.running === 0 || (this.running < this.ceiling && this.fits(snap, bytes))) break;
       }
-      // Woken when an encode finishes; re-checked on a timer too, as memory frees up elsewhere.
-      await new Promise<void>((resolve) => {
-        const wake = (): void => {
-          clearTimeout(timer);
-          this.waiters.delete(wake);
-          resolve();
-        };
-        const timer = setTimeout(wake, this.pollMs);
-        timer.unref?.();
-        this.waiters.add(wake);
-      });
+      await this.freed();
     }
+    return this.admitted(bytes, fn, build);
+  }
+
+  /** Resolves when an encode here finishes, or after the poll interval (memory frees up elsewhere too). */
+  freed(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const wake = (): void => {
+        clearTimeout(timer);
+        this.waiters.delete(wake);
+        resolve();
+      };
+      const timer = setTimeout(wake, this.pollMs);
+      timer.unref?.();
+      this.waiters.add(wake);
+    });
+  }
+
+  /**
+   * Runs `fn` NOW when the ceiling has room and free memory holds `bytes`; otherwise resolves undefined
+   * without running it, so the caller can take its usual path instead. It never waits for a slot and
+   * belongs to no build, so it never gets the one-encode-per-build guarantee.
+   */
+  async runIfFree<T>(bytes: number, fn: () => Promise<T>): Promise<{ value: T } | undefined> {
+    if (this.running >= this.ceiling) return undefined;
+    const snap = await this.snapshot();
+    // Re-checked after the await and claimed with none in between, as in run().
+    if (this.running >= this.ceiling || !this.fits(snap, bytes)) return undefined;
+    return { value: await this.admitted(bytes, fn) };
+  }
+
+  private async admitted<T>(bytes: number, fn: () => Promise<T>, build?: BuildEncodeCount): Promise<T> {
     this.running += 1;
     this.bytes += bytes;
-    build.running += 1;
+    if (build) build.running += 1;
     let booked: { release(): void } | undefined;
     try {
       booked = this.book?.(bytes);
@@ -67,7 +90,7 @@ export class BuildEncodeGate {
       booked?.release();
       this.running -= 1;
       this.bytes -= bytes;
-      build.running -= 1;
+      if (build) build.running -= 1;
       for (const wake of [...this.waiters]) wake();
     }
   }

@@ -96,4 +96,76 @@ describe('BuildEncodeGate — build encodes admitted from free memory', () => {
     expect(booked).toEqual([32 * MB]);
     expect(held).toBe(0);
   });
+
+  describe('runIfFree — the single-page preview borrowing room that is free right now', () => {
+    it('runs at once when the ceiling and free memory allow, booked like any other encode', async () => {
+      let held = 0;
+      const gate = new BuildEncodeGate(2, async () => ({ availableBytes: 500 * MB, usedBytes: 0, reservedBytes: 0 }), (bytes) => {
+        held += bytes;
+        return { release: () => void (held -= bytes) };
+      });
+      const out = await gate.runIfFree(20 * MB, async () => {
+        expect(held).toBe(20 * MB);
+        return 'encoded';
+      });
+      expect(out).toEqual({ value: 'encoded' });
+      expect(held).toBe(0);
+    });
+
+    it('★ runs NOTHING and says so when the ceiling is taken — it never waits, and gets no guaranteed one', async () => {
+      const gate = new BuildEncodeGate(1, async () => undefined, undefined, 10);
+      const busy = deferred();
+      const build = gate.run({ running: 0 }, 10 * MB, () => busy.promise);
+      let ran = false;
+      expect(await gate.runIfFree(10 * MB, async () => void (ran = true))).toBeUndefined();
+      expect(ran).toBe(false);
+      busy.resolve();
+      await build;
+      expect(await gate.runIfFree(10 * MB, async () => 1)).toEqual({ value: 1 });
+    });
+
+    it('runs nothing when free memory does not hold it, counting the encodes already admitted', async () => {
+      const gate = new BuildEncodeGate(8, async () => ({ availableBytes: 100 * MB, usedBytes: 500 * MB, reservedBytes: 0 }), undefined, 10);
+      const busy = deferred();
+      const first = gate.runIfFree(70 * MB, () => busy.promise);
+      await tick();
+      // 100MB free, 70 of it already taken by the first: a second 40MB encode does not fit.
+      expect(await gate.runIfFree(40 * MB, async () => 'x')).toBeUndefined();
+      busy.resolve();
+      await first;
+      expect(await gate.runIfFree(40 * MB, async () => 'x')).toEqual({ value: 'x' });
+    });
+
+    it('★ concurrent callers can never all see the one free slot and start together', async () => {
+      const gate = new BuildEncodeGate(1, async () => ({ availableBytes: 500 * MB, usedBytes: 0, reservedBytes: 0 }), undefined, 10);
+      let running = 0;
+      let peak = 0;
+      const results = await Promise.all(
+        Array.from({ length: 6 }, () =>
+          gate.runIfFree(10 * MB, async () => {
+            running += 1;
+            peak = Math.max(peak, running);
+            await tick();
+            running -= 1;
+          }),
+        ),
+      );
+      expect(peak).toBe(1);
+      expect(results.filter(Boolean)).toHaveLength(1);
+    });
+
+    it('freed() resolves when an encode finishes, well before the poll interval', async () => {
+      const gate = new BuildEncodeGate(1, async () => undefined, undefined, 60_000);
+      const busy = deferred();
+      const job = gate.run({ running: 0 }, 10 * MB, () => busy.promise);
+      let woke = false;
+      const waiting = gate.freed().then(() => void (woke = true));
+      await tick();
+      expect(woke).toBe(false);
+      busy.resolve();
+      await job;
+      await waiting;
+      expect(woke).toBe(true);
+    });
+  });
 });

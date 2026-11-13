@@ -185,6 +185,17 @@ export function rewriteMediaUrlsFlat(
 }
 
 /**
+ * The `(asset, size, format)` variants `html` references through this project's delivery route, read
+ * exactly as the build reads them (the same pass, its rewritten output discarded). For the single-page
+ * preview, which serves those URLs as they are.
+ */
+export function collectThumbRefs(html: string, projectSlug: string): ThumbRefs {
+  const refs: ThumbRefs = new Map();
+  rewriteMediaUrlsFlat(html, projectSlug, '', refs, (id) => id);
+  return refs;
+}
+
+/**
  * Resolve a single media IMAGE url (e.g. an og:image / logo) to its bundled FLAT thumbnail path at
  * `size`, recording the ref. Non-media urls return undefined (caller handles the fallback). Used for
  * head/SEO values that are rebased BEFORE the page HTML is assembled (so the body rewrite never sees

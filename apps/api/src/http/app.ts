@@ -234,6 +234,7 @@ import { signPreview, verifyPreview, signShare, verifyShare, shareIdOf } from '.
 import { PreviewStore } from './preview-store.js';
 import { UploadTicketStore, type UploadTicketFont } from './upload-ticket-store.js';
 import { PREVIEW_BRIDGE_JS } from './preview-bridge.js';
+import { PREVIEW_IMAGE_RETRY_JS } from './preview-image-retry.js';
 import { archiveSite, deploySite, DeployConfigSchema, SiteArchiveSizeError } from '../publish/adapters.js';
 import { MAX_PROJECT_ARCHIVE_BYTES, DiskSpaceError, assertDiskHeadroom } from '../limits.js';
 import { deployRsync } from '../publish/rsync-deploy.js';
@@ -1553,8 +1554,9 @@ async function styledSourceDocument(
       ? undefined
       : await compileUtilityCss([compileCandidates.join(' ')], brandToTailwindTheme(brand));
   const inlineScripts = rawFidelity
-    ? // Raw-HTML page: only the editor↔preview bridge runs (no platform component/effect JS).
-      [PREVIEW_BRIDGE_JS]
+    ? // Raw-HTML page: only the editor↔preview bridge runs (no platform component/effect JS) — plus the
+      // image retry, here at the end of <body> because a raw page carries no head scripts.
+      [PREVIEW_IMAGE_RETRY_JS, PREVIEW_BRIDGE_JS]
     : [
         // The editor preview scrolls on <body> (styled scrollbar), so bridge body-scroll → window
         // FIRST, before any scroll-linked effect attaches its `window` scroll listener. Self-guarded,
@@ -1586,8 +1588,9 @@ async function styledSourceDocument(
     // Emitted AFTER criticalCss (renderDocument), exactly where the publish path's linked sheet goes.
     utilityCss,
     inlineScripts: inlineScripts.length > 0 ? inlineScripts : undefined,
-    // The toggle's no-flash init, inlined SYNC in <head> (preview's sandboxed CSP allows inline JS).
-    headInlineScripts: themeToggle ? [THEME_TOGGLE_JS] : undefined,
+    // The toggle's no-flash init, inlined SYNC in <head> (preview's sandboxed CSP allows inline JS) —
+    // and the image retry, in <head> so its listener is up before the first image can fail.
+    headInlineScripts: [...(themeToggle ? [THEME_TOGGLE_JS] : []), PREVIEW_IMAGE_RETRY_JS],
     // SYSTEM i18n dict for the component runtimes (only when a component ships).
     systemI18n: componentJs ? systemI18nData(shell.systemT) : undefined,
     // `...shell` carries `stickyHeader` straight through to renderDocument (fixed `#main-nav` + offset).
@@ -6279,6 +6282,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (JSON.stringify(renderMedia).length > 4 * 1024 * 1024) {
         return reply.code(413).send({ error: 'project media is too large to render' });
       }
+      // Site-wide AVIF delivery, by the build's own rule — the page and its slots alike (build.ts gives
+      // both the same `imageAvif`).
+      const imageAvif = (await effectiveImageDelivery(website)) === 'avif';
       // Every page previews through the worker from its Handlebars `source` (or its referenced
       // template's). An inherit-mode locale variant resolves its translation-group owner's code and
       // supplies only its own page.data (the main language's layout, its translated content); a
@@ -6503,6 +6509,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // so a click opens that entry's editor. Always body-safe (wraps the loop body) → no gate needed.
           markEntries: true,
           media: renderMedia,
+          imageAvif,
           forms: previewForms,
           // Omitted entirely (not `{}`) when the page embeds none: the helper distinguishes "this
           // surface has no image maps" from "that id is unknown", and only the latter should throw.
@@ -6542,6 +6549,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // injected wrapper) and preview-only, same as on the page.
           markEntries: true,
           media: renderMedia,
+          imageAvif,
           forms: previewForms,
           // A slot (footer, sidebar, global modal) may embed a map too — same parity as forms.
           ...(previewImageMaps ? { imageMaps: previewImageMaps } : {}),
@@ -9318,6 +9326,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     });
   }
 
+  /**
+   * The format a project's {{sw-image}} renders in: its own `website.imageDelivery`, else the instance's
+   * `defaultImageFormat` (WebP when neither is set). ONE rule for the build (folded into the bundle by
+   * assembleBuildInputs) and the single-page preview, so the editor canvas shows the same AVIF
+   * `<picture>` the site will ship — it used to render plain WebP whatever the setting.
+   */
+  async function effectiveImageDelivery(website: Settings['website'] | undefined): Promise<'webp' | 'avif' | undefined> {
+    return website?.imageDelivery ?? (await instanceSettingsRepo.getStored()).defaultImageFormat;
+  }
+
   // Assembles the inputs a static build needs from the project's current DB content — shared by
   // the published build (`POST /publish`) and the live-preview DRAFT build, so the two always
   // render from an identical bundle (no drift). The publish-time JSON snapshot is fetched by each
@@ -9354,14 +9372,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     };
     // `media` includes `kind:'font'` assets — copyMedia bundles their faces (zero font-CDN refs).
     const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
-    const instance = await instanceSettingsRepo.getStored();
     const captcha = captchaRenderConfig(await loadProjectCaptchaById(db, project.id));
     // Inherit the instance-wide default image delivery format when this project hasn't chosen one, so the
     // admin's `defaultImageFormat` actually governs {{sw-image}} (build.ts reads website.imageDelivery).
     // Covers BOTH publish and the live-preview build (they share this assembly) and the isolated worker
     // (the resolved value rides on the bundle).
-    if (instance.defaultImageFormat && !bundle.project.website?.imageDelivery) {
-      bundle.project.website = { ...(bundle.project.website ?? {}), imageDelivery: instance.defaultImageFormat };
+    const imageDelivery = await effectiveImageDelivery(bundle.project.website);
+    if (imageDelivery && !bundle.project.website?.imageDelivery) {
+      bundle.project.website = { ...(bundle.project.website ?? {}), imageDelivery };
     }
     // Reusable `{{> compose}}` partials: built-in globals + the project's own (project wins).
     const snippets = {

@@ -19,6 +19,19 @@ The running version of an instance is reported at `GET /version` (baked into the
     instead of the gradient.
   - The sentence under the heading ("Most clients … expires in 10 minutes") is gone.
 
+### Fixed
+
+- **The editor's single-page preview shows AVIF images when the site uses AVIF.** With AVIF chosen for the
+  project, or as the instance default, the whole-site preview and the published site serve `{{sw-image}}` as a
+  `<picture>` with an AVIF version. The single-page preview ignored the setting and always showed plain WebP.
+  It now follows the same rule, in the page and in the header, footer and sidebars.
+- **Images on a large page no longer stay broken in the single-page preview.** That preview encodes each image
+  size the first time it is shown, three at a time with up to 20 waiting per project, and it loads every image
+  at once. So a page with many new images got some of them refused as "server busy", and they stayed broken
+  until a reload. A refused image is now asked for again a few seconds later, up to ten times over about a
+  minute, so the images arrive batch by batch. Only this instance's project images are retried, never SVGs
+  or other sites' images, and the page's markup is not changed.
+
 ### Security
 
 - **`hono` 4.13.17 and `@hono/node-server` 2.1.6,** pinned past six new moderate advisories (middleware

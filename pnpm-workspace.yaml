@@ -105,7 +105,11 @@ overrides:
 
   # ── Advisory remediation (see the note above the block) ──
   "@esbuild-kit/core-utils>esbuild": ^0.25.0
-  "@hono/node-server@<2.0.5": ^2.0.5
+  # ★ Widened range again: 2.0.5 was the fix, then GHSA-qv5m-9pm6-hqp3 (ECONNRESET during an async
+  # WebSocket upgrade crashes the process) and GHSA-jpvv-r467-5p4w (a backslash in the path parsed as a
+  # separator, slipping past path-based rules at a proxy) landed with 2.1.6 as the fix. Runtime tree:
+  # @modelcontextprotocol/sdk → @hono/node-server.
+  "@hono/node-server@<2.1.6": ^2.1.6
   # ★ Widened range: 2.3.0 was the fix, then GHSA-27r3-jxmh-p828 (high, DoS through trailing bytes
   # after a compressed request body) landed with 2.4.0 as the fix. It is in the RUNTIME tree:
   # @modelcontextprotocol/sdk → express, which the MCP server runs. 2.4.0 is younger than the
@@ -149,7 +153,10 @@ overrides:
   # GHSA-g6gw-c38x-mqfc parseBody memory exhaustion, GHSA-crvj-82cr-hjcx query-parser cache-key
   # differential), so the old pin started failing the gate with no change on our side. It IS in the
   # runtime tree (@modelcontextprotocol/sdk → @hono/node-server), so this is not toolchain-only.
-  "hono@<4.13.5": ">=4.13.5"
+  # …and again: four more (GHSA-4m76-xfj5-7975 mount() middleware bypass, GHSA-h7mg-cq63-vhpq RegExpRouter
+  # skipping wildcard middleware, GHSA-46wx-v44x-9hh2 csrf() and text/ping, GHSA-4h7h-rv7c-7m2v
+  # validator('form') and multipart) landed with 4.13.16 as the fix.
+  "hono@<4.13.16": ">=4.13.16"
   # ★ Widened range: 10.3.1 was the fix, then four more landed through 10.7.1 — isLinkLocal()
   # reading fe80::/64 instead of fe80::/10 and no classifier for NAT64 64:ff9b:1::/48 (both
   # SSRF/trust-boundary bypasses), isInSubnet() comparing across address families, and an

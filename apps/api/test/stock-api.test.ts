@@ -8,7 +8,7 @@ import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import type { StockServiceLike } from '../src/http/stock-routes.js';
-import { StockProviderError } from '../src/stock/providers.js';
+import { StockProviderError, StockProviderTimeoutError } from '../src/stock/providers.js';
 import { StockImageTooLargeError } from '../src/stock/service.js';
 import { EncryptionUnavailableError } from '../src/repo/instance-settings.js';
 import { makePng } from './png.js';
@@ -224,6 +224,22 @@ describe('stock API — injected fake service', () => {
     const { t, base } = await setup(app, db, 'a@acme.test');
     const res = await app.inject({ method: 'GET', url: `${base}/stock/search?provider=openverse&q=cats`, cookies: { sw_session: t } });
     expect(res.statusCode).toBe(502);
+  });
+
+  it('a provider that did not answer in time is a 504 that says which one, and what to do', async () => {
+    const { app, db } = await makeApp(fakeStock({ search: async () => { throw new StockProviderTimeoutError('openverse', 30_000); } }));
+    const { t, base } = await setup(app, db, 'a@acme.test');
+    const res = await app.inject({ method: 'GET', url: `${base}/stock/search?provider=openverse&q=cats`, cookies: { sw_session: t } });
+    expect(res.statusCode).toBe(504);
+    expect((res.json() as { error: string }).error).toBe('openverse did not answer within 30 s — try another provider, or again later');
+  });
+
+  it('an `all` search in which no provider answered in time is a 504 too', async () => {
+    const { app, db } = await makeApp(fakeStock({ search: async () => { throw new StockProviderTimeoutError('all', 30_000); } }));
+    const { t, base } = await setup(app, db, 'a@acme.test');
+    const res = await app.inject({ method: 'GET', url: `${base}/stock/search?provider=all&q=cats`, cookies: { sw_session: t } });
+    expect(res.statusCode).toBe(504);
+    expect((res.json() as { error: string }).error).toBe('no stock provider answered within 30 s — try again later');
   });
 
   it('an oversized photo is a 413 that names the limit, NOT a generic "provider unavailable" 502', async () => {

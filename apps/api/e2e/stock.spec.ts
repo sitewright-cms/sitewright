@@ -15,6 +15,30 @@ const LIVE_KEYS: Record<(typeof KEYED_PROVIDERS)[number], string | undefined> = 
   pixabay: process.env.SW_E2E_PIXABAY_KEY,
 };
 
+/**
+ * Whether Openverse ITSELF answers a search right now, asked directly rather than through the instance.
+ * The two live keyless tests below skip — and say why — only when it does not: Openverse's own outage
+ * (5–17 s a search and 504s, from about 2026-10-20) turned this gate red on releases that never touched
+ * stock. When Openverse is up, a failure is ours, and the test fails.
+ */
+async function openverseIsUp(): Promise<boolean> {
+  try {
+    const res = await fetch('https://api.openverse.org/v1/images/?q=mountain&page_size=1', { signal: AbortSignal.timeout(20_000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Skips the running test when the instance reported an UPSTREAM failure (502, or 504 for a provider that
+ * did not answer in time) AND Openverse itself is not answering. Any other status is ours, and fails.
+ */
+async function skipIfOpenverseIsDown(status: number, expected: number, what: string): Promise<void> {
+  if (status === expected || (status !== 502 && status !== 504)) return;
+  test.skip(!(await openverseIsUp()), `Openverse itself is not answering, so ${what} could not succeed (the instance said ${status})`);
+}
+
 async function newProject(playwright: PwFixture, baseURL: string) {
   const stamp = Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
   const ctx = await seedUser(playwright, baseURL, `u-${stamp}@e2e.test`);
@@ -56,11 +80,13 @@ test('stock: provider availability, search gating, and tenant isolation', async 
 });
 
 test('stock: keyless Openverse search + import works with no configuration', async ({ playwright, baseURL }) => {
+  test.setTimeout(150_000); // two live upstream calls, each allowed 30 s, plus the probes
   const { ctx, base } = await newProject(playwright, baseURL!);
 
   // Openverse needs no key. A real anonymous search must succeed (the request stays
   // within Openverse's anonymous page_size<=20 limit — exceeding it returns 401).
-  const search = await ctx.get(`${base}/stock/search?provider=openverse&q=mountain`);
+  const search = await ctx.get(`${base}/stock/search?provider=openverse&q=mountain`, { timeout: 45_000 });
+  await skipIfOpenverseIsDown(search.status(), 200, 'a live search');
   expect(search.status()).toBe(200);
   const results = (await search.json()).results as Array<{ id: string; thumbUrl: string; previewUrl: string }>;
   // If the anonymous tier is transiently rate-limited the search may legitimately
@@ -68,7 +94,8 @@ test('stock: keyless Openverse search + import works with no configuration', asy
   if (results.length > 0) {
     expect(results[0]!.thumbUrl).toMatch(/^https:\/\//);
     expect(results[0]!.previewUrl).toMatch(/^https:\/\//); // the full-size preview rendition
-    const imp = await ctx.post(`${base}/stock/import`, { data: { provider: 'openverse', id: results[0]!.id } });
+    const imp = await ctx.post(`${base}/stock/import`, { data: { provider: 'openverse', id: results[0]!.id }, timeout: 45_000 });
+    await skipIfOpenverseIsDown(imp.status(), 201, 'a live import');
     expect(imp.status()).toBe(201);
     const asset = (await imp.json()).item;
     expect(asset.attribution.provider).toBe('openverse');
@@ -82,11 +109,13 @@ test('stock: keyless Openverse search + import works with no configuration', asy
 });
 
 test('stock: `all` fans out across every available provider without a key', async ({ playwright, baseURL }) => {
+  test.setTimeout(90_000); // one live upstream call, allowed 30 s, plus the probe
   const { ctx, base } = await newProject(playwright, baseURL!);
 
   // With no instance keys, the fan-out still works — keyless Openverse carries it, and the unkeyed
   // providers are SKIPPED rather than failing the search.
-  const res = await ctx.get(`${base}/stock/search?provider=all&q=mountain`);
+  const res = await ctx.get(`${base}/stock/search?provider=all&q=mountain`, { timeout: 45_000 });
+  await skipIfOpenverseIsDown(res.status(), 200, 'a live fan-out');
   expect(res.status()).toBe(200);
   const body = await res.json();
   expect(body.provider).toBe('all');

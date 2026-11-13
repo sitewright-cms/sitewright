@@ -3,7 +3,7 @@ import type { StockProviderName, StockResult } from '@sitewright/schema';
 /** Minimal fetch surface (so tests inject canned responses instead of hitting the network). */
 export type FetchLike = (
   url: string,
-  init?: { headers?: Record<string, string> },
+  init?: { headers?: Record<string, string>; signal?: AbortSignal },
 ) => Promise<{
   ok: boolean;
   status: number;
@@ -32,8 +32,9 @@ export interface StockProvider {
   /** Results this provider returns per page — its own upstream maximum, not a shared one. The
    *  service uses it to decide whether another page exists (a FULL page means "ask for more"). */
   readonly pageSize: number;
-  search(query: string, page: number, key: string | null): Promise<StockResult[]>;
-  resolve(id: string, key: string | null): Promise<ResolvedStock | null>;
+  /** `signal` aborts the upstream request (the service's time limit). */
+  search(query: string, page: number, key: string | null, signal?: AbortSignal): Promise<StockResult[]>;
+  resolve(id: string, key: string | null, signal?: AbortSignal): Promise<ResolvedStock | null>;
 }
 
 // Per-provider page sizes: each upstream's own limit, not a lowest-common-denominator. 20 is the
@@ -59,8 +60,9 @@ const httpsUrl = (v: unknown): string => (/^https:\/\//i.test(str(v)) ? str(v) :
 const idStr = (v: unknown): string =>
   typeof v === 'number' && Number.isFinite(v) ? String(Math.trunc(v)) : str(v);
 
-async function getJson(fetchImpl: FetchLike, url: string, headers?: Record<string, string>): Promise<unknown> {
-  const res = await fetchImpl(url, headers ? { headers } : undefined);
+async function getJson(fetchImpl: FetchLike, url: string, headers?: Record<string, string>, signal?: AbortSignal): Promise<unknown> {
+  const init = headers || signal ? { ...(headers ? { headers } : {}), ...(signal ? { signal } : {}) } : undefined;
+  const res = await fetchImpl(url, init);
   // Only the STATUS is carried out of here. The body can be an upstream error page, and for Pixabay
   // the request URL itself holds the API key — neither ever reaches a log line or the client.
   if (!res.ok) throw new StockProviderError(`provider request failed (${res.status})`, res.status);
@@ -79,6 +81,28 @@ export class StockProviderError extends Error {
   }
 }
 
+/** "30 s", or "60 ms" for a limit under a second (tests). */
+export function durationLabel(ms: number): string {
+  return ms < 1000 ? `${ms} ms` : `${Math.round(ms / 1000)} s`;
+}
+
+/**
+ * A provider that did not answer within the service's time limit — or, as `all`, an `all` search in
+ * which none did. Maps to 504, with this message.
+ */
+export class StockProviderTimeoutError extends StockProviderError {
+  constructor(
+    readonly provider: StockProviderName | 'all',
+    readonly ms: number,
+  ) {
+    super(
+      provider === 'all'
+        ? `no stock provider answered within ${durationLabel(ms)}`
+        : `${provider} did not answer within ${durationLabel(ms)}`,
+    );
+  }
+}
+
 // --- Openverse (CC-licensed, no API key) -------------------------------------
 export class OpenverseProvider implements StockProvider {
   readonly name = 'openverse' as const;
@@ -86,17 +110,16 @@ export class OpenverseProvider implements StockProvider {
   readonly pageSize = OPENVERSE_PAGE_SIZE;
   constructor(private readonly fetchImpl: FetchLike) {}
 
-  // Openverse needs no key, so it ignores the StockProvider `key` arg entirely
-  // (a narrower signature still satisfies the interface; callers may pass a key).
-  async search(query: string, page: number): Promise<StockResult[]> {
+  // Openverse needs no key, so it ignores the StockProvider `key` arg entirely.
+  async search(query: string, page: number, _key?: string | null, signal?: AbortSignal): Promise<StockResult[]> {
     const url = `https://api.openverse.org/v1/images/?q=${encodeURIComponent(query)}&page=${page}&page_size=${OPENVERSE_PAGE_SIZE}`;
-    const data = (await getJson(this.fetchImpl, url)) as { results?: unknown[] };
+    const data = (await getJson(this.fetchImpl, url, undefined, signal)) as { results?: unknown[] };
     const rows = Array.isArray(data.results) ? data.results : [];
     return rows.map((r) => openverseResult(r as Record<string, unknown>)).filter((r): r is StockResult => r !== null);
   }
 
-  async resolve(id: string): Promise<ResolvedStock | null> {
-    const data = (await getJson(this.fetchImpl, `https://api.openverse.org/v1/images/${encodeURIComponent(id)}/`)) as Record<string, unknown>;
+  async resolve(id: string, _key?: string | null, signal?: AbortSignal): Promise<ResolvedStock | null> {
+    const data = (await getJson(this.fetchImpl, `https://api.openverse.org/v1/images/${encodeURIComponent(id)}/`, undefined, signal)) as Record<string, unknown>;
     const downloadUrl = httpsUrl(data.url);
     if (!downloadUrl) return null;
     return {
@@ -137,19 +160,19 @@ export class UnsplashProvider implements StockProvider {
   readonly pageSize = UNSPLASH_PAGE_SIZE;
   constructor(private readonly fetchImpl: FetchLike) {}
 
-  async search(query: string, page: number, key: string | null): Promise<StockResult[]> {
+  async search(query: string, page: number, key: string | null, signal?: AbortSignal): Promise<StockResult[]> {
     const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&page=${page}&per_page=${UNSPLASH_PAGE_SIZE}`;
-    const data = (await getJson(this.fetchImpl, url, { Authorization: `Client-ID ${key ?? ''}` })) as { results?: unknown[] };
+    const data = (await getJson(this.fetchImpl, url, { Authorization: `Client-ID ${key ?? ''}` }, signal)) as { results?: unknown[] };
     const rows = Array.isArray(data.results) ? data.results : [];
     return rows
       .map((r) => unsplashResult(r as Record<string, unknown>))
       .filter((r): r is StockResult => r !== null);
   }
 
-  async resolve(id: string, key: string | null): Promise<ResolvedStock | null> {
+  async resolve(id: string, key: string | null, signal?: AbortSignal): Promise<ResolvedStock | null> {
     const data = (await getJson(this.fetchImpl, `https://api.unsplash.com/photos/${encodeURIComponent(id)}`, {
       Authorization: `Client-ID ${key ?? ''}`,
-    })) as Record<string, unknown>;
+    }, signal)) as Record<string, unknown>;
     const urls = (data.urls ?? {}) as Record<string, unknown>;
     // Take the FULL-resolution rendition. `regular` is only ~1080px wide, which is visibly soft in a
     // full-bleed hero and cannot serve a 2x srcset — and the import caps at STOCK_IMPORT_CAP anyway,
@@ -200,17 +223,17 @@ export class PexelsProvider implements StockProvider {
   readonly pageSize = PEXELS_PAGE_SIZE;
   constructor(private readonly fetchImpl: FetchLike) {}
 
-  async search(query: string, page: number, key: string | null): Promise<StockResult[]> {
+  async search(query: string, page: number, key: string | null, signal?: AbortSignal): Promise<StockResult[]> {
     const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&page=${page}&per_page=${PEXELS_PAGE_SIZE}`;
-    const data = (await getJson(this.fetchImpl, url, { Authorization: key ?? '' })) as { photos?: unknown[] };
+    const data = (await getJson(this.fetchImpl, url, { Authorization: key ?? '' }, signal)) as { photos?: unknown[] };
     const rows = Array.isArray(data.photos) ? data.photos : [];
     return rows.map((r) => pexelsResult(r as Record<string, unknown>)).filter((r): r is StockResult => r !== null);
   }
 
-  async resolve(id: string, key: string | null): Promise<ResolvedStock | null> {
+  async resolve(id: string, key: string | null, signal?: AbortSignal): Promise<ResolvedStock | null> {
     const data = (await getJson(this.fetchImpl, `https://api.pexels.com/v1/photos/${encodeURIComponent(id)}`, {
       Authorization: key ?? '',
-    })) as Record<string, unknown>;
+    }, signal)) as Record<string, unknown>;
     const src = (data.src ?? {}) as Record<string, unknown>;
     // `original` is the full-resolution file; large2x (1880px) / large (940px) are fallbacks only.
     const downloadUrl = httpsUrl(src.original) || httpsUrl(src.large2x) || httpsUrl(src.large);
@@ -265,7 +288,7 @@ export class PixabayProvider implements StockProvider {
   readonly pageSize = PIXABAY_PAGE_SIZE;
   constructor(private readonly fetchImpl: FetchLike) {}
 
-  async search(query: string, page: number, key: string | null): Promise<StockResult[]> {
+  async search(query: string, page: number, key: string | null, signal?: AbortSignal): Promise<StockResult[]> {
     // `image_type=photo`: the sibling providers are photo-only, and Pixabay's vector hits resolve to
     // SVG, which the image store refuses outright (librsvg fetches remote refs — an SSRF vector).
     // `safesearch=true`: Unsplash filters by default, Pixabay does not unless asked.
@@ -273,15 +296,15 @@ export class PixabayProvider implements StockProvider {
       `https://pixabay.com/api/?key=${encodeURIComponent(key ?? '')}` +
       `&q=${encodeURIComponent(clampPixabayQuery(query))}` +
       `&image_type=photo&safesearch=true&page=${page}&per_page=${PIXABAY_PAGE_SIZE}`;
-    const data = (await getJson(this.fetchImpl, url)) as { hits?: unknown[] };
+    const data = (await getJson(this.fetchImpl, url, undefined, signal)) as { hits?: unknown[] };
     const rows = Array.isArray(data.hits) ? data.hits : [];
     return rows.map((r) => pixabayResult(r as Record<string, unknown>)).filter((r): r is StockResult => r !== null);
   }
 
-  async resolve(id: string, key: string | null): Promise<ResolvedStock | null> {
+  async resolve(id: string, key: string | null, signal?: AbortSignal): Promise<ResolvedStock | null> {
     // Lookup-by-id is the same endpoint with `&id=`; the single hit still arrives inside `hits`.
     const url = `https://pixabay.com/api/?key=${encodeURIComponent(key ?? '')}&id=${encodeURIComponent(id)}`;
-    const data = (await getJson(this.fetchImpl, url)) as { hits?: unknown[] };
+    const data = (await getJson(this.fetchImpl, url, undefined, signal)) as { hits?: unknown[] };
     const hit = (Array.isArray(data.hits) ? data.hits[0] : undefined) as Record<string, unknown> | undefined;
     if (!hit) return null;
     // ★ Resolution ceiling depends on the INSTANCE'S KEY. `imageURL` (the original) and `fullHDURL`

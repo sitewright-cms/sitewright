@@ -11,6 +11,19 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Changed
 
+- **A cold single-page preview loads its images about three times as fast.** Measured with 60 new photos
+  (2400×1600) on one page: every image loaded in 1.3–1.4 s instead of 3.7–3.8 s, and none was refused as busy
+  (37 were before). The single-page preview now gets the image handling the whole-site build got in 0.79.0:
+  - **The images of a page you preview are encoded the way a build's are:** several at once while there is
+    free memory for them, under the same limits that keep a build from running the server out of memory.
+    When that room is taken they use the public limit of three at a time, as before. When that is full too
+    they wait their turn instead of being refused, for up to 30 seconds and up to 64 images at once; past
+    that an image is refused as busy, as before, and the page asks for it again a few seconds later.
+  - **This applies only to the images on the pages a member just previewed, for ten minutes.** Every other
+    image is handled as before.
+  - **On a small server it is faster too:** with four threads, 3.7–4.1 s became 1.9–2.1 s.
+  - The preview also reads the project's media list once instead of twice, and groups dataset entries
+    without copying the list for every entry (5,000 entries took 16 ms per preview).
 - **The OAuth "Approved" page is quieter.**
   - **No button is highlighted when it opens.** "Copy Callback URL" is no longer focused, so its focus ring
     is gone. **Enter still copies the callback URL,** on HTTPS and on plain-HTTP instances alike, and the

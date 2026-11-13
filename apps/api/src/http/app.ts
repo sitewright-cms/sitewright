@@ -235,6 +235,7 @@ import { PreviewStore } from './preview-store.js';
 import { UploadTicketStore, type UploadTicketFont } from './upload-ticket-store.js';
 import { PREVIEW_BRIDGE_JS } from './preview-bridge.js';
 import { PREVIEW_IMAGE_RETRY_JS } from './preview-image-retry.js';
+import { PreviewEncodeLane } from './preview-encode-lane.js';
 import { archiveSite, deploySite, DeployConfigSchema, SiteArchiveSizeError } from '../publish/adapters.js';
 import { MAX_PROJECT_ARCHIVE_BYTES, DiskSpaceError, assertDiskHeadroom } from '../limits.js';
 import { deployRsync } from '../publish/rsync-deploy.js';
@@ -382,6 +383,7 @@ import { ApiKeyRepository, type ResolvedApiKey } from '../repo/api-keys.js';
 import { MemberTokenRepository, type ResolvedMemberToken } from '../repo/member-tokens.js';
 import { sharedMemoryBudget, type Reservation } from '../runtime/memory-budget.js';
 import { BuildEncodeGate, type BuildEncodeCount } from '../publish/build-encode-gate.js';
+import { collectThumbRefs } from '../publish/media-thumbs.js';
 import { FairGate, GateFullError, TenantShareError } from '../runtime/fair-gate.js';
 import { hashApiToken, isMemberTokenFormat } from '../auth/api-keys.js';
 import { OAuthRepository } from '../repo/oauth.js';
@@ -824,6 +826,13 @@ const buildEncodeGate = new BuildEncodeGate(
   async () => (memoryBudgetReady ? memoryBudget.snapshot() : undefined),
   (bytes) => memoryBudget.forceReserve(bytes, 'build image encode'),
 );
+/**
+ * Longest a single-page preview's image waits for an encode slot before it is refused as busy, as every
+ * other thumbnail request is at once (the preview's retry runtime then tries again).
+ */
+const PREVIEW_ENCODE_WAIT_MS = 30_000;
+/** How many such images may wait at once, instance-wide (each is a held request polling the gates). */
+const PREVIEW_ENCODE_MAX_WAITERS = 64;
 /** One build's share of {@link buildEncodeGate} — each build can always run one encode. */
 function buildEncodeAdmission(): <T>(reserveBytes: number, fn: () => Promise<T>) => Promise<T> {
   const encodes: BuildEncodeCount = { running: 0 };
@@ -2118,6 +2127,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const previewStore = new PreviewStore(
     opts.previewRoot ? { spillDir: join(opts.previewRoot, '_tokens') } : {},
   );
+  // The image variants a member's single-page preview just rendered: their encodes may use the build
+  // encode gate's free room (see ensureThumb). Opened by the two routes that mint a preview document.
+  const previewEncodeLane = new PreviewEncodeLane();
   // ---- BUILT-IN STATISTICS ----
   // Daily totals in their own SQLite file; counting happens in memory (see analytics/engine.ts). The country
   // database loads on the first counted visit, so an instance whose sites never count pays nothing for it.
@@ -6259,7 +6271,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const entries = (await contentRepo.list(ctx, 'entry')) as Entry[];
       const byDataset = new Map<string, Entry[]>();
       for (const entry of entries) {
-        byDataset.set(entry.dataset, [...(byDataset.get(entry.dataset) ?? []), entry]);
+        // Appended in place: copying the list per entry was quadratic (5,000 rows: 16 ms a keystroke).
+        const list = byDataset.get(entry.dataset);
+        if (list) list.push(entry);
+        else byDataset.set(entry.dataset, [entry]);
       }
       // Honor the drag-reorder `order` so the preview's {{#each}} + bindings match the editor + publish.
       for (const list of byDataset.values()) list.sort(compareEntryOrder);
@@ -6589,7 +6604,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const fxCode = websiteEffectsCustomCode(website?.effects);
         const sourceHtml = await styledSourceDocument(page, brand, rendered, {
           // Self-hosted @font-face so the editor canvas doesn't fall back to system fonts.
-          ...fontMediaShell((await contentRepo.list(ctx, 'media')) as MediaAsset[], project.slug),
+          ...fontMediaShell(mediaStorage ? media : ((await contentRepo.list(ctx, 'media')) as MediaAsset[]), project.slug),
           formApi: { base: '', project: project.id, preview: true },
           mainNav,
           sidebarLeft,
@@ -6614,6 +6629,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           lang: previewLocale, // `<html lang>` follows the previewed page's locale (publish parity)
           systemT: resolveTranslations(website?.translations, previewLocale, defaultLocale),
         });
+        previewEncodeLane.allow(project.slug, collectThumbRefs(sourceHtml, project.slug), media);
         const sourceToken = await previewStore.put(sourceHtml, { projectId: project.id, userId: ctx.userId });
         const shotResult = await previewScreenshots(req, sourceHtml);
         const screenshots = shotResult?.shots;
@@ -8880,6 +8896,41 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // A cached thumbnail is derived from the CURRENT original and is dropped whenever that original is
     // rewritten (`pruneAssetThumbnails`) — it is not immutable, and the delivery route says so.
     const inflightThumbs = new Map<string, Promise<Buffer>>();
+    /**
+     * An image of a page a member just previewed (see PreviewEncodeLane). It runs at once when the build
+     * encode gate has free room (memory and its CPU ceiling, as a build's extra encodes are admitted);
+     * else it takes the public gate as before; and where that is FULL it waits for either rather than
+     * being refused. A cold image-heavy page used to load three at a time and have most of the rest
+     * refused with a 503, which the browser only retried seconds later. There is no guaranteed encode
+     * here (a build's one is what that is for), so this adds nothing past either gate's own limits. A
+     * memory refusal still refuses, and so does a wait past PREVIEW_ENCODE_WAIT_MS or past
+     * PREVIEW_ENCODE_MAX_WAITERS waiting at once.
+     */
+    let previewEncodeWaiters = 0;
+    const encodeForPreview = async (projectId: string, estimate: number, encode: () => Promise<Buffer>): Promise<Buffer> => {
+      const deadline = Date.now() + PREVIEW_ENCODE_WAIT_MS;
+      let waiting = false;
+      try {
+        for (;;) {
+          const early = await buildEncodeGate.runIfFree(estimate, encode);
+          if (early) return early.value;
+          try {
+            return await withOptimizeSlot(projectId, encode);
+          } catch (err) {
+            if (!(err instanceof GateFullError || err instanceof TenantShareError) || Date.now() >= deadline) throw err;
+            // Waiters are bounded instance-wide; past that a request is refused as busy, as before.
+            if (!waiting) {
+              if (previewEncodeWaiters >= PREVIEW_ENCODE_MAX_WAITERS) throw err;
+              previewEncodeWaiters += 1;
+              waiting = true;
+            }
+          }
+          await buildEncodeGate.freed();
+        }
+      } finally {
+        if (waiting) previewEncodeWaiters -= 1;
+      }
+    };
     const ensureThumb = async (
       slug: string,
       id: string,
@@ -8910,13 +8961,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // Allocate the (up to 50 MB) original buffer ONLY once an optimize slot is granted — reading
           // it while WAITING would let a request backlog pin unbounded memory. readStored validates
           // `originalName`; a missing/invalid original throws → the route 404s.
-          const buffer = await withOptimizeSlot(projectId, async () => {
+          const encode = async (): Promise<Buffer> => {
             // Hand sharp the PATH, not the bytes: `readStored` is `readFile(resolveStoredPath(…))`,
             // so resolving instead keeps the identical validation and confinement while leaving the
             // original (up to 50MB) out of the heap entirely. Only the ENCODED output is resident.
             const originalPath = storage.resolveStoredPath(slug, id, originalName);
             return (await generateThumbnail(originalPath, { width: THUMB_SIZES[size], format })).buffer;
-          });
+          };
+          const estimate = previewEncodeLane.estimate(slug, id, size, format);
+          const buffer =
+            estimate === undefined ? await withOptimizeSlot(projectId, encode) : await encodeForPreview(projectId, estimate, encode);
           await storage.storeFile(slug, id, thumbName, buffer);
           return buffer;
         })().finally(() => inflightThumbs.delete(key));
@@ -12640,7 +12694,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const renderPages = publishedPages((await contentRepo.list(ctx, 'page')) as Page[]);
       const byDataset = new Map<string, Entry[]>();
       for (const entry of (await contentRepo.list(ctx, 'entry')) as Entry[]) {
-        byDataset.set(entry.dataset, [...(byDataset.get(entry.dataset) ?? []), entry]);
+        // Appended in place: copying the list per entry was quadratic (5,000 rows: 16 ms a keystroke).
+        const list = byDataset.get(entry.dataset);
+        if (list) list.push(entry);
+        else byDataset.set(entry.dataset, [entry]);
       }
       for (const list of byDataset.values()) list.sort(compareEntryOrder);
       // The same projection /preview and publish make: `dataset.<name>` reads the reader's locale variant,
@@ -12710,9 +12767,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           path: String(pageCtx.path ?? '/'),
           title: String(pageCtx.title ?? project.name),
         };
+        const projectMedia = (await contentRepo.list(ctx, 'media')) as MediaAsset[];
         const html = await styledSourceDocument(previewPage, brand, rendered, {
           // Self-hosted @font-face so the code-editor preview doesn't fall back to system fonts.
-          ...fontMediaShell((await contentRepo.list(ctx, 'media')) as MediaAsset[], project.slug),
+          ...fontMediaShell(projectMedia, project.slug),
           formApi: { base: '', project: project.id, preview: true },
           criticalCss: themeCriticalCss, // site-wide critical CSS (gradient/chrome classes)
           bodyClass: themeBodyClass,
@@ -12724,6 +12782,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // Mint a previewStore token so the editor loads the doc via an iframe `src` (served under an
         // opaque-origin `sandbox` CSP) instead of `srcDoc` (which inherits the editor's own CSP).
         // `html` is still returned for API consumers/tests.
+        previewEncodeLane.allow(project.slug, collectThumbRefs(html, project.slug), projectMedia);
         const token = await previewStore.put(html, { projectId: project.id, userId: ctx.userId });
         return reply.send({ html, token });
       } catch (err) {

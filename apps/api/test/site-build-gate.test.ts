@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { ReleaseManifest } from '../src/publish/build.js';
 import type { BuildJob, BuildRunner } from '../src/publish/runner.js';
 import { makeHarness, type Harness, type ProjectClient, type TestClient } from './harness.js';
+import { _setMemoryBudgetForTest } from '../src/http/app.js';
 
 /**
  * The instance-wide bound on whole-site builds (`siteBuildConcurrency`).
@@ -44,6 +45,8 @@ const homePage = {
 };
 
 let seq = 0;
+const previewRoots = new WeakMap<Harness, string>();
+const previewRootOf = (h: Harness): string => previewRoots.get(h)!;
 async function makeProject(client: TestClient): Promise<ProjectClient> {
   const projectId = await client.createProject('Site', `sbg-site-${seq++}`);
   const proj = client.project(projectId);
@@ -65,6 +68,7 @@ describe('site builds are bounded instance-wide', () => {
     roots.push(publishRoot, previewRoot, mediaRoot);
     runner = new ParkedRunner();
     harness = await makeHarness({ publishRoot, previewRoot, mediaRoot, buildRunner: runner, siteBuildConcurrency: 2 });
+    previewRoots.set(harness, previewRoot);
   });
 
   afterEach(async () => {
@@ -110,6 +114,46 @@ describe('site builds are bounded instance-wide', () => {
 
     runner.parked[0]!.resolve(MANIFEST);
     for (const r of await Promise.all(publishes)) expect(r.statusCode).toBe(200);
+  });
+
+  it('★ a waiting publish goes ahead of a waiting preview build', async () => {
+    const client = await harness.signup();
+    const [a, b, c, d] = [await makeProject(client), await makeProject(client), await makeProject(client), await makeProject(client)];
+    const busy = [client.post(`${a.base}/publish`), client.post(`${b.base}/publish`)];
+    await runner.started(2);
+    const preview = client.get(`${c.base}/preview-url`);
+    await settle();
+    const publish = client.post(`${d.base}/publish`);
+    await settle();
+    runner.parked[0]!.resolve(MANIFEST);
+    await runner.started(3);
+    // The freed slot went to d's publish (outside the preview root), not to c's earlier preview.
+    expect(runner.parked[2]!.outDir.startsWith(previewRootOf(harness))).toBe(false);
+    for (const p of runner.parked) p.resolve(MANIFEST);
+    await runner.started(4);
+    for (const p of runner.parked) p.resolve(MANIFEST);
+    for (const r of await Promise.all([...busy, publish, preview])) expect(r.statusCode).toBe(200);
+  });
+
+  it('★★ a second build waits while the memory ledger has no room for it; one build always runs', async () => {
+    // A build's heap is booked in the ledger: with no room, the first build still runs (nothing else
+    // would ever free memory), and the next waits for it instead of piling on.
+    _setMemoryBudgetForTest(1024 * 1024 * 1024, 1024 * 1024 * 1024); // full
+    try {
+      const client = await harness.signup();
+      const [a, b] = [await makeProject(client), await makeProject(client)];
+      const publishes = [client.post(`${a.base}/publish`), client.post(`${b.base}/publish`)];
+      await runner.started(1);
+      await settle();
+      await settle();
+      expect(runner.parked).toHaveLength(1); // a slot is free, but there is no memory for the second
+      runner.parked[0]!.resolve(MANIFEST);
+      await runner.started(2); // the first finished: the second runs, as the one that always may
+      runner.parked[1]!.resolve(MANIFEST);
+      for (const r of await Promise.all(publishes)) expect(r.statusCode).toBe(200);
+    } finally {
+      _setMemoryBudgetForTest(64 * 1024 * 1024 * 1024, 0); // roomy again for the other tests
+    }
   });
 
   it('★ a preview build that waited for its slot is stamped with what it READ — no second identical build', async () => {

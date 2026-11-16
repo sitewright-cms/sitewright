@@ -63,6 +63,16 @@ describe('processSizing — the ceilings must fit in the cgroup', () => {
     expect(processSizing(16 * GB).siteBuilds).toBe(4);
   });
 
+  it('★ builds on worker threads by default from 2 GiB — below it the extra isolate costs too much margin', () => {
+    // 768 MB / 1 CPU: OOM-killed with a build thread (726 MB), fine without (666 MB). 1.5 GiB / 6 CPUs:
+    // threads OOM-killed in 3 of 5 extreme-phase runs that main-thread builds always survived.
+    expect(processSizing(768 * MB).buildThreads).toBe(false);
+    expect(processSizing(1536 * MB).buildThreads).toBe(false);
+    expect(processSizing(2047 * MB).buildThreads).toBe(false);
+    expect(processSizing(2 * GB).buildThreads).toBe(true);
+    expect(processSizing(8 * GB).buildThreads).toBe(true);
+  });
+
   it('never returns a heap too small for Node to run', () => {
     // A pathologically small limit must still yield a usable ceiling rather than 0 or a negative.
     for (const limit of [128 * MB, 192 * MB, 256 * MB]) {

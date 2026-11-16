@@ -385,6 +385,7 @@ import { sharedMemoryBudget, type Reservation } from '../runtime/memory-budget.j
 import { BuildEncodeGate, type BuildEncodeCount } from '../publish/build-encode-gate.js';
 import { collectThumbRefs } from '../publish/media-thumbs.js';
 import { FairGate, GateFullError, TenantShareError } from '../runtime/fair-gate.js';
+import { SiteBuildSlots } from '../runtime/site-build-slots.js';
 import { hashApiToken, isMemberTokenFormat } from '../auth/api-keys.js';
 import { OAuthRepository } from '../repo/oauth.js';
 import { OAuthClientRepository } from '../repo/oauth-clients.js';
@@ -781,6 +782,16 @@ function deviceAuditFailure(err: PagespeedRunError): { code: string; error: stri
 
 /** How long an admitted-or-refused decision may wait for memory to free up before shedding. */
 const ADMISSION_WAIT_MS = 3_000;
+
+/**
+ * What a whole-site build is booked at in the memory ledger while it runs: a tenth of the container,
+ * 96-256 MB. MEASURED: a build thread's heap held ~145-177 MB for the 270-route example site under load
+ * on a 1.5 GiB container (where this books 154 MB).
+ */
+export function siteBuildReserveBytes(limitBytes: number): number {
+  const MB = 1024 * 1024;
+  return Math.min(256 * MB, Math.max(96 * MB, Math.round(limitBytes * 0.1)));
+}
 
 /**
  * What an unpaginated list actually costs, as a multiple of its stored bytes.
@@ -1913,8 +1924,8 @@ export interface AppOptions {
   /** Build executor (default: in-process). Swap for an isolated worker in SaaS. */
   buildRunner?: BuildRunner;
   /**
-   * Whole-site builds (draft previews, publishes, deploys, audit builds) run at once, instance-wide;
-   * the rest wait their turn, fairly between projects. server.ts sizes it from the container's memory.
+   * Whole-site builds (draft previews, publishes, deploys) run at once, instance-wide; the rest wait
+   * their turn, publishes and deploys ahead of previews. server.ts sizes it from the container's memory.
    */
   siteBuildConcurrency?: number;
   /** Online AI completion provider (agency-funded). Omit to disable the AI endpoints. */
@@ -2221,17 +2232,61 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Short-lived, single-use tickets that let an AGENT hand a LOCAL file to the media library — see
   // UploadTicketStore for why the bytes cannot travel through the MCP tool call itself.
   const uploadTickets = new UploadTicketStore();
-  const buildRunner = opts.buildRunner ?? new InProcessBuildRunner();
+  const buildRunner: BuildRunner = opts.buildRunner ?? new InProcessBuildRunner();
   // ★ Builds wait for a slot BEFORE loading their inputs, so a queued build holds nothing. A build WAITS
   // rather than being refused for being busy: a preview's caller is waiting for exactly this, and a
-  // publish would only retry. The callers bound the queue themselves (one draft build per project,
-  // rate-limited publishes), so its depth is a backstop: past 1024 waiting, a build is refused with the
-  // gate's retryable 503. The page-speed audit's build does not queue here at all (`unqueued`).
-  const siteBuildGate = new FairGate({
-    label: 'site builds',
-    limit: Math.max(1, Math.floor(opts.siteBuildConcurrency ?? 4)),
-    queue: 1024,
-  });
+  // publish would only retry. A publish, deploy or site zip goes ahead of queued previews (see
+  // SiteBuildSlots). The callers bound the queue themselves (one draft build per project, rate-limited
+  // publishes), so its depth is a backstop: past 1024 waiting, a build is refused with a retryable 503.
+  // The page-speed audit's build does not queue here at all (`unqueued`).
+  const siteBuildGate = new SiteBuildSlots(Math.max(1, Math.floor(opts.siteBuildConcurrency ?? 4)));
+  // Builds holding a memory booking right now, and builds waiting for one (see withSiteBuildMemory).
+  let buildsHoldingMemory = 0;
+  const buildMemoryWaiters = new Set<() => void>();
+  /**
+   * Run a whole-site build with its memory BOOKED in the instance ledger, waiting while there is no room.
+   *
+   * ★ A build's heap is real memory nothing else accounted for: MEASURED on a 1.5 GiB container, two
+   * build threads held ~175 MB of heap each under ten agents' load, and once builds no longer waited on
+   * the main thread everything ran at once and the container was OOM-killed. Booked here, the build's
+   * cost is visible to every other memory gate (encodes, screenshots, audits, list reads), and a second
+   * build waits for room instead of piling on. ONE build always runs without waiting — nothing else
+   * would ever free the memory a waiting build needs — so a build is delayed, never refused.
+   */
+  const withSiteBuildMemory = async <T>(fn: () => Promise<T>): Promise<T> => {
+    const bytes = siteBuildReserveBytes(memoryBudgetReady ? memoryBudget.limit : 0);
+    let booking: Reservation | null = null;
+    while (!booking) {
+      if (!memoryBudgetReady || buildsHoldingMemory === 0) {
+        booking = memoryBudget.forceReserve(bytes, 'site build');
+      } else {
+        booking = await memoryBudget.tryReserve(bytes, 'site build');
+        // No room: wait for a build to finish (it may be the last one, which lets this one run at once) or
+        // a second to pass (memory frees up elsewhere too), then look again.
+        if (!booking) {
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(done, 1_000);
+            timer.unref?.();
+            function done(): void {
+              clearTimeout(timer);
+              buildMemoryWaiters.delete(done);
+              resolve();
+            }
+            buildMemoryWaiters.add(done);
+          });
+        }
+      }
+    }
+    // Counted in the same tick as the decision above, so two builds cannot both see "none running".
+    buildsHoldingMemory += 1;
+    try {
+      return await fn();
+    } finally {
+      buildsHoldingMemory -= 1;
+      booking.release();
+      for (const wake of [...buildMemoryWaiters]) wake();
+    }
+  };
   const aiProvider = opts.aiProvider;
   const agentProvider = opts.agentProvider;
   const aiUsageRepo = new AiUsageRepository(db);
@@ -9501,7 +9556,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     buildOpts: { minify?: boolean; signal?: AbortSignal; stats?: boolean; unqueued?: boolean } = {},
   ): Promise<ReleaseManifest> {
     if (buildOpts.unqueued) return buildToDirNow(ctx, project, outDir, buildOpts);
-    return siteBuildGate.run(project.id, () => buildToDirNow(ctx, project, outDir, buildOpts));
+    return siteBuildGate.run('publish', project.id, () => withSiteBuildMemory(() => buildToDirNow(ctx, project, outDir, buildOpts)));
   }
 
   async function buildToDirNow(
@@ -9545,6 +9600,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         : undefined,
       // Copy by path (kernel copies) and encode through the instance's image gate. See BuildSiteOptions.
       mediaFilePath: mediaStorage ? (assetId, file) => mediaStorage.resolveStoredPath(project.slug, assetId, file) : undefined,
+      // The same three, for a runner that builds on a worker thread and rebuilds them there.
+      ...(mediaStorage && opts.mediaRoot ? { mediaSource: { root: opts.mediaRoot, projectSlug: project.slug } } : {}),
       runEncode: buildEncodeAdmission(),
       encodeConcurrency: MAX_BUILD_ENCODES,
     });
@@ -10146,7 +10203,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       project: Awaited<ReturnType<ProjectRepository['get']>>,
       version: string,
     ): Promise<void> {
-      return siteBuildGate.run(project.id, () => buildPreviewSiteNow(ctx, project, version));
+      return siteBuildGate.run('preview', project.id, () => withSiteBuildMemory(() => buildPreviewSiteNow(ctx, project, version)));
     }
 
     async function buildPreviewSiteNow(
@@ -10194,6 +10251,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         mediaFilePath: mediaStorage
           ? (assetId, file) => mediaStorage.resolveStoredPath(project.slug, assetId, file)
           : undefined,
+        // The same three, for a runner that builds on a worker thread and rebuilds them there.
+        ...(mediaStorage && opts.mediaRoot ? { mediaSource: { root: opts.mediaRoot, projectSlug: project.slug } } : {}),
         runEncode: buildEncodeAdmission(),
         encodeConcurrency: MAX_BUILD_ENCODES,
       });
@@ -12951,6 +13010,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   }
   // Close the shared screenshot browser too (no-op if it was never launched).
   app.addHook('onClose', async () => closeScreenshotBrowser());
+  app.addHook('onClose', async () => buildRunner.close?.());
   // Stop the preview store's sweep timer with the app. The timer is unref'd so it never held the
   // process open, but the class documents a shutdown contract and every other long-lived resource
   // here honours one.

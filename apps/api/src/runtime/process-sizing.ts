@@ -59,6 +59,8 @@ export interface ProcessSizing {
   poolSize: number;
   /** Whole-site builds (previews, publishes, audits) the main process runs at once. */
   siteBuilds: number;
+  /** Whether those builds run on worker threads by default (from 2 GiB — see buildThreadsFor). */
+  buildThreads: boolean;
   /** Workers kept warm when idle. */
   poolMinSize: number;
   /** Per-worker old-space ceiling (MB). */
@@ -97,6 +99,19 @@ function siteBuildSlots(limitBytes: number): number {
 }
 
 /**
+ * Whether builds run on WORKER THREADS by default: from 2 GiB. A thread is a second V8 isolate with its own
+ * copy of the build's code and heap, and running builds beside the main thread lets more of everything
+ * happen at once. MEASURED with the stress suite (scripts/stress): at 768 MB / 1 CPU a build thread was
+ * OOM-killed where main-thread builds finished (726 vs 666 MB peak); at 1.5 GiB / 6 CPUs threads were
+ * faster and far more responsive under heavy load, but raised the peak by ~100-150 MB and were OOM-killed
+ * in 3 of 5 runs of the extreme phase that main-thread builds survived every time. Below 2 GiB they stay
+ * opt-in (SW_BUILD_THREADS=1).
+ */
+function buildThreadsFor(limitBytes: number): boolean {
+  return limitBytes >= 2 * 1024 ** 3;
+}
+
+/**
  * Divide `limitBytes` between the main process and the render workers that share its cgroup.
  *
  * The main heap is whatever is left after the workers' worst case and the main process's own native
@@ -108,7 +123,14 @@ export function processSizing(limitBytes: number): ProcessSizing {
   const workersMb = poolSize * (WORKER_HEAP_MB + WORKER_OVERHEAD_MB);
   const available = limitMb - workersMb - MAIN_NATIVE_MB - limitMb * OS_SLACK_FRACTION;
   const mainHeapMb = Math.max(MIN_HEAP_MB, Math.floor(Math.min(limitMb * MAX_HEAP_FRACTION, available)));
-  return { poolSize, poolMinSize, siteBuilds: siteBuildSlots(limitBytes), workerHeapMb: WORKER_HEAP_MB, mainHeapMb };
+  return {
+    poolSize,
+    poolMinSize,
+    siteBuilds: siteBuildSlots(limitBytes),
+    buildThreads: buildThreadsFor(limitBytes),
+    workerHeapMb: WORKER_HEAP_MB,
+    mainHeapMb,
+  };
 }
 
 /** {@link processSizing} for the cgroup this process is actually in. */

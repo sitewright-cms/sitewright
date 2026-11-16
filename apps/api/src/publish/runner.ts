@@ -12,6 +12,8 @@ export type BuildJob = BuildSiteOptions;
  */
 export interface BuildRunner {
   run(job: BuildJob): Promise<ReleaseManifest>;
+  /** Release whatever the runner holds (threads); called when the app closes. */
+  close?(): Promise<void>;
 }
 
 /** Default: build in the API process. */

@@ -9,7 +9,7 @@
 # whether the instance SETTLES once the load stops. See scripts/README.md (`stress/run.sh`).
 #
 #   scripts/stress/run.sh --image <ref> [--plan <json>] [--memory 1536m] [--cpus 6] [--port <p>]
-#                         [--out <dir>] [--profile <phase>] [--keep]
+#                         [--out <dir>] [--profile <phase>] [--env KEY=VALUE]… [--keep]
 #
 #   --image    image to test (e.g. sitewright-api:e2e-2008, ghcr.io/sitewright-cms/sitewright:0.80.0)
 #   --plan     phases + workload counts (default: plans/standard.json, ~15 min)
@@ -17,6 +17,7 @@
 #   --port     host port (default: the first free E2E pool port)
 #   --out      results directory (default: a new temp dir; printed at the end)
 #   --profile  CPU-profile the API's main thread for 30 s, 20 s into this phase (e.g. 3-heavy)
+#   --env      pass an extra setting to the container (repeatable), e.g. --env SW_BUILD_THREADS=0
 #   --keep     leave the container running afterwards (default: removed)
 #
 # Env: SW_STRESS_HOST (default $SW_E2E_HOST or dind.local), SW_STRESS_IMAGES (a fixture dir to reuse).
@@ -33,6 +34,7 @@ log() { printf '\033[36m[stress]\033[0m %s\n' "$*" >&2; }
 die() { log "error: $*"; exit 1; }
 
 image="" plan="$here/plans/standard.json" memory=1536m cpus=6 port="" out="" profile_phase="" keep=0
+extra_env=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --image) image="$2"; shift 2 ;;
@@ -42,6 +44,7 @@ while [ $# -gt 0 ]; do
     --port) port="$2"; shift 2 ;;
     --out) out="$2"; shift 2 ;;
     --profile) profile_phase="$2"; shift 2 ;;
+    --env) case "$2" in *=*) extra_env+=("$2") ;; *) die "--env needs KEY=VALUE" ;; esac; shift 2 ;;
     --keep) keep=1; shift ;;
     -h|--help) awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "${BASH_SOURCE[0]}" >&2; exit 0 ;;
     *) die "unknown argument: $1" ;;
@@ -73,6 +76,7 @@ openssl rand -hex 16 > "$secrets/pw"
   echo "SW_ADMIN_EMAIL=stress@stress.test"
   echo "SW_ADMIN_PASSWORD=$(cat "$secrets/pw")"
   echo "SW_DISABLE_UPDATE_CHECK=true"
+  for kv in ${extra_env[@]+"${extra_env[@]}"}; do echo "$kv"; done
 } > "$secrets/env"
 
 log "starting $name ($image, --memory $memory --cpus $cpus) on $host:$port"

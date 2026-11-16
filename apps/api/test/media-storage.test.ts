@@ -50,6 +50,29 @@ describe('MediaStorage — flat (short id) layout', () => {
     expect((await storage.readStored('proj1', OTHER, 'b.webp')).toString()).toBe('b');
   });
 
+  it('★ storeFile is atomic: it writes beside the target and renames — no partial file ever has the real name', async () => {
+    // A writer that dies mid-write (a build thread out of heap) must not leave a truncated variant that the
+    // next build copies as a cache hit.
+    await storage.storeFile('proj1', SHORT, 'v-md.webp', Buffer.from('old'));
+    await storage.storeFile('proj1', SHORT, 'v-md.webp', Buffer.from('new-bytes'));
+    expect((await storage.readStored('proj1', SHORT, 'v-md.webp')).toString()).toBe('new-bytes');
+    // No temp left behind on success.
+    const { readdir } = await import('node:fs/promises');
+    expect((await readdir(join(root, 'proj1'))).filter((n) => n.endsWith('.upload'))).toEqual([]);
+  });
+
+  it('remove also sweeps an asset\u2019s stranded variant temps, and never a sibling\u2019s', async () => {
+    const { writeFile } = await import('node:fs/promises');
+    const OTHER = 'z9Y8x7';
+    await storage.storeFile('proj1', SHORT, 'a.webp', Buffer.from('a'));
+    // What a writer killed between write and rename leaves.
+    await writeFile(join(root, 'proj1', `${SHORT}-a-md.webp.0f1e2d3c.upload`), 'partial');
+    await writeFile(join(root, 'proj1', `${OTHER}-b-md.webp.9a8b7c6d.upload`), 'partial');
+    await storage.remove('proj1', SHORT);
+    expect(existsSync(join(root, 'proj1', `${SHORT}-a-md.webp.0f1e2d3c.upload`))).toBe(false);
+    expect(existsSync(join(root, 'proj1', `${OTHER}-b-md.webp.9a8b7c6d.upload`))).toBe(true);
+  });
+
   it('prunes derived thumbnails but keeps the retained original', async () => {
     await storage.storeFile('proj1', SHORT, 'photo.png', Buffer.from('ORIGINAL'));
     for (const t of ['photo-sm.webp', 'photo-md.webp', 'photo-xl.webp', 'photo-lg.avif']) {

@@ -1,6 +1,7 @@
 import type { Dirent } from 'node:fs';
 import { cp, mkdir, readdir, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { isShortAssetId } from '../id.js';
 
 // Id segments are generated/validated identifiers; servable files are produced by
@@ -129,8 +130,19 @@ export class MediaStorage {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined, validated path
     await mkdir(dir, { recursive: true, mode: 0o750 });
     const target = this.resolveStoredPath(projectSlug, assetId, storedName);
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined, validated path
-    await writeFile(target, data);
+    // ATOMIC: written beside the target, then renamed over it. A writer that dies mid-write — a build
+    // thread out of heap, a crash — must not leave a truncated derivative that the next build then copies
+    // as a cache hit. The temp ends in `.upload`, which every listing skips and nothing serves.
+    const temp = `${target}.${randomUUID()}.upload`;
+    try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined, validated path
+      await writeFile(temp, data);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined, validated path
+      await rename(temp, target);
+    } catch (err) {
+      await rm(temp, { force: true }).catch(() => {});
+      throw err;
+    }
   }
 
   /**
@@ -246,8 +258,20 @@ export class MediaStorage {
       for (const { abs } of await this.listAssetFiles(projectSlug, assetId)) {
         await rm(abs, { force: true });
       }
-      // Also drop a stranded temp input, if any.
-      await rm(join(this.projectDir(projectSlug), `${assetId}.upload`), { force: true });
+      // Also drop a stranded temp input, if any — and the temps of a variant write that never got to its
+      // rename (`<id>-<file>.<uuid>.upload`, see storeFile): listings skip them, so nothing else would.
+      const dir = this.projectDir(projectSlug);
+      await rm(join(dir, `${assetId}.upload`), { force: true });
+      let names: string[] = [];
+      try {
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined, validated dir
+        names = await readdir(dir);
+      } catch {
+        // No project dir: nothing stranded.
+      }
+      for (const name of names) {
+        if (name.startsWith(`${assetId}-`) && name.endsWith('.upload')) await rm(join(dir, name), { force: true });
+      }
       return;
     }
     await rm(this.assetDir(projectSlug, assetId), { recursive: true, force: true });

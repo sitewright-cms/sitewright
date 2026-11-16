@@ -1,10 +1,7 @@
-import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pipeline } from 'node:stream/promises';
-import { Transform } from 'node:stream';
-import JSZip from 'jszip';
+import { writeZipFile, type ZipEntry } from './zip-writer.js';
 
 /** One asset's on-disk files (absolute paths), keyed by the asset id used in the zip. */
 export interface ExportMediaAsset {
@@ -61,11 +58,11 @@ export class ExportSizeLimitError extends Error {
 }
 
 /**
- * Builds a project export zip by STREAMING it to a private temp file — media files
- * enter as read streams and jszip emits via `generateNodeStream`, so neither the
- * inputs nor the finished archive are ever held whole in memory. A running byte
- * counter aborts generation the moment it would exceed `maxBytes`. The caller
- * streams {@link ExportZipResult.path} to the client, then invokes `cleanup`.
+ * Builds a project export zip by STREAMING it to a private temp file — media files are read from disk
+ * as the archive is written and compressed by Node's zlib off the event loop (see zip-writer.ts), so
+ * neither the inputs nor the finished archive are ever held whole in memory. The writer aborts the
+ * moment the archive would exceed `maxBytes`. The caller streams {@link ExportZipResult.path} to the
+ * client, then invokes `cleanup`.
  */
 export async function buildProjectExportZip(inputs: ExportZipInputs): Promise<ExportZipResult> {
   const dir = await mkdtemp(join(tmpdir(), 'sw-export-'));
@@ -75,41 +72,15 @@ export async function buildProjectExportZip(inputs: ExportZipInputs): Promise<Ex
   };
 
   try {
-    const zip = new JSZip();
-    zip.file('manifest.json', JSON.stringify(inputs.manifest, null, 2));
-    zip.file('bundle.json', JSON.stringify(inputs.bundle));
+    const entries: ZipEntry[] = [
+      { name: 'manifest.json', data: JSON.stringify(inputs.manifest, null, 2) },
+      { name: 'bundle.json', data: JSON.stringify(inputs.bundle) },
+    ];
     for (const asset of inputs.media) {
-      for (const file of asset.files) {
-        // Stream input: jszip pulls from the fs read stream lazily during generation.
-        // eslint-disable-next-line security/detect-non-literal-fs-filename -- abs paths from the confined media enumerator
-        zip.file(`media/${asset.assetId}/${file.rel}`, createReadStream(file.abs));
-      }
+      // abs paths come from the confined media enumerator.
+      for (const file of asset.files) entries.push({ name: `media/${asset.assetId}/${file.rel}`, path: file.abs });
     }
-
-    // A pass-through that trips the size cap mid-stream (defends the disk + a
-    // pathological media set), mirroring archiveSite's MAX_ARCHIVE_BYTES guard.
-    let total = 0;
-    const cap = new Transform({
-      transform(chunk: Buffer, _enc, done): void {
-        total += chunk.length;
-        if (total > inputs.maxBytes) {
-          done(new ExportSizeLimitError(inputs.maxBytes));
-          return;
-        }
-        done(null, chunk);
-      },
-    });
-
-    const source = zip.generateNodeStream({
-      type: 'nodebuffer',
-      streamFiles: true,
-      compression: 'DEFLATE',
-    });
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- private mkdtemp path
-    await pipeline(source, cap, createWriteStream(path));
-
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- private mkdtemp path
-    const bytes = (await stat(path)).size;
+    const bytes = await writeZipFile(entries, path, inputs.maxBytes, () => new ExportSizeLimitError(inputs.maxBytes));
     return { path, bytes, cleanup };
   } catch (err) {
     await cleanup();

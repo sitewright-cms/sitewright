@@ -9,8 +9,46 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **Site builds can run beside the server instead of on the thread every request waits for.** A preview,
+  publish or deploy build runs on a worker thread, at a lower CPU priority than the server, so while builds
+  run the server keeps answering. On by default on instances with 2 GiB of memory or more.
+  - **Measured with the stress suite at 2 GiB / 6 CPUs**, the whole plan up to ten agents with uploads,
+    cold previews, screenshots, PageSpeed audits, publishes and exports: no memory kill and no request
+    refused. The preview after an edit took 1.1 s with four agents and 3.1 s with six plus the heavy work
+    (median), a publish 1.8 s, and the health check answered within 7 ms (90% of requests).
+  - **Below 2 GiB it stays off unless you turn it on** with `SW_BUILD_THREADS=1`. At 1.5 GiB with threads
+    on, the heavy phase got faster: preview 4.3 s instead of 6.2 s, health check within 5 ms instead of
+    137 ms. But the memory peak rose by about 100–150 MB, because a thread is a second copy of the build
+    engine and more work happens at once. Under the deliberately overloaded extreme phase that was enough
+    to run the container out of memory in 3 of 5 runs, while builds on the main thread survived every run.
+    `SW_BUILD_THREADS=0` turns threads off on a larger instance.
+  - **One build per thread, kept warm.** Builds run at most one per thread, publishes, deploys and site
+    zips ahead of queued previews. A thread is reused while warm and stops after 30 seconds idle. A new
+    one starts only while the server's memory budget has room for it.
+  - **A build always has somewhere to run.** If no thread is free, a thread cannot start, gets stuck
+    starting or stops mid-build, the build runs on the main thread. This works on any number of CPUs,
+    including one.
+  - **A site too large for the instance's memory fails as a build** ("this site is too large to build in
+    the memory this instance has") instead of taking the whole server down.
+  - The output is byte-for-byte what a build on the main thread produces: compared file by file on the
+    example project, for previews and minified publishes.
+- **Builds wait for memory and for each other more sensibly, with or without threads.** Each build reserves
+  room in the server's memory budget while it runs, so other heavy work sees it. A second build waits while
+  memory is short, and one build always runs. A publish, deploy or site zip goes ahead of queued preview
+  builds: with one build slot and six agents' previews queued, a publish used to wait 145 s (median), and
+  now waits 2.3 s.
+- **Project export zips and site zips are compressed off the main thread.** Compression used to run in
+  JavaScript on the thread every request waits for. Zips are still standard DEFLATE archives, readable by
+  every tool that read them before, including Java's streaming reader, and every file in them is
+  world-readable (0644) so an unpacked site works on any web server.
+
 ### Fixed
 
+- **A generated image variant is never left half-written.** Variants are written to a temporary file and
+  renamed into place, so a build that stops mid-write (out of memory, a crash) can no longer leave a
+  truncated image that the next build would reuse.
 - **Under heavy parallel load the server no longer runs itself out of memory.** A stress test on a
   1.5 GiB, 6-CPU container (agents editing with the preview open, big photo uploads, cold previews,
   screenshots, PageSpeed audits, publishes and exports at once) got the container killed for running out

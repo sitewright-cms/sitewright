@@ -9,6 +9,21 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Running behind a web application firewall: a guide and a ready-made exclusion file.** A WAF running the
+  OWASP Core Rule Set at its defaults refuses:
+  - a fifth of the editor's saves;
+  - agents' page writes and uploads;
+  - large imports, and every upload over 12.5 MB;
+  - the statistics beacon;
+  - sign-in from the CLI and from MCP clients on the user's machine.
+
+  [docs/waf.md](docs/waf.md) lists what breaks and why, measured with CRS 4.30 in front of both end-to-end
+  suites, an agent session and real-world public traffic. It covers the exclusion file
+  (`docs/waf/sitewright-before.conf`), what that file costs, how to route uploads around the WAF, and what
+  to exclude when a WAF can only exclude by path. `scripts/waf/run.sh` repeats the measurement.
+
 ## [0.81.0] — 2026-11-16
 
 ### Changed

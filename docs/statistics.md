@@ -89,7 +89,8 @@ bots that run JavaScript (some headless browsers) can be seen there.
    **signed** by a per-project key. The draft preview and the page-speed audit never get it.
 2. **On each pageview** the script sends one `text/plain` beacon (no CORS preflight) to
    `<SW_PUBLIC_URL>/a/<projectId>` — root-relative when no public URL is set, like the form endpoint. A
-   prerendered page is counted only when it is actually shown.
+   prerendered page is counted only when it is actually shown. A web application firewall with default rules
+   refuses `text/plain` and so drops every pageview: see [WAF](waf.md).
 3. **The collector** checks the route signature (so nobody can invent pages), that the site counts visits, and —
    when the site has a site URL — that the page runs on the site's own host. It always answers `204`, so it is no
    oracle for which sites count. It then classifies the visit and adds it to **in-memory counters**.

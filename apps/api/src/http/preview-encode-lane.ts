@@ -42,11 +42,11 @@ export class PreviewEncodeLane {
     for (const [assetId, want] of refs) {
       const asset = byId.get(assetId);
       if (!asset || asset.kind !== 'image') continue;
-      const estimate = encodeEstimateBytes(asset.width, asset.height);
       for (const key of want.thumbs) {
         const k = `${assetId}/${key}`;
         variants.delete(k); // refreshed: the newest are kept when the project is over its bound
-        variants.set(k, estimate);
+        // `key` is `<size>:<format>`; an AVIF variant costs more to encode than a WebP one.
+        variants.set(k, encodeEstimateBytes(asset.width, asset.height, key.endsWith(':avif') ? 'avif' : 'webp'));
       }
     }
     for (const k of variants.keys()) {

@@ -1,0 +1,8 @@
+{ "projects": 10, "sessions": 12, "recoverySeconds": 180,
+  "phases": [
+    { "name": "1-light",   "seconds": 90,  "edit": 2 },
+    { "name": "2-medium",  "seconds": 120, "edit": 4, "upload": 1, "cold": 1, "shot": 1, "list": 1 },
+    { "name": "3-heavy",   "seconds": 150, "edit": 6, "upload": 3, "cold": 2, "shot": 2, "pagespeed": 1, "publish": 1, "exportZip": 1, "list": 2 },
+    { "name": "3b-cool",   "seconds": 180 },
+    { "name": "4-extreme", "seconds": 150, "edit": 10, "upload": 6, "cold": 3, "shot": 4, "pagespeed": 2, "publish": 2, "exportZip": 2, "list": 4 }
+  ] }

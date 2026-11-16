@@ -67,26 +67,52 @@ function lightMinifyCss(css: string): string {
 export function minifyCss(css: string): string {
   if (!css) return css;
   const cached = cssCache.get(css);
-  if (cached !== undefined) return cached;
-  const out = minifyCssUncached(css);
-  // FIFO eviction on BOTH bounds: a build feeds a handful of distinct stylesheets, so the oldest entry
-  // is the one least likely to recur. Entry count alone would not bound memory in a long-lived process,
-  // hence the byte ceiling — and it counts the KEY (the source stylesheet) AND the VALUE (the minified
-  // result), because minification saves maybe 10-30%, so pricing only the key would put the real
-  // ceiling at roughly double the documented one.
-  const entryBytes = css.length + out.length;
-  // A single stylesheet larger than the whole budget is never cached — return BEFORE evicting, or the
-  // loop empties the cache to make room for something the guard below then declines to store.
-  if (entryBytes > MINIFY_CSS_CACHE_MAX_BYTES) return out;
-  while (cssCache.size >= MINIFY_CSS_CACHE_MAX || cssCacheBytes + entryBytes > MINIFY_CSS_CACHE_MAX_BYTES) {
-    const oldest = cssCache.keys().next();
-    if (oldest.done) break; // this stylesheet alone exceeds the budget
-    cssCacheBytes -= oldest.value.length + (cssCache.get(oldest.value)?.length ?? 0);
-    cssCache.delete(oldest.value);
+  if (cached !== undefined) {
+    touch(cssCache, css, cached);
+    return cached;
   }
-  cssCache.set(css, out);
-  cssCacheBytes += entryBytes;
+  const out = minifyCssUncached(css);
+  // Least-recently-used eviction on BOTH bounds. ★ Not FIFO: a page brings its own utility sheet and
+  // component styles, so a build feeds a STREAM of one-off stylesheets beside the few every page shares
+  // — and FIFO evicted the shared ones as fast as the one-offs arrived (measured: clean-css missing on
+  // ~4% of a loaded instance's main thread). A hit refreshes an entry, so the shared sheets stay.
+  // Entry count alone would not bound memory in a long-lived process, hence the byte ceiling — and it
+  // counts the KEY (the source stylesheet) AND the VALUE (the minified result), because minification
+  // saves maybe 10-30%, so pricing only the key would put the real ceiling at roughly double.
+  cssCacheBytes = remember(cssCache, cssCacheBytes, MINIFY_CSS_CACHE_MAX, MINIFY_CSS_CACHE_MAX_BYTES, css, out);
   return out;
+}
+
+/** Mark a cache hit as the most recently used entry (a Map iterates in insertion order). */
+function touch(cache: Map<string, string>, key: string, value: string): void {
+  cache.delete(key);
+  cache.set(key, value);
+}
+
+/**
+ * Store `value` under `key` in an LRU cache bounded by entry count AND retained bytes; returns the new
+ * byte total. Shared by the CSS and JS caches below so the two bounds cannot drift apart.
+ */
+function remember(
+  cache: Map<string, string>,
+  bytes: number,
+  maxEntries: number,
+  maxBytes: number,
+  key: string,
+  value: string,
+): number {
+  const entryBytes = key.length + value.length;
+  // A single entry larger than the whole budget is never cached — return BEFORE evicting, or the
+  // loop empties the cache to make room for something the guard below then declines to store.
+  if (entryBytes > maxBytes) return bytes;
+  while (cache.size >= maxEntries || bytes + entryBytes > maxBytes) {
+    const oldest = cache.keys().next();
+    if (oldest.done) break; // this entry alone exceeds the budget
+    bytes -= oldest.value.length + (cache.get(oldest.value)?.length ?? 0);
+    cache.delete(oldest.value);
+  }
+  cache.set(key, value);
+  return bytes + entryBytes;
 }
 
 /**
@@ -100,9 +126,9 @@ export function minifyCss(css: string): string {
 const cssCache = new Map<string, string>();
 
 /** Upper bound on {@link cssCache} entries (keys are whole stylesheets — this cannot grow unbounded). */
-export const MINIFY_CSS_CACHE_MAX = 16;
+export const MINIFY_CSS_CACHE_MAX = 128;
 /** Byte ceiling alongside the entry cap — the key is a whole stylesheet, so count alone bounds nothing. */
-const MINIFY_CSS_CACHE_MAX_BYTES = 2 * 1024 * 1024;
+const MINIFY_CSS_CACHE_MAX_BYTES = 4 * 1024 * 1024;
 
 /** Cache counters for tests: `misses` = real clean-css runs, `size` = live entries, `bytes` = retained. */
 export function minifyCssStats(): { misses: number; size: number; bytes: number } {
@@ -149,13 +175,60 @@ function minifyCssUncached(css: string): string {
   }
 }
 
-/** Minify a first-party runtime JS bundle. ASYNC (terser is async). Falls back to the source on any error. */
-export async function minifyJs(code: string): Promise<string> {
-  if (!code) return code;
+/**
+ * Memoization for {@link minifyJs}.
+ *
+ * ★ A build writes ~20 first-party runtime bundles (one per component type used, the effect runtimes,
+ * the chrome bundle) and they are the SAME bytes on every build of every site — yet terser ran on all of
+ * them each time. A CPU profile of a 91-page preview rebuild put terser at 28% of the build, and every
+ * preview rebuild runs on the main thread, so under several agents' edits it was a quarter of the time
+ * every other request waited. Keyed on the source, so the result is byte-identical to minifying afresh.
+ * In-flight runs are shared too: concurrent builds of different sites ask for the same chunks at once.
+ */
+const jsCache = new Map<string, string>();
+const jsInflight = new Map<string, Promise<string>>();
+
+/** Upper bound on {@link jsCache} entries: ~20 constant runtimes plus one chrome bundle per site. */
+export const MINIFY_JS_CACHE_MAX = 64;
+/** Byte ceiling alongside the entry cap (key + value). One site's runtimes are ~0.9 MB of both. */
+const MINIFY_JS_CACHE_MAX_BYTES = 4 * 1024 * 1024;
+
+let jsMisses = 0;
+let jsCacheBytes = 0;
+
+/** Cache counters for tests: `misses` = real terser runs, `size` = live entries, `bytes` = retained. */
+export function minifyJsStats(): { misses: number; size: number; bytes: number } {
+  return { misses: jsMisses, size: jsCache.size, bytes: jsCacheBytes };
+}
+
+/** One terser run; `ok: false` when it fell back to the source (that result is not cached). */
+async function minifyJsUncached(code: string): Promise<{ code: string; ok: boolean }> {
+  jsMisses += 1;
   try {
     const out = await terserMinify(code, { format: { comments: /^!/ } });
-    return out.code ?? code;
+    return out.code === undefined ? { code, ok: false } : { code: out.code, ok: true };
   } catch {
-    return code;
+    return { code, ok: false };
   }
+}
+
+/** Minify a first-party runtime JS bundle. ASYNC (terser is async). Falls back to the source on any error. */
+export function minifyJs(code: string): Promise<string> {
+  if (!code) return Promise.resolve(code);
+  const cached = jsCache.get(code);
+  if (cached !== undefined) {
+    touch(jsCache, code, cached);
+    return Promise.resolve(cached);
+  }
+  const pending = jsInflight.get(code);
+  if (pending) return pending;
+  // `minifyJsUncached` never rejects (it falls back to the source), so this chain always settles. A
+  // fallback is not remembered: the next build tries again rather than shipping it unminified for good.
+  const run = minifyJsUncached(code).then((out) => {
+    jsInflight.delete(code);
+    if (out.ok) jsCacheBytes = remember(jsCache, jsCacheBytes, MINIFY_JS_CACHE_MAX, MINIFY_JS_CACHE_MAX_BYTES, code, out.code);
+    return out.code;
+  });
+  jsInflight.set(code, run);
+  return run;
 }

@@ -26,6 +26,15 @@ describe('imagePipelineLimitsFor', () => {
     expect(roomy, 'the default we are overriding').toBeLessThan(50);
   });
 
+  it('★ bounds libvips threads per operation by the CPUs, at most two', () => {
+    // With jemalloc, libvips ran one thread per HOST core per operation: six concurrent 24MP encodes
+    // needed 1.3 GB at 20 threads and 0.6 GB at 2 — and 2 was faster.
+    expect(imagePipelineLimitsFor(2 * GIB, 20).threads).toBe(2);
+    expect(imagePipelineLimitsFor(2 * GIB, 6).threads).toBe(2);
+    expect(imagePipelineLimitsFor(2 * GIB, 1).threads).toBe(1);
+    expect(imagePipelineLimitsFor(2 * GIB, 0.5).threads).toBe(1);
+  });
+
   it('scales monotonically with the ceiling', () => {
     const sizes = [256 * 1024 * 1024, 1 * GIB, 4 * GIB].map((b) => imagePipelineLimitsFor(b).cacheMb);
     expect(sizes).toEqual([...sizes].sort((a, b) => a - b));
@@ -45,6 +54,15 @@ describe('configureImagePipeline', () => {
     configureImagePipeline({ cacheMb: 0 });
     // sharp.cache(false) reports 0 for every dimension — nothing is retained between operations.
     expect(sharp.cache().memory.max).toBe(0);
+  });
+
+  it('applies the thread bound to sharp, and leaves it alone when none is given', () => {
+    const before = sharp.concurrency();
+    configureImagePipeline({ cacheMb: 16, threads: 2 });
+    expect(sharp.concurrency()).toBe(2);
+    configureImagePipeline({ cacheMb: 16 });
+    expect(sharp.concurrency()).toBe(2);
+    sharp.concurrency(before);
   });
 
   it('is idempotent — calling it twice leaves the same limits', () => {

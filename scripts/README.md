@@ -62,3 +62,37 @@ scripts/e2e-deploy.sh selftest      # prove isolation: 2 slots, distinct ports, 
 
 > Source changes are invisible until the dist is rebuilt — the container runs `node
 > dist/server.js`, not `tsx`. `up` (without `--no-build`/`--image`) rebuilds for you.
+
+## `stress/run.sh` — mixed heavy-load stress suite
+
+Runs ONE image under a production-like cgroup (default `--memory 1536m --cpus 6`) and drives it with
+phases of concurrent, agent-like work, ramping light → medium → heavy, a quiet window, then extreme:
+
+| Workload    | What one loop does |
+|-------------|--------------------|
+| `edit`      | an agent editing pages while the author's preview shell reloads (whole-site preview build) |
+| `upload`    | uploads 12–24 MP photos, puts them on a gallery page, opens its preview (cold encodes) |
+| `cold`      | prunes a project's thumbnails + edits → a whole-site build that re-encodes every variant |
+| `shot`      | single-page preview with screenshots (Chromium) |
+| `pagespeed` | a Lighthouse audit (mobile + desktop) |
+| `publish`   | a minified publish build |
+| `exportZip` | the whole-project export zip |
+| `list`      | unpaginated page + media list reads |
+
+A `/health` probe every 500 ms measures how long the server takes to answer at all and records the
+memory ledger; an in-container sampler records cgroup memory/CPU, the API's **main-thread** CPU, and
+private memory by process kind (API, Chromium, render workers); `--trace-gc` logs every full GC.
+
+```bash
+# An image to test, e.g. the one an E2E slot built from your tree:
+scripts/stress/run.sh --image sitewright-api:e2e-2008 --profile 3-heavy
+# → summary.txt (per phase × operation: p50/p90/max + status codes), report.txt (CPU, memory by kind,
+#   GC, worst /health stalls, a 10 s timeline), container-state.txt (OOM-killed or not), and with
+#   --profile a main-thread .cpuprofile for DevTools.
+```
+
+Read `container-state.txt` first: `oomKilled=true` means the instance died under the plan. Then
+`report.txt`'s quiet phases: CPU and memory must come back down — an instance that stays busy after
+the load stops is the failure this suite exists to catch. The container and its throwaway secrets are
+removed afterwards unless `--keep`. Plans live in `stress/plans/`; a phase with no workloads is a
+quiet window.

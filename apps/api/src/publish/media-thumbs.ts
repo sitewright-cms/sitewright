@@ -297,14 +297,17 @@ export interface ThumbMaterializerOptions {
 }
 
 /**
- * What one encode is expected to hold in memory, from the SOURCE's pixel count. MEASURED in a 768MB
- * container with the server's allocator and libvips threads: a 24MP original cost 37-66MB per encode
- * in flight (more with more at once), a small one ~20MB. 2.5 bytes a pixel plus a fixed 16MB covers both.
+ * What one encode is expected to hold in memory, from the SOURCE's pixel count and the output format.
+ * MEASURED in a 6-CPU, 1.5 GiB container with the server's allocator and two libvips threads per
+ * operation (configureImagePipeline), six 24MP photos encoding at once: ~98MB each to WebP, ~160MB each
+ * to AVIF. The old flat 2.5 bytes a pixel (76MB for 24MP) under-booked both, so the ledger admitted
+ * encodes it had no room for. A small source still books the 16MB floor.
  */
-export function encodeEstimateBytes(width: number | undefined, height: number | undefined): number {
+export function encodeEstimateBytes(width: number | undefined, height: number | undefined, format: ThumbFormat = 'webp'): number {
   const MB = 1024 * 1024;
   const pixels = (width ?? 0) * (height ?? 0);
-  return Math.min(128 * MB, Math.max(16 * MB, Math.round(pixels * 2.5 + 16 * MB)));
+  const perPixel = format === 'avif' ? 6 : 3.5;
+  return Math.min(192 * MB, Math.max(16 * MB, Math.round(pixels * perPixel + 16 * MB)));
 }
 
 /** A tiny FIFO limiter: at most `limit` tasks run at once. */
@@ -497,7 +500,7 @@ export class ThumbMaterializer {
       try {
         const source = this.opts.filePath ? this.opts.filePath(asset.id, asset.original) : await this.readMedia(asset.id, asset.original);
         const encode = (): Promise<Buffer> => generateThumbnail(source, { width, format }).then((r) => r.buffer);
-        return await (this.opts.runEncode ? this.opts.runEncode(encodeEstimateBytes(asset.width, asset.height), encode) : encode());
+        return await (this.opts.runEncode ? this.opts.runEncode(encodeEstimateBytes(asset.width, asset.height, format), encode) : encode());
       } catch (err) {
         // A missing original is tolerated (that image simply 404s): ENOENT from the store, or sharp's
         // own message for a path source.

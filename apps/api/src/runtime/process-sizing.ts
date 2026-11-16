@@ -57,6 +57,8 @@ const MIN_HEAP_MB = 128;
 export interface ProcessSizing {
   /** Ceiling on concurrent render workers. */
   poolSize: number;
+  /** Whole-site builds (previews, publishes, audits) the main process runs at once. */
+  siteBuilds: number;
   /** Workers kept warm when idle. */
   poolMinSize: number;
   /** Per-worker old-space ceiling (MB). */
@@ -80,6 +82,21 @@ function poolTier(limitBytes: number): { poolSize: number; poolMinSize: number }
 }
 
 /**
+ * How many whole-site builds may run at once. A build lives in the MAIN process — its pages, their
+ * strings and its image encodes — and nothing else bounded how many ran: MEASURED on a 1.5 GiB, 6-CPU
+ * container under ten agents' edits plus publishes, audits and cold previews, ~20 ran at once and the
+ * container was OOM-killed. They share one main thread anyway, so running more at once only interleaves
+ * them: each finishes later and all of them hold their memory for longer.
+ */
+function siteBuildSlots(limitBytes: number): number {
+  const gib = limitBytes / 1024 ** 3;
+  if (gib < 1) return 1;
+  if (gib < 2) return 2;
+  if (gib < 4) return 3;
+  return 4;
+}
+
+/**
  * Divide `limitBytes` between the main process and the render workers that share its cgroup.
  *
  * The main heap is whatever is left after the workers' worst case and the main process's own native
@@ -91,7 +108,7 @@ export function processSizing(limitBytes: number): ProcessSizing {
   const workersMb = poolSize * (WORKER_HEAP_MB + WORKER_OVERHEAD_MB);
   const available = limitMb - workersMb - MAIN_NATIVE_MB - limitMb * OS_SLACK_FRACTION;
   const mainHeapMb = Math.max(MIN_HEAP_MB, Math.floor(Math.min(limitMb * MAX_HEAP_FRACTION, available)));
-  return { poolSize, poolMinSize, workerHeapMb: WORKER_HEAP_MB, mainHeapMb };
+  return { poolSize, poolMinSize, siteBuilds: siteBuildSlots(limitBytes), workerHeapMb: WORKER_HEAP_MB, mainHeapMb };
 }
 
 /** {@link processSizing} for the cgroup this process is actually in. */

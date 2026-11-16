@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BuildEncodeGate, type EncodeMemorySnapshot } from '../src/publish/build-encode-gate.js';
+import { BuildEncodeGate, type BuildEncodeCount, type EncodeMemorySnapshot } from '../src/publish/build-encode-gate.js';
 
 const MB = 1024 * 1024;
 const deferred = (): { promise: Promise<void>; resolve: () => void } => {
@@ -10,7 +10,7 @@ const deferred = (): { promise: Promise<void>; resolve: () => void } => {
 const tick = (ms = 5): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 describe('BuildEncodeGate — build encodes admitted from free memory', () => {
-  it('★ always lets each build run ONE encode, even with no memory free (never slower than before)', async () => {
+  it('★ every build still encodes with no memory free — it never stalls', async () => {
     const gate = new BuildEncodeGate(8, async () => ({ availableBytes: 0, usedBytes: 700 * MB, reservedBytes: 0 }), undefined, 10);
     const a = { running: 0 };
     const b = { running: 0 };
@@ -20,6 +20,108 @@ describe('BuildEncodeGate — build encodes admitted from free memory', () => {
       gate.run(b, 64 * MB, async () => void order.push('b')),
     ]);
     expect(order.sort()).toEqual(['a', 'b']);
+  });
+
+  it('★★ with no memory free, ONE encode runs instance-wide — not one per build', async () => {
+    // The guarantee used to be per build: ten builds at once ran ten 24MP encodes with no memory check,
+    // which is what OOM-killed a 1.5 GiB container under several agents' load.
+    let running = 0;
+    let peak = 0;
+    const gate = new BuildEncodeGate(8, async () => ({ availableBytes: 0, usedBytes: 1200 * MB, reservedBytes: 0 }), undefined, 5);
+    const builds = Array.from({ length: 6 }, () => ({ running: 0 }));
+    await Promise.all(
+      builds.flatMap((build) =>
+        Array.from({ length: 2 }, () =>
+          gate.run(build, 100 * MB, async () => {
+            running += 1;
+            peak = Math.max(peak, running);
+            await tick();
+            running -= 1;
+          }),
+        ),
+      ),
+    );
+    expect(peak).toBe(1);
+    expect(builds.every((b) => b.running === 0)).toBe(true);
+  });
+
+  it('★ never runs more than the ceiling, a build’s first encode included', async () => {
+    let running = 0;
+    let peak = 0;
+    const gate = new BuildEncodeGate(2, async () => ({ availableBytes: 4000 * MB, usedBytes: 100 * MB, reservedBytes: 0 }), undefined, 5);
+    await Promise.all(
+      Array.from({ length: 5 }, () =>
+        gate.run({ running: 0 }, 10 * MB, async () => {
+          running += 1;
+          peak = Math.max(peak, running);
+          await tick();
+          running -= 1;
+        }),
+      ),
+    );
+    expect(peak).toBe(2);
+  });
+
+  it('a build with nothing running gets the next slot ahead of a build that is already encoding', async () => {
+    const gate = new BuildEncodeGate(1, async () => ({ availableBytes: 4000 * MB, usedBytes: 100 * MB, reservedBytes: 0 }), undefined, 1_000);
+    const big = { running: 0 };
+    const small = { running: 0 };
+    const order: string[] = [];
+    const first = deferred();
+    const jobs = [gate.run(big, 10 * MB, () => first.promise.then(() => void order.push('big-1')))];
+    await tick();
+    jobs.push(gate.run(big, 10 * MB, async () => void order.push('big-2')));
+    jobs.push(gate.run(big, 10 * MB, async () => void order.push('big-3')));
+    await tick();
+    jobs.push(gate.run(small, 10 * MB, async () => void order.push('small')));
+    await tick();
+    first.resolve();
+    await Promise.all(jobs);
+    // `big` holds the only slot when `small` arrives; when it frees, `small` is next, not big's queue.
+    expect(order.slice(0, 2)).toEqual(['big-1', 'small']);
+    expect(order).toHaveLength(4);
+  });
+
+  it('★ a build asking for many encodes AT ONCE still counts once — it cannot outvote a smaller build', async () => {
+    // A build starts `encodeConcurrency` encodes in the same tick, so every one of them sees "nothing
+    // running". Counted per call, they all went first and took the slots ahead of a build that waited.
+    const gate = new BuildEncodeGate(1, async () => ({ availableBytes: 4000 * MB, usedBytes: 100 * MB, reservedBytes: 0 }), undefined, 1_000);
+    const holder = deferred();
+    const order: string[] = [];
+    const held = gate.run({ running: 0 }, 10 * MB, () => holder.promise.then(() => void order.push('held')));
+    await tick();
+    const big: BuildEncodeCount = { running: 0 };
+    const jobs = Array.from({ length: 4 }, (_, i) => gate.run(big, 10 * MB, async () => void order.push(`big-${i}`)));
+    await tick();
+    const small: BuildEncodeCount = { running: 0 };
+    jobs.push(gate.run(small, 10 * MB, async () => void order.push('small')));
+    await tick();
+    holder.resolve();
+    await Promise.all([held, ...jobs]);
+    // big queued first, so it goes first — ONCE; then small, which waited before big's other encodes.
+    expect(order.slice(0, 3)).toEqual(['held', 'big-0', 'small']);
+    expect(order).toHaveLength(6);
+    expect(big.waiting ?? 0).toBe(0);
+    expect(small.waiting ?? 0).toBe(0);
+  });
+
+  it('a build stops going first the moment one of its encodes starts — the next waiting build is next', async () => {
+    const gate = new BuildEncodeGate(2, async () => ({ availableBytes: 4000 * MB, usedBytes: 100 * MB, reservedBytes: 0 }), undefined, 1_000);
+    const [h1, h2] = [deferred(), deferred()];
+    const order: string[] = [];
+    const holders = [gate.run({ running: 0 }, 10 * MB, () => h1.promise), gate.run({ running: 0 }, 10 * MB, () => h2.promise)];
+    await tick();
+    const x = { running: 0 };
+    const y = { running: 0 };
+    const xJobs = [0, 1].map((i) => gate.run(x, 10 * MB, async () => void order.push(`x-${i}`)));
+    await tick();
+    const yJob = gate.run(y, 10 * MB, async () => void order.push('y'));
+    await tick();
+    h1.resolve(); // one slot: x goes first…
+    await tick(20);
+    h2.resolve(); // …and the next slot is y's, not x's second encode
+    await Promise.all([...holders, ...xJobs, yJob]);
+    expect(order).toEqual(['x-0', 'y', 'x-1']);
   });
 
   it('runs more of a build at once while memory holds them, up to the ceiling', async () => {
@@ -122,6 +224,27 @@ describe('BuildEncodeGate — build encodes admitted from free memory', () => {
       busy.resolve();
       await build;
       expect(await gate.runIfFree(10 * MB, async () => 1)).toEqual({ value: 1 });
+    });
+
+    it('yields to a build that is waiting with nothing running, though a slot and memory are free', async () => {
+      // Memory never holds the build's encode and the one unchecked encode is taken, so the build waits
+      // at the head of the queue; the preview must not take the free slot from it.
+      let snap: EncodeMemorySnapshot = { availableBytes: 50 * MB, usedBytes: 900 * MB, reservedBytes: 0 };
+      const gate = new BuildEncodeGate(3, async () => snap, undefined, 1_000);
+      const holder = deferred();
+      const first = gate.run({ running: 0 }, 200 * MB, () => holder.promise); // the unchecked one
+      await tick();
+      const starved: BuildEncodeCount = { running: 0 };
+      let starvedRan = false;
+      const waiting = gate.run(starved, 200 * MB, async () => void (starvedRan = true));
+      await tick();
+      expect(starved.waiting).toBe(1);
+      expect(await gate.runIfFree(10 * MB, async () => 'preview')).toBeUndefined();
+      snap = { availableBytes: 2000 * MB, usedBytes: 100 * MB, reservedBytes: 0 };
+      holder.resolve();
+      await Promise.all([first, waiting]);
+      expect(starvedRan).toBe(true);
+      expect(await gate.runIfFree(10 * MB, async () => 'preview')).toEqual({ value: 'preview' });
     });
 
     it('runs nothing when free memory does not hold it, counting the encodes already admitted', async () => {

@@ -169,6 +169,8 @@ const { limitBytes: detectedMemoryLimit, derivedFromHost } = await detectMemoryL
 // The byte ledger every heavy path admits against. Must run before the first request.
 await initMemoryBudget();
 const sizing = processSizing(detectedMemoryLimit);
+// Whole-site builds at once (SW_SITE_BUILDS overrides the size derived from the memory limit).
+const siteBuilds = Math.max(1, Math.min(64, Math.floor(renderEnvInt(process.env.SW_SITE_BUILDS, sizing.siteBuilds))));
 // Say which memory ceiling everything below was sized from, and whether it was actually ENFORCED.
 // `derivedFromHost` means no cgroup limit was set, so the figure is a conservative guess from host
 // RAM — an operator seeing an unexpected pool size or heap ceiling needs to know which it was.
@@ -176,6 +178,7 @@ process.stdout.write(
   `[sitewright/api] memory ceiling ${Math.round(detectedMemoryLimit / 1024 / 1024)}MB` +
     `${derivedFromHost ? ' (no container limit set — derived from host RAM)' : ' (container limit)'}` +
     ` → render workers max ${sizing.poolSize} × ${sizing.workerHeapMb}MB, warm ${sizing.poolMinSize}` +
+    ` · site builds ${siteBuilds} at once` +
     // The main heap ceiling is part of the SAME division of the cgroup; printing it next to the pool
     // is what makes an over-subscribed container visible at boot instead of at the OOM kill. Only
     // reported when a real limit is ENFORCED: with none, the entrypoint sets no --max-old-space-size
@@ -183,8 +186,13 @@ process.stdout.write(
     `${derivedFromHost ? '' : ` · main heap ${sizing.mainHeapMb}MB`}\n`,
 );
 // libvips keeps a 50MB operation cache by default and never gave it back; size it to the
-// container instead. The on-disk thumbnail cache already covers the real access pattern.
-configureImagePipeline(imagePipelineLimitsFor(detectedMemoryLimit));
+// container instead. The on-disk thumbnail cache already covers the real access pattern. Its threads
+// per operation are bounded too (one per HOST core otherwise); SW_IMAGE_THREADS overrides that.
+const imageLimits = imagePipelineLimitsFor(detectedMemoryLimit);
+configureImagePipeline({
+  ...imageLimits,
+  threads: Math.max(1, Math.min(64, Math.floor(renderEnvInt(process.env.SW_IMAGE_THREADS, imageLimits.threads ?? 1)))),
+});
 const renderPool = new RenderPool({
   // The CEILING must never be 0. `size` is what the lazy-spawn check compares against, so 0 means
   // `slots.length < 0` is never true: no worker is ever created, and a queued job has no timer
@@ -300,6 +308,7 @@ const app = await createApp({
   // The built-in statistics' country database (`SW_GEOIP_DB`); unset → the bundled DB-IP Lite file.
   geoipDb: cfg.geoipDb,
   buildRunner,
+  siteBuildConcurrency: siteBuilds,
   aiProvider,
   agentProvider,
   aiQuota,

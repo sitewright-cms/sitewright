@@ -11,6 +11,33 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **Under heavy parallel load the server no longer runs itself out of memory.** A stress test on a
+  1.5 GiB, 6-CPU container (agents editing with the preview open, big photo uploads, cold previews,
+  screenshots, PageSpeed audits, publishes and exports at once) got the container killed for running out
+  of memory in both runs before this change, in the heavy phase or the extreme one. With it, the run
+  finished every phase, the health check answered within 0.11 s for 90% of requests throughout (1.2–2.4 s
+  before), and CPU and memory came back down as soon as the load stopped.
+  - **At most a few whole-site builds run at once:** two on a 1.5 GiB instance (one below 1 GiB, three
+    below 4 GiB, four above). A preview, publish or deploy build past that waits its turn, fairly between
+    projects, and is never refused. Each build holds its pages in the server's memory, and nothing limited
+    how many ran: about 20 did under that load. Operators can set `SW_SITE_BUILDS` to change it.
+  - **Image processing uses at most two threads per image.** With the container's memory allocator it
+    used one thread per core of the HOST machine, whatever the container was given, and every thread
+    holds its own buffers. Six photos encoding at once needed 1.3 GB that way; now they need 0.6 GB, and
+    they encode slightly faster. Operators can set `SW_IMAGE_THREADS` to change the limit.
+  - **Builds that run at the same time no longer bypass the memory check.** Each build could always
+    encode one image, even with no memory free and above the limit on encodes at once, so ten builds ran
+    ten large encodes unchecked. Now only one encode on the whole instance runs without the check (so
+    every build still makes progress), and a build that has none running goes first.
+  - **The memory each image encode reserves matches what it really uses** (about 100 MB for a 24-megapixel
+    photo to WebP, 160 MB to AVIF; it reserved 76 MB for either).
+- **Previews come back faster when several agents are working.** The same stress test: with 6 agents
+  editing beside the heavy work, the preview after an edit took 7 s instead of 43 s (median). Under the
+  heaviest load builds now queue instead of piling up, so the slowest ones still take minutes there.
+  - **The platform's own scripts are minified once, not on every build.** Every build re-minified the same
+    ~20 runtime scripts: 28% of a preview rebuild's time, all of it on the thread every other request waits for.
+  - **The minified-CSS cache keeps the stylesheets every page shares.** It threw them out as fast as each
+    page's own one-off stylesheets arrived, so they were minified again on almost every page.
 - **A slow stock-photo provider no longer holds up the search.** Openverse has been answering slowly since
   about 20 October (5–17 seconds a search, sometimes a gateway timeout, an outage on Openverse's side), and
   an "All" search waited for every provider with no time limit. So Unsplash, Pexels and Pixabay results

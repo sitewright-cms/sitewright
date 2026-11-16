@@ -833,7 +833,7 @@ const buildEncodeGate = new BuildEncodeGate(
 const PREVIEW_ENCODE_WAIT_MS = 30_000;
 /** How many such images may wait at once, instance-wide (each is a held request polling the gates). */
 const PREVIEW_ENCODE_MAX_WAITERS = 64;
-/** One build's share of {@link buildEncodeGate} — each build can always run one encode. */
+/** One build's share of {@link buildEncodeGate} — a build with none running goes first. */
 function buildEncodeAdmission(): <T>(reserveBytes: number, fn: () => Promise<T>) => Promise<T> {
   const encodes: BuildEncodeCount = { running: 0 };
   return (reserveBytes, fn) => buildEncodeGate.run(encodes, reserveBytes, fn);
@@ -1912,6 +1912,11 @@ export interface AppOptions {
   releaseUrl?: string;
   /** Build executor (default: in-process). Swap for an isolated worker in SaaS. */
   buildRunner?: BuildRunner;
+  /**
+   * Whole-site builds (draft previews, publishes, deploys, audit builds) run at once, instance-wide;
+   * the rest wait their turn, fairly between projects. server.ts sizes it from the container's memory.
+   */
+  siteBuildConcurrency?: number;
   /** Online AI completion provider (agency-funded). Omit to disable the AI endpoints. */
   aiProvider?: AiProvider;
   /** Streaming, tool-using provider for the on-page AI assistant. Omit to disable the assistant. */
@@ -2217,6 +2222,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // UploadTicketStore for why the bytes cannot travel through the MCP tool call itself.
   const uploadTickets = new UploadTicketStore();
   const buildRunner = opts.buildRunner ?? new InProcessBuildRunner();
+  // ★ Builds wait for a slot BEFORE loading their inputs, so a queued build holds nothing. A build WAITS
+  // rather than being refused for being busy: a preview's caller is waiting for exactly this, and a
+  // publish would only retry. The callers bound the queue themselves (one draft build per project,
+  // rate-limited publishes), so its depth is a backstop: past 1024 waiting, a build is refused with the
+  // gate's retryable 503. The page-speed audit's build does not queue here at all (`unqueued`).
+  const siteBuildGate = new FairGate({
+    label: 'site builds',
+    limit: Math.max(1, Math.floor(opts.siteBuildConcurrency ?? 4)),
+    queue: 1024,
+  });
   const aiProvider = opts.aiProvider;
   const agentProvider = opts.agentProvider;
   const aiUsageRepo = new AiUsageRepository(db);
@@ -9481,7 +9496,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     outDir: string,
     // `signal`: a build whose caller can go away (the page-speed audit) stops at its next step.
     // `stats: false`: a throwaway build nobody visits (the audit) ships no statistics tracker.
-    buildOpts: { minify?: boolean; signal?: AbortSignal; stats?: boolean } = {},
+    // `unqueued`: skip the site-build queue. ONLY the audit: it already runs one at a time
+    // (lighthouseGate) and holds a render slot and a memory reservation, which must not sit in a queue.
+    buildOpts: { minify?: boolean; signal?: AbortSignal; stats?: boolean; unqueued?: boolean } = {},
+  ): Promise<ReleaseManifest> {
+    if (buildOpts.unqueued) return buildToDirNow(ctx, project, outDir, buildOpts);
+    return siteBuildGate.run(project.id, () => buildToDirNow(ctx, project, outDir, buildOpts));
+  }
+
+  async function buildToDirNow(
+    ctx: ProjectContext,
+    project: Awaited<ReturnType<ProjectRepository['get']>>,
+    outDir: string,
+    buildOpts: { minify?: boolean; signal?: AbortSignal; stats?: boolean },
   ): Promise<ReleaseManifest> {
     const { bundle, media, captcha, snippets, globalTemplates } = await assembleBuildInputs(ctx, project);
     // The switched-on search engines' tags: on every build, since a search engine that finds its tag gone (the next
@@ -10113,11 +10140,25 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // broken state (e.g. a bad Handlebars source) can't trigger a fresh build on every request.
     const PREVIEW_BUILD_COOLDOWN_MS = 3_000;
 
-    async function buildPreviewSite(
+    // Waits for one of the instance's site-build slots first (see `siteBuildGate`).
+    function buildPreviewSite(
       ctx: ProjectContext,
       project: Awaited<ReturnType<ProjectRepository['get']>>,
       version: string,
     ): Promise<void> {
+      return siteBuildGate.run(project.id, () => buildPreviewSiteNow(ctx, project, version));
+    }
+
+    async function buildPreviewSiteNow(
+      ctx: ProjectContext,
+      project: Awaited<ReturnType<ProjectRepository['get']>>,
+      requested: string,
+    ): Promise<void> {
+      // ★ Stamp the version this build READS, not the one its caller saw: it may have waited minutes for
+      // its slot while an agent kept editing, and stamping the older one made the caller's loop run the
+      // same whole-site build a second time. Read before the inputs, so a change landing during the build
+      // still moves the version past this stamp and is rebuilt.
+      const version = await contentRepo.previewContentVersion(ctx).catch(() => requested);
       const inputs = await assembleBuildInputs(ctx, project);
       // Preview is best-effort about the JSON snapshot: a bad/unreachable source must never break the
       // live preview (publish, by contrast, 409s so the author fixes it before shipping). Read through
@@ -10775,7 +10816,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // concurrent audits can't exhaust CPU/disk/ports — not just the Chrome portion. One audit at a
           // time on top of that (lighthouseGate), taken first so a queued audit holds no render slot.
           const result = await lighthouseGate.run(() => withRenderSlot(() => withAuditMemory(signal, async () => {
-            await buildToDir(ctx, project, dir, { minify: !!local?.minifyHtml, signal, stats: false });
+            await buildToDir(ctx, project, dir, { minify: !!local?.minifyHtml, signal, stats: false, unqueued: true });
             served = await serveBuiltSite(dir);
             const pageUrl = `${served.url}${route ? `${route}/` : ''}`;
             // Published asset sizes, read once from the build we just produced. Best-effort: a missing

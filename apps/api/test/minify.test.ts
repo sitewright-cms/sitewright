@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { minifyJs, minifyCss, minifyCssStats, MINIFY_CSS_CACHE_MAX, MINIFIER_VERSION } from '../src/publish/minify.js';
+import {
+  minifyJs,
+  minifyJsStats,
+  MINIFY_JS_CACHE_MAX,
+  minifyCss,
+  minifyCssStats,
+  MINIFY_CSS_CACHE_MAX,
+  MINIFIER_VERSION,
+} from '../src/publish/minify.js';
 import { CART_CSS } from '@sitewright/blocks';
 
 describe('minifyJs (terser)', () => {
@@ -125,19 +133,85 @@ describe('minifyCss caching', () => {
     expect(minifyCssStats().misses - before).toBe(2);
   });
 
+  it('★ keeps a stylesheet every page shares while a stream of one-off page sheets passes through', () => {
+    // Each page brings its own utility sheet; the platform sheet is on every page. Evicting by AGE threw
+    // the shared one out as fast as the one-offs arrived, so it was re-minified on every page.
+    const shared = `${CART_CSS}\n.shared { color: #00ff00; }`;
+    minifyCss(shared);
+    const before = minifyCssStats().misses;
+    for (let i = 0; i < MINIFY_CSS_CACHE_MAX * 3; i++) {
+      minifyCss(`.page-${i} { margin: ${i}px; }`); // a one-off
+      minifyCss(shared); // …and the sheet every page carries
+    }
+    // Only the one-offs missed.
+    expect(minifyCssStats().misses - before).toBe(MINIFY_CSS_CACHE_MAX * 3);
+  });
+
   it('bounds the cache so a build with many distinct stylesheets cannot grow it without limit', () => {
     for (let i = 0; i < MINIFY_CSS_CACHE_MAX * 2; i++) minifyCss(`.c${i} { color: #ff0000; }`);
     expect(minifyCssStats().size).toBeLessThanOrEqual(MINIFY_CSS_CACHE_MAX);
   });
 });
 
+describe('minifyJs caching', () => {
+  // Every build writes the same ~20 first-party runtime bundles, and terser re-minified all of them each
+  // time: 28% of a preview rebuild's CPU, on the main thread every other request waits for.
+  it('minifies a repeated bundle only ONCE, and returns the identical result', async () => {
+    const src = `(function(){ var unusedLongName = 1; function runtimeEntry(a){ return a + unusedLongName; } window.rt = runtimeEntry; })();`;
+    const before = minifyJsStats().misses;
+
+    const first = await minifyJs(src);
+    const second = await minifyJs(src);
+
+    expect(second).toBe(first);
+    expect(first.length).toBeLessThan(src.length);
+    expect(minifyJsStats().misses - before).toBe(1);
+  });
+
+  it('shares ONE terser run between concurrent callers of the same bundle', async () => {
+    // Concurrent preview builds of different sites ask for the same component chunks at the same moment.
+    const src = `(function(){ var sharedChunk = ${Date.now()}; window.sc = function(){ return sharedChunk; }; })();`;
+    const before = minifyJsStats().misses;
+
+    const [a, b, c] = await Promise.all([minifyJs(src), minifyJs(src), minifyJs(src)]);
+
+    expect(b).toBe(a);
+    expect(c).toBe(a);
+    expect(minifyJsStats().misses - before).toBe(1);
+  });
+
+  it('still minifies a DIFFERENT bundle, and never caches a fallback (it is retried next time)', async () => {
+    const before = minifyJsStats().misses;
+    const a = await minifyJs('window.a = function(x){ return x + 1; };');
+    const b = await minifyJs('window.b = function(y){ return y * 2; };');
+    expect(a).not.toBe(b);
+    expect(minifyJsStats().misses - before).toBe(2);
+
+    const broken = 'function ( { still not js';
+    expect(await minifyJs(broken)).toBe(broken);
+    expect(await minifyJs(broken)).toBe(broken);
+    expect(minifyJsStats().misses - before).toBe(4);
+  });
+
+  it('bounds the cache by entry count and by retained bytes', async () => {
+    for (let i = 0; i < MINIFY_JS_CACHE_MAX * 2; i++) await minifyJs(`window.v${i} = ${i};`);
+    expect(minifyJsStats().size).toBeLessThanOrEqual(MINIFY_JS_CACHE_MAX);
+
+    // Bundles of ~600 KB each would sit under the entry cap while retaining far more than the budget.
+    const big = `window.pad = "${'x'.repeat(600_000)}";`;
+    for (let i = 0; i < 12; i++) await minifyJs(`${big}\nwindow.n${i} = ${i};`);
+    expect(minifyJsStats().bytes).toBeLessThanOrEqual(4 * 1024 * 1024);
+    expect(minifyJsStats().size).toBeGreaterThan(0);
+  });
+});
+
 describe('minifyCss cache memory bound', () => {
   it('caps RETAINED bytes, not just entry count (the key is a whole stylesheet)', () => {
-    // 8 stylesheets of ~400 KB each would sit under the 16-entry cap while retaining ~3 MB. The budget
+    // 12 stylesheets of ~400 KB each would sit under the entry cap while retaining ~9 MB. The budget
     // must price the minified VALUE too, not just the source key it is stored under.
     const big = '.pad{content:"' + 'x'.repeat(400_000) + '";}';
-    for (let i = 0; i < 8; i++) minifyCss(`${big}\n.n${i}{color:#ff0000}`);
-    expect(minifyCssStats().bytes).toBeLessThanOrEqual(2 * 1024 * 1024);
+    for (let i = 0; i < 12; i++) minifyCss(`${big}\n.n${i}{color:#ff0000}`);
+    expect(minifyCssStats().bytes).toBeLessThanOrEqual(4 * 1024 * 1024);
     // Independently confirm the accounting matches what is actually held.
     expect(minifyCssStats().size).toBeGreaterThan(0);
   });

@@ -1,12 +1,16 @@
 /**
  * Admission for the image encodes BUILDS run, from live free memory.
  *
- * - Every build can always run ONE encode: that is how each build encoded before it shared anything, so
- *   it is never slower than that, and never stalls.
- * - Further encodes start while the instance-wide `ceiling` (a CPU bound) has room AND free memory holds
- *   their estimate. Running build encodes are counted against free memory even before the kernel sees
- *   them: the ledger's `max(used, reserved)` let reservations absorb memory a build already used to render
+ * - Encodes start while the instance-wide `ceiling` (a CPU bound) has room AND free memory holds their
+ *   estimate. Running build encodes are counted against free memory even before the kernel sees them:
+ *   the ledger's `max(used, reserved)` let reservations absorb memory a build already used to render
  *   pages, and 340 parallel encodes OOM-killed a 768MB container.
+ * - When memory does NOT hold one, a single encode still runs instance-wide — given to a build that has
+ *   none running — so no build ever stalls: under pressure encodes go one at a time, as every build
+ *   encoded before it shared anything. ★ That guarantee used to be PER BUILD and above the ceiling, so
+ *   ten concurrent builds (agents' previews, a publish, an audit's build) ran ten 24MP encodes with no
+ *   memory check at all; MEASURED at 1.5 GiB, that is what OOM-killed the container under load.
+ * - A build with nothing running goes first: a big build's queue cannot keep a small one waiting.
  * - Each admitted encode is also BOOKED with the shared ledger, so the instance's other memory gates
  *   (uploads, list calls, screenshots) see it.
  * - The single-page preview borrows room that is free right now (`runIfFree`) for the images of a page
@@ -21,11 +25,20 @@ export interface EncodeMemorySnapshot {
 /** One build's share — create one per build. */
 export interface BuildEncodeCount {
   running: number;
+  /** This build's calls waiting while it had nothing running (kept by the gate). */
+  waiting?: number;
 }
 
 export class BuildEncodeGate {
   private running = 0;
   private bytes = 0;
+  /** Encodes running WITHOUT their memory fitting — the one that keeps builds moving (at most 1). */
+  private unchecked = 0;
+  /**
+   * Builds waiting with nothing running, oldest first. The head gets the next slot: a build is counted
+   * once however many encodes it asks for at once, so a big build cannot outvote a small one.
+   */
+  private readonly starving: BuildEncodeCount[] = [];
   private readonly waiters = new Set<() => void>();
 
   constructor(
@@ -40,15 +53,48 @@ export class BuildEncodeGate {
   async run<T>(build: BuildEncodeCount, bytes: number, fn: () => Promise<T>): Promise<T> {
     // Every check below is followed by its claim with NO await in between, so concurrent callers can
     // never all see "nothing running" and start together.
-    for (;;) {
-      if (build.running === 0) break;
-      if (this.running < this.ceiling) {
-        const snap = await this.snapshot();
-        if (build.running === 0 || (this.running < this.ceiling && this.fits(snap, bytes))) break;
+    let queued = false; // this call is counted in build.waiting
+    try {
+      for (;;) {
+        if (this.mayTry(build)) {
+          const snap = await this.snapshot();
+          if (this.mayTry(build)) {
+            const fits = this.fits(snap, bytes);
+            if (fits || (build.running === 0 && this.unchecked === 0)) return this.admitted(bytes, fn, build, !fits);
+          }
+        }
+        // Waiting. A build with nothing running joins the queue of builds that go first — at the BACK,
+        // so a big build whose own encode just finished does not jump a small one that waited longer.
+        if (build.running === 0) {
+          if (!queued) {
+            queued = true;
+            build.waiting = (build.waiting ?? 0) + 1;
+          }
+          if (!this.starving.includes(build)) this.starving.push(build);
+        } else if (queued) {
+          queued = false;
+          this.leave(build);
+        }
+        await this.freed();
       }
-      await this.freed();
+    } finally {
+      if (queued) this.leave(build);
     }
-    return this.admitted(bytes, fn, build);
+  }
+
+  /** Room under the ceiling, and no build that waited with nothing running is ahead of this one. */
+  private mayTry(build: BuildEncodeCount): boolean {
+    return this.running < this.ceiling && (this.starving.length === 0 || this.starving[0] === build);
+  }
+
+  private leave(build: BuildEncodeCount): void {
+    build.waiting = Math.max(0, (build.waiting ?? 1) - 1);
+    if (build.waiting === 0) this.unqueue(build);
+  }
+
+  private unqueue(build: BuildEncodeCount): void {
+    const at = this.starving.indexOf(build);
+    if (at >= 0) this.starving.splice(at, 1);
   }
 
   /** Resolves when an encode here finishes, or after the poll interval (memory frees up elsewhere too). */
@@ -67,21 +113,26 @@ export class BuildEncodeGate {
 
   /**
    * Runs `fn` NOW when the ceiling has room and free memory holds `bytes`; otherwise resolves undefined
-   * without running it, so the caller can take its usual path instead. It never waits for a slot and
-   * belongs to no build, so it never gets the one-encode-per-build guarantee.
+   * without running it, so the caller can take its usual path instead. It never waits for a slot,
+   * belongs to no build, and never runs without its memory fitting.
    */
   async runIfFree<T>(bytes: number, fn: () => Promise<T>): Promise<{ value: T } | undefined> {
-    if (this.running >= this.ceiling) return undefined;
+    // A build with nothing running is waiting: it gets the slot, and the preview takes its usual path.
+    if (this.running >= this.ceiling || this.starving.length > 0) return undefined;
     const snap = await this.snapshot();
     // Re-checked after the await and claimed with none in between, as in run().
-    if (this.running >= this.ceiling || !this.fits(snap, bytes)) return undefined;
-    return { value: await this.admitted(bytes, fn) };
+    if (this.running >= this.ceiling || this.starving.length > 0 || !this.fits(snap, bytes)) return undefined;
+    return { value: await this.admitted(bytes, fn, undefined, false) };
   }
 
-  private async admitted<T>(bytes: number, fn: () => Promise<T>, build?: BuildEncodeCount): Promise<T> {
+  private async admitted<T>(bytes: number, fn: () => Promise<T>, build: BuildEncodeCount | undefined, unchecked: boolean): Promise<T> {
     this.running += 1;
     this.bytes += bytes;
-    if (build) build.running += 1;
+    if (unchecked) this.unchecked += 1;
+    if (build) {
+      build.running += 1;
+      this.unqueue(build); // it has one running now: it no longer goes first
+    }
     let booked: { release(): void } | undefined;
     try {
       booked = this.book?.(bytes);
@@ -90,6 +141,7 @@ export class BuildEncodeGate {
       booked?.release();
       this.running -= 1;
       this.bytes -= bytes;
+      if (unchecked) this.unchecked -= 1;
       if (build) build.running -= 1;
       for (const wake of [...this.waiters]) wake();
     }

@@ -54,6 +54,15 @@ describe('processSizing — the ceilings must fit in the cgroup', () => {
     expect(processSizing(GB).workerHeapMb).toBe(WORKER_HEAP_MB);
   });
 
+  it('★ bounds whole-site builds at once by the memory there is (1.5 GiB → 2)', () => {
+    // ~20 builds at once OOM-killed a 1.5 GiB container under ten agents' load; each holds its pages in
+    // the main process, and they share one main thread, so more at once only finishes each one later.
+    expect(processSizing(512 * MB).siteBuilds).toBe(1);
+    expect(processSizing(1536 * MB).siteBuilds).toBe(2);
+    expect(processSizing(3 * GB).siteBuilds).toBe(3);
+    expect(processSizing(16 * GB).siteBuilds).toBe(4);
+  });
+
   it('never returns a heap too small for Node to run', () => {
     // A pathologically small limit must still yield a usable ceiling rather than 0 or a negative.
     for (const limit of [128 * MB, 192 * MB, 256 * MB]) {

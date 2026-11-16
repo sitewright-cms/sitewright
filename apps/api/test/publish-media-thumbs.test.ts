@@ -438,7 +438,11 @@ describe('ThumbMaterializer — incremental, parallel, by path', () => {
     expect(await listing(pieces)).toEqual(await listing(oneShot));
     expect((await readFile(join(pieces, '_assets', 'a2-a2-sm.webp'))).equals(cachedSm)).toBe(true); // a hit is copied
     // Every MISS is encoded through the admission, with its estimate: a1 sm + md, a3 lg, a4 xs (a2 sm was a hit).
-    expect(estimates).toEqual(Array(4).fill(encodeEstimateBytes(100, 80)));
+    // a3's variant is AVIF, which books more than a WebP one of the same source.
+    const webp = encodeEstimateBytes(100, 80, 'webp');
+    const avif = encodeEstimateBytes(100, 80, 'avif');
+    expect(avif).toBeGreaterThan(webp);
+    expect([...estimates].sort((x, y) => x - y)).toEqual([webp, webp, webp, avif]);
     expect(peak).toBeGreaterThan(1);
     expect(peak).toBeLessThanOrEqual(3);
     expect(Math.max(...progress)).toBeLessThanOrEqual(all.size);

@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.81.0] — 2026-11-16
+
 ### Changed
 
 - **Dependency updates (14 packages).**
@@ -6640,7 +6642,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.80.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.81.0...HEAD
+[0.81.0]: https://github.com/sitewright-cms/sitewright/compare/v0.80.0...v0.81.0
 [0.80.0]: https://github.com/sitewright-cms/sitewright/compare/v0.79.0...v0.80.0
 [0.79.0]: https://github.com/sitewright-cms/sitewright/compare/v0.78.1...v0.79.0
 [0.78.1]: https://github.com/sitewright-cms/sitewright/compare/v0.78.0...v0.78.1

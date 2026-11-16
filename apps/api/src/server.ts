@@ -1,14 +1,14 @@
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { mkdir } from 'node:fs/promises';
-import { createApp, initMemoryBudget } from './http/app.js';
+import { createApp, initMemoryBudget, siteBuildReserveBytes } from './http/app.js';
 import { seedInstance } from './seed.js';
 import { migrateDatasetSlugsToUnderscore } from './migrate-content.js';
 import { migrateMediaToFlatShortId } from './media/migrate-media.js';
 import { MediaStorage } from './media/storage.js';
 import { users } from './db/schema.js';
 import { RenderPool } from './render/render-pool.js';
-import { detectMemoryLimit } from './runtime/memory-budget.js';
+import { detectMemoryLimit, sharedMemoryBudget } from './runtime/memory-budget.js';
 import { processSizing } from './runtime/process-sizing.js';
 import { configureImagePipeline, imagePipelineLimitsFor } from '@sitewright/image-pipeline';
 import { createDb, runMigrations } from './db/client.js';
@@ -21,6 +21,8 @@ import { createReleaseChecker } from './version/checker.js';
 import { resolveRuntimeConfig } from './config.js';
 
 import { WorkerBuildRunner } from './publish/worker-runner.js';
+import { ThreadBuildRunner } from './publish/thread-runner.js';
+import { InProcessBuildRunner } from './publish/runner.js';
 import { sweepOrphanedDeployDirs } from './publish/deploy-tmp.js';
 import { AnthropicProvider } from './ai/provider.js';
 import { AnthropicAgentProvider } from './ai/anthropic-agent.js';
@@ -93,9 +95,9 @@ if (!cfg.isProduction) {
 }
 
 // Opt-in isolated build worker (multi-tenant SaaS / once builds run untrusted
-// code). Default: in-process build (single-container). Requires the docker CLI +
+// code). Default: builds on worker threads (below). Requires the docker CLI +
 // DOCKER_HOST, and the API image available as the worker image.
-const buildRunner =
+const containerBuildRunner =
   process.env.SW_BUILD_WORKER === 'true'
     ? new WorkerBuildRunner({
         image: process.env.SW_BUILD_WORKER_IMAGE ?? 'sitewright-api',
@@ -170,7 +172,44 @@ const { limitBytes: detectedMemoryLimit, derivedFromHost } = await detectMemoryL
 await initMemoryBudget();
 const sizing = processSizing(detectedMemoryLimit);
 // Whole-site builds at once (SW_SITE_BUILDS overrides the size derived from the memory limit).
-const siteBuilds = Math.max(1, Math.min(64, Math.floor(renderEnvInt(process.env.SW_SITE_BUILDS, sizing.siteBuilds))));
+const siteBuildSlots = Math.max(1, Math.min(64, Math.floor(renderEnvInt(process.env.SW_SITE_BUILDS, sizing.siteBuilds))));
+// Whole-site builds run on WORKER THREADS, off the main thread every request waits for (see
+// thread-runner.ts).
+// A build a thread cannot take — none free, no memory for a new one, a thread that cannot start or dies —
+// is built on the main thread as before.
+// On by default from 2 GiB (processSizing.buildThreads); SW_BUILD_THREADS=0 / 1 forces it off / on.
+const threadsSetting = process.env.SW_BUILD_THREADS?.trim().toLowerCase();
+const threadsOn = threadsSetting === '0' || threadsSetting === 'false' ? false : threadsSetting === '1' || threadsSetting === 'true' ? true : sizing.buildThreads;
+// One thread fewer than the memory tier's build slots (at least one), and with threads on, ONLY that many
+// builds at once: the main thread no longer builds beside them. MEASURED on a 1.5 GiB, 6-CPU container:
+// a thread per slot was OOM-killed; one thread plus a main-thread build saturated the CPU quota under the
+// heaviest load and was OOM-killed too; one warm thread, building one at a time, was faster than two
+// interleaved on the main thread.
+const buildThreads = threadsOn && !containerBuildRunner ? Math.max(1, siteBuildSlots - 1) : 0;
+const siteBuilds = buildThreads > 0 && !process.env.SW_SITE_BUILDS?.trim() ? buildThreads : siteBuildSlots;
+const buildRunner =
+  containerBuildRunner ??
+  (buildThreads > 0
+    ? new ThreadBuildRunner({
+        size: buildThreads,
+        // The main heap's ceiling, SPLIT between the threads: each thread's heap is extra memory, and
+        // ceilings that each reach the main heap's would sum past the container. A build that outgrows its
+        // share is re-run on the main thread, whose ceiling is larger (with one thread there is no split,
+        // and such a build fails as a build instead — see thread-runner.ts).
+        heapMb: Math.max(256, Math.floor(sizing.mainHeapMb / buildThreads)),
+        retryOutOfHeap: Math.max(256, Math.floor(sizing.mainHeapMb / buildThreads)) < sizing.mainHeapMb,
+        fallback: new InProcessBuildRunner(),
+        // A NEW thread only while the ledger has room for two builds' bookings; a warm one is always reused.
+        mayStartThread: async () => (await sharedMemoryBudget.snapshot()).availableBytes >= 2 * siteBuildReserveBytes(detectedMemoryLimit),
+        onFallback: (reason, err) => {
+          // Expected, not news: the audit's extra build, and builds deferred to the main thread under pressure.
+          if (reason === 'every build thread is busy' || reason === 'memory is tight') return;
+          process.stderr.write(
+            `[sitewright/api] building on the main thread — ${reason}${err instanceof Error ? `: ${err.message}` : ''}\n`,
+          );
+        },
+      })
+    : undefined);
 // Say which memory ceiling everything below was sized from, and whether it was actually ENFORCED.
 // `derivedFromHost` means no cgroup limit was set, so the figure is a conservative guess from host
 // RAM — an operator seeing an unexpected pool size or heap ceiling needs to know which it was.
@@ -178,7 +217,7 @@ process.stdout.write(
   `[sitewright/api] memory ceiling ${Math.round(detectedMemoryLimit / 1024 / 1024)}MB` +
     `${derivedFromHost ? ' (no container limit set — derived from host RAM)' : ' (container limit)'}` +
     ` → render workers max ${sizing.poolSize} × ${sizing.workerHeapMb}MB, warm ${sizing.poolMinSize}` +
-    ` · site builds ${siteBuilds} at once` +
+    ` · site builds ${siteBuilds} at once${buildThreads > 0 ? ' on worker threads' : ''}` +
     // The main heap ceiling is part of the SAME division of the cgroup; printing it next to the pool
     // is what makes an over-subscribed container visible at boot instead of at the OOM kill. Only
     // reported when a real limit is ENFORCED: with none, the entrypoint sets no --max-old-space-size

@@ -91,6 +91,10 @@ scripts/stress/run.sh --image sitewright-api:e2e-2008 --profile 3-heavy
 #   --profile a main-thread .cpuprofile for DevTools.
 ```
 
+`--env KEY=VALUE` (repeatable) passes a setting to the container — e.g. `--env SW_BUILD_THREADS=0` to
+compare builds on the main thread with builds on worker threads — and `plans/small.json` is a short
+plan for small boxes (`--cpus 1 --memory 768m`).
+
 Read `container-state.txt` first: `oomKilled=true` means the instance died under the plan. Then
 `report.txt`'s quiet phases: CPU and memory must come back down — an instance that stays busy after
 the load stops is the failure this suite exists to catch. The container and its throwaway secrets are

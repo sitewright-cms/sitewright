@@ -1,11 +1,9 @@
 import { readdir, mkdtemp, rm, stat } from 'node:fs/promises';
-import { createReadStream, createWriteStream } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
-import { Readable, Transform, Writable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
+import { Readable, Writable } from 'node:stream';
 import { z } from 'zod';
-import JSZip from 'jszip';
+import { writeZipFile } from '../export/zip-writer.js';
 import { Client as FtpClientImpl } from 'basic-ftp';
 import SftpClientImpl from 'ssh2-sftp-client';
 import {
@@ -307,9 +305,9 @@ export class SiteArchiveSizeError extends Error {
  * 1.25 GB, so "download your site as a zip" was unavailable to exactly the projects that most need a
  * manual deployment path — and the failure was a flat refusal with no way forward.
  *
- * Nothing is held whole now: each file enters as a read stream, jszip emits through
- * `generateNodeStream`, and a pass-through trips the byte cap mid-flight. Identical to the project
- * export path (`buildProjectExportZip`), which is where this technique already lived. The caller
+ * Nothing is held whole now: each file is read from disk as the archive is written, compressed by
+ * Node's zlib off the event loop (zip-writer.ts), and the writer trips the byte cap mid-flight —
+ * identical to the project export path (`buildProjectExportZip`), which shares the writer. The caller
  * streams {@link SiteArchive.path} to the client and then invokes `cleanup`.
  */
 export async function archiveSite(siteDir: string, maxBytes = MAX_PROJECT_ARCHIVE_BYTES): Promise<SiteArchive> {
@@ -328,27 +326,13 @@ export async function archiveSite(siteDir: string, maxBytes = MAX_PROJECT_ARCHIV
   };
   try {
     await assertDiskHeadroom(dir, want);
-    const zip = new JSZip();
-    for (const file of files) {
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- abs confined to siteDir
-      zip.file(file.rel, createReadStream(file.abs));
-    }
-    let total = 0;
-    const cap = new Transform({
-      transform(chunk: Buffer, _enc, done): void {
-        total += chunk.length;
-        if (total > maxBytes) {
-          done(new SiteArchiveSizeError(maxBytes));
-          return;
-        }
-        done(null, chunk);
-      },
-    });
-    const source = zip.generateNodeStream({ type: 'nodebuffer', streamFiles: true, compression: 'DEFLATE' });
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- private mkdtemp path
-    await pipeline(source, cap, createWriteStream(path));
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- private mkdtemp path
-    const bytes = (await stat(path)).size;
+    // abs paths are confined to siteDir by collectSiteFiles.
+    const bytes = await writeZipFile(
+      files.map((file) => ({ name: file.rel, path: file.abs })),
+      path,
+      maxBytes,
+      () => new SiteArchiveSizeError(maxBytes),
+    );
     return { path, bytes, cleanup };
   } catch (err) {
     await cleanup();

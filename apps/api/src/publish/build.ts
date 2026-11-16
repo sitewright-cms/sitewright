@@ -396,6 +396,12 @@ export interface BuildSiteOptions {
    */
   mediaFilePath?: (assetId: string, file: string) => string;
   /**
+   * Where `readMedia` / `storeMedia` / `mediaFilePath` read and write: the media store's root and this
+   * project's slug. The build itself never reads it; a runner that cannot carry those functions — a
+   * worker thread — rebuilds them from it. Without it, such a runner builds on the main thread instead.
+   */
+  mediaSource?: { root: string; projectSlug: string };
+  /**
    * Admission for one image encode, with its expected memory cost — the instance's image gate. With it
    * the build encodes up to `encodeConcurrency` images at once; without it, one at a time.
    */

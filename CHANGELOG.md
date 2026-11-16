@@ -11,6 +11,20 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Changed
 
+- **Dependency updates (14 packages).**
+  - **Tailwind CSS 4.3.3 → 4.3.5:** published sites' stylesheets change slightly on their next build:
+    empty `var()` fallbacks gain a space, the `group-*` / `peer-*` selectors are rewritten for faster style
+    updates, daisyUI's button-group (`.join`) rules move into a top-level `@scope`, and Safari's `@property`
+    fallback is detected correctly again. Every class the example project uses, plus every `/`-modifier
+    class in the repository, rendered the same computed styles in Chromium before and after, at rest,
+    hovered, checked and focused.
+  - **Security fixes:** basic-ftp 6.2.6 fixes a path traversal in a download helper (not used here), and
+    @fastify/multipart 10.1.8 sanitizes the temporary file's extension.
+  - **Also updated:** @fastify/rate-limit, @fastify/static, @simplewebauthn/server (passkey origins must now
+    be ASCII; ours come from the request host and always are), chrome-launcher, isomorphic-git,
+    nodemailer, playwright-core 1.65 (its own headless Chromium in the image), and in the editor
+    lucide-react and motion.
+
 - **Site builds can run beside the server instead of on the thread every request waits for.** A preview,
   publish or deploy build runs on a worker thread, at a lower CPU priority than the server, so while builds
   run the server keeps answering. On by default on instances with 2 GiB of memory or more.

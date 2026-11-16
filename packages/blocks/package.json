@@ -60,7 +60,7 @@
     "@phosphor-icons/core": "^2.1.1",
     "@types/node": "^26.6.6",
     "@types/sanitize-html": "^2.16.2",
-    "@vitest/coverage-v8": "^5.0.5",
+    "@vitest/coverage-v8": "^5.1.0",
     "circle-flags": "^2.8.3",
     "embla-carousel": "8.6.0",
     "embla-carousel-auto-height": "8.6.0",
@@ -71,11 +71,11 @@
     "esbuild": "^0.28.2",
     "flag-icons": "^7.6.0",
     "glightbox": "3.3.1",
-    "lucide-static": "^1.66.0",
-    "simple-icons": "^16.36.0",
+    "lucide-static": "^1.70.0",
+    "simple-icons": "^16.37.0",
     "smartphoto": "1.6.5",
     "typescript": "^5.7.2",
     "vanilla-calendar-pro": "3.4.0",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   }
 }

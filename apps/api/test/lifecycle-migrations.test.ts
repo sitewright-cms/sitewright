@@ -104,3 +104,30 @@ describe('migration 0042 (site removals to try again)', () => {
     expect((await db.select().from(webmasterRemovals)).map((r) => r.owners)).toEqual([[], []]);
   });
 });
+
+describe('migration 0052 (rank checks read in stages)', () => {
+  it('moves projects off the retired Top 30 to Top 50, and books no earlier stage for existing checks', async () => {
+    const db = await migratedUpTo(51);
+    const projects = new ProjectRepository(db);
+    const thirty = (await projects.create({ name: 'Thirty', slug: 'thirty' })).id;
+    const hundred = (await projects.create({ name: 'Hundred', slug: 'hundred' })).id;
+    const project = (id: string, depth: number) =>
+      db.run(sql`INSERT INTO rank_projects (project_id, domain, include_subdomains, schedule, depth, updated_at) VALUES (${id}, 'plumbers.na', 1, 'weekly', ${depth}, ${Date.now()})`);
+    await project(thirty, 30);
+    await project(hundred, 100);
+    const rank = new RankRepository(db);
+    await rank.addKeywords(thirty, { keywords: ['a'], engine: 'google', device: 'desktop', location: { name: 'Namibia', countryCode: 'NA' }, languageCode: 'en' });
+    const [k] = await rank.listKeywords(thirty);
+    // In flight across the upgrade, in the table's shape at migration 51.
+    await db.run(sql`INSERT INTO rank_checks (id, keyword_id, project_id, day, provider, provider_ref, status, domain, include_subdomains, depth, cost_micros, posted_at)
+      VALUES ('in-flight', ${k!.id}, ${thirty}, '2026-11-17', 'dataforseo', 'ref', 'queued', 'plumbers.na', 1, 30, 1800, ${Date.now()})`);
+
+    await runMigrations(db);
+
+    expect((await rank.getProject(thirty))?.depth).toBe(50);
+    expect((await rank.getProject(hundred))?.depth).toBe(100);
+    const [queued] = await rank.queuedChecks(10);
+    // The check keeps the depth it was sent for; it has no earlier stages, so nothing settled before its result.
+    expect(queued).toMatchObject({ id: 'in-flight', depth: 30, settledMicros: 0, resultsRead: 0, pagesRead: 0, fullDepth: true });
+  });
+});

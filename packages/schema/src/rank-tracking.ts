@@ -16,7 +16,7 @@ import { z } from 'zod';
  */
 
 /** Providers the platform has a client for. Adding one: an id here plus a client in the api's `rank/providers`. */
-export const RANK_PROVIDER_IDS = ['dataforseo', 'apify'] as const;
+export const RANK_PROVIDER_IDS = ['dataforseo', 'apify', 'brightdata'] as const;
 export const RankProviderIdSchema = z.enum(RANK_PROVIDER_IDS);
 export type RankProviderId = z.infer<typeof RankProviderIdSchema>;
 
@@ -36,15 +36,64 @@ export const RankScheduleSchema = z.enum(RANK_SCHEDULES);
 export type RankSchedule = z.infer<typeof RankScheduleSchema>;
 
 /**
- * How many results a check reads. A site further down counts as "not in the top N". Providers charge per page
- * of ten results, so the depth multiplies the cost of every check.
+ * How far a check looks: the top 10, 20, 50 or 100 results. A site further down counts as "not in the top N".
+ * Providers charge per page of ten results, but a check reads further pages only while the site has not turned up
+ * (see {@link rankStages}), so the depth sets what a check costs at most — a site on the first page costs one page.
  */
-export const RANK_DEPTHS = [10, 20, 30, 50, 100] as const;
+export const RANK_DEPTHS = [10, 20, 50, 100] as const;
 export type RankDepth = (typeof RANK_DEPTHS)[number];
 export const RankDepthSchema = z
   .number()
   .int()
   .refine((n): n is RankDepth => (RANK_DEPTHS as readonly number[]).includes(n), { message: `depth must be one of ${RANK_DEPTHS.join(', ')}` });
+
+/** One request of a check: results pages `startPage` (1 = the first) to `startPage + pages - 1`. */
+export interface RankStage {
+  startPage: number;
+  pages: number;
+}
+
+/**
+ * The order a check reads results pages in: the first page, then the second, then the third to fifth, then the
+ * sixth to tenth. Most sites a check finds are on the first page or two, so a check stops early more often than not.
+ */
+const STAGE_PLAN: readonly RankStage[] = [
+  { startPage: 1, pages: 1 },
+  { startPage: 2, pages: 1 },
+  { startPage: 3, pages: 3 },
+  { startPage: 6, pages: 5 },
+];
+
+/** Results pages a depth covers: Google serves ten results a page. */
+export const rankPagesFor = (depth: number): number => Math.max(1, Math.ceil(depth / 10));
+
+/**
+ * The requests a check of `depth` makes at most, in order, each sent only when the ones before it did not find the
+ * site and Google had more results. Works for any depth (a check sent before the depths changed included): the plan
+ * is cut at the depth's last page.
+ */
+export function rankStages(depth: number): RankStage[] {
+  const last = rankPagesFor(depth);
+  const out: RankStage[] = [];
+  for (const s of STAGE_PLAN) {
+    if (s.startPage > last) break;
+    out.push({ startPage: s.startPage, pages: Math.min(s.pages, last - s.startPage + 1) });
+  }
+  // Past the plan (a depth beyond 100): the rest in one request.
+  const read = out.reduce((n, s) => n + s.pages, 0);
+  if (read < last) out.push({ startPage: read + 1, pages: last - read });
+  return out;
+}
+
+/**
+ * The request a check of `depth` makes next once its first `pagesRead` pages are read: the rest of the stage the next
+ * page falls in. Null when it has read them all.
+ */
+export function rankNextStage(depth: number, pagesRead: number): RankStage | null {
+  const page = Math.max(0, Math.floor(pagesRead)) + 1;
+  const stage = rankStages(depth).find((s) => page >= s.startPage && page < s.startPage + s.pages);
+  return stage ? { startPage: page, pages: stage.startPage + stage.pages - page } : null;
+}
 
 /**
  * Where a search is made from. `name` is a Google Ads geo-target CANONICAL name — `Windhoek,Khomas Region,Namibia`
@@ -144,8 +193,8 @@ const RankKeywordTextSchema = z
   .string()
   .transform(normalizeRankKeyword)
   .pipe(z.string().min(1, 'a keyword cannot be empty').max(RANK_KEYWORD_MAX, `a keyword is at most ${RANK_KEYWORD_MAX} characters`))
-  // eslint-disable-next-line no-control-regex -- deliberately refusing the C0 range
-  .refine((k) => !/[\u0000-\u001f\u007f]/.test(k), 'a keyword has no control characters');
+  // eslint-disable-next-line no-control-regex -- deliberately refusing the C0 and C1 ranges (C1's NEL breaks a line too)
+  .refine((k) => !/[\u0000-\u001f\u007f-\u009f]/.test(k), 'a keyword has no control characters');
 
 /** Adds keywords to a project (staff only). Every keyword gets the same engine, device, location and language. */
 export const RankKeywordsInputSchema = z.object({

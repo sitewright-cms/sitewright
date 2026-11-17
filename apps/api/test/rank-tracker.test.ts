@@ -17,7 +17,10 @@ import { registerAccount } from '../src/repo/accounts.js';
 
 type Db = Awaited<ReturnType<typeof makeTestDb>>;
 
-/** A provider whose answers the test scripts. Charges $0.006 per search of depth 100 unless told otherwise. */
+/**
+ * A provider whose answers the test scripts. Charges $0.006 per results PAGE unless told otherwise — a check's first
+ * stage reads one page, so a first stage costs $0.006.
+ */
 function scriptedProvider() {
   const submitted: RankSearch[][] = [];
   const state = {
@@ -28,6 +31,8 @@ function scriptedProvider() {
     results: new Map<string, 'pending' | { fail: string } | Array<{ position: number; url: string; snippet?: true }>>(),
     /** checkId → the results pages the provider says it fetched. */
     pages: new Map<string, number>(),
+    /** Checks whose page says Google has no more results. */
+    ends: new Set<string>(),
     /** Every collect request, as the check ids asked about. */
     collected: [] as string[][],
     cost: 0.006,
@@ -43,13 +48,13 @@ function scriptedProvider() {
     fields: [],
     maxBatch: 2,
     parseCredentials: (raw) => ({ ...raw }),
-    estimateCostUsd: (depth) => state.cost * (depth / 100),
+    estimateCostUsd: (pages) => state.cost * pages,
     async submit(_creds, searches) {
       await state.duringSubmit?.();
       const err = state.submitErrors.shift();
       if (err) throw err;
       submitted.push([...searches]);
-      return searches.map((s): SubmitOutcome => ({ checkId: s.checkId, state: 'queued', ref: `ref-${s.checkId}`, costUsd: (state.charged ?? state.cost) * (s.depth / 100) }));
+      return searches.map((s): SubmitOutcome => ({ checkId: s.checkId, state: 'queued', ref: `ref-${s.checkId}`, costUsd: (state.charged ?? state.cost) * s.pages }));
     },
     async collect(_creds, queued) {
       state.collected.push(queued.map((q) => q.checkId));
@@ -72,6 +77,7 @@ function scriptedProvider() {
               domain: '',
             })),
             ...(state.pages.has(q.checkId) ? { pagesRead: state.pages.get(q.checkId) } : {}),
+            ...(state.ends.has(q.checkId) ? { end: true } : {}),
           },
         };
       });
@@ -81,6 +87,35 @@ function scriptedProvider() {
   };
   return { provider, submitted, state };
 }
+
+/**
+ * A provider that answers every search at once (as Bright Data does), from `pageOf` — results numbered from the first
+ * page asked for. $0.0015 per page.
+ */
+function liveProvider(pageOf: (s: RankSearch) => { urls: string[]; end?: boolean; pagesRead?: number; cut?: true } | { unsent: string }) {
+  const submitted: RankSearch[][] = [];
+  const provider: RankProvider = {
+    ...scriptedProvider().provider,
+    id: 'brightdata',
+    estimateCostUsd: (pages) => 0.0015 * pages,
+    async submit(_creds, searches) {
+      submitted.push([...searches]);
+      return searches.map((s): SubmitOutcome => {
+        const answer = pageOf(s);
+        if ('unsent' in answer) return { checkId: s.checkId, state: 'unsent', error: answer.unsent };
+        const { urls, end, cut } = answer;
+        const pagesRead = answer.pagesRead ?? s.pages;
+        const entries = urls.map((url, i) => ({ kind: 'organic' as const, position: i + 1, absolutePosition: i + 1, url, domain: '' }));
+        const page = { checkedAt: now, entries, pagesRead, ...(end ? { end } : {}), ...(cut ? { cut } : {}) };
+        return { checkId: s.checkId, state: 'done', page, costUsd: 0.0015 * pagesRead };
+      });
+    },
+  };
+  return { provider, submitted };
+}
+
+/** Ten results that are not the site's, for page `n`. */
+const others = (n: number, count = 10): string[] => Array.from({ length: count }, (_, i) => `https://other${n}-${i}.test/`);
 
 let db: Db;
 let repo: RankRepository;
@@ -103,16 +138,18 @@ beforeEach(async () => {
   await repo.putConfig({ activeProvider: 'dataforseo', monthlyBudgetMicros: 1_000_000 });
 });
 
-/** The second provider, never configured in these tests: it must never be asked anything. */
-const idleApify: RankProvider = {
+/** A provider never configured in these tests: it must never be asked anything. */
+const idle = (id: 'apify' | 'brightdata' | 'dataforseo'): RankProvider => ({
   ...scriptedProvider().provider,
-  id: 'apify',
-  submit: async () => Promise.reject(new Error('apify was never configured')),
-  collect: async () => Promise.reject(new Error('apify was never configured')),
-};
+  id,
+  submit: async () => Promise.reject(new Error(`${id} was never configured`)),
+  collect: async () => Promise.reject(new Error(`${id} was never configured`)),
+});
+const idleApify = idle('apify');
 
 function tracker(provider: RankProvider): RankTracker {
-  return new RankTracker({ repo, providers: { dataforseo: provider, apify: idleApify }, io: { fetch: async () => Promise.reject(new Error('no network')) }, now: () => now, log });
+  const providers = { dataforseo: idle('dataforseo'), apify: idleApify, brightdata: idle('brightdata'), [provider.id]: provider };
+  return new RankTracker({ repo, providers, io: { fetch: async () => Promise.reject(new Error('no network')) }, now: () => now, log });
 }
 
 async function addKeywords(projectId: string, keywords: string[], schedule: 'daily' | 'weekly' = 'daily', depth: 10 | 100 = 100): Promise<void> {
@@ -160,6 +197,7 @@ describe('the tracker sends what is due, once a day', () => {
       { position: 3, url: 'https://www.plumbers.na/geysers/' },
     ]);
     state.results.set(b!.id, [{ position: 1, url: 'https://competitor.test/' }]);
+    state.ends.add(b!.id); // Google had nothing past it: the check reads no further
     expect(await t.tick()).toMatchObject({ collected: 2 });
     const done = new Map((await checks()).map((r) => [r.id, r]));
     expect(done.get(a!.id)).toMatchObject({ status: 'done', position: 3, url: 'https://www.plumbers.na/geysers/' });
@@ -238,15 +276,24 @@ describe('money', () => {
     expect(submitted.flat()).toHaveLength(4);
   });
 
-  it('skips a keyword the rest of the budget cannot pay for, and still sends a cheaper one after it', async () => {
-    await repo.putConfig({ monthlyBudgetMicros: 7_000 });
+  it('skips a stage the rest of the budget cannot pay for, and still sends a cheaper one after it', async () => {
     const deep = await makeProject('deep');
-    await addKeywords(deep, ['deep one', 'deep two'], 'daily', 100); // $0.006 each
+    await addKeywords(deep, ['deep']);
+    const { provider, state, submitted } = scriptedProvider();
+    const t = tracker(provider);
+    await t.tick(); // page 1 ($0.006)
+    await t.tick();
+    const [row] = await checks();
+    // Pages 1 and 2 did not hold the site: next come pages 3–5, three pages ($0.018).
+    state.results.set(row!.id, [{ position: 1, url: 'https://competitor.test/' }]);
+    await t.tick(); // page 2
+    state.results.set(row!.id, [{ position: 1, url: 'https://competitor.test/' }]);
     const shallow = await makeProject('shallow');
-    await addKeywords(shallow, ['shallow'], 'daily', 10); // $0.0006
-    const { provider, submitted } = scriptedProvider();
-    expect(await tracker(provider).tick()).toMatchObject({ status: 'budget-reached', sent: 2 });
-    expect(submitted.flat().map((s) => s.keyword).sort()).toEqual(['deep one', 'shallow']);
+    await addKeywords(shallow, ['shallow']);
+    await repo.putConfig({ monthlyBudgetMicros: (await repo.spentMicrosInMonth(now)) + 7_000 }); // room for one page
+    expect(await t.tick()).toMatchObject({ status: 'budget-reached', sent: 1 });
+    expect(submitted.at(-1)!.map((s) => [s.keyword, s.startPage, s.pages])).toEqual([['shallow', 1, 1]]);
+    expect((await checks()).find((r) => r.id === row!.id)).toMatchObject({ status: 'next', pagesRead: 2 });
   });
 
   it('serves the longest-unchecked keywords first, so a tight budget rotates through projects', async () => {
@@ -553,7 +600,7 @@ describe('housekeeping', () => {
 
   it('unreadable credentials stop the tracker, not the caller', async () => {
     const other = new RankRepository(db, randomBytes(32)); // a different key: the stored secret cannot be decrypted
-    const t = new RankTracker({ repo: other, providers: { dataforseo: scriptedProvider().provider, apify: idleApify }, io: { fetch: async () => Promise.reject(new Error('x')) }, now: () => now, log });
+    const t = new RankTracker({ repo: other, providers: { dataforseo: scriptedProvider().provider, apify: idleApify, brightdata: idle('brightdata') }, io: { fetch: async () => Promise.reject(new Error('x')) }, now: () => now, log });
     await expect(t.status()).resolves.toBe('no-provider');
     await expect(t.tick()).resolves.toMatchObject({ status: 'no-provider' });
   });
@@ -597,9 +644,344 @@ describe('what a results page says, counted the way Google counts', () => {
     await t.tick();
     const [row] = await checks();
     state.results.set(row!.id, [{ position: 1, url: 'https://competitor.test/' }, { position: 2, url: 'https://other.test/' }]);
-    state.pages.set(row!.id, 3);
+    state.ends.add(row!.id); // Google served this page and no more
     await t.tick();
-    expect((await checks())[0]).toMatchObject({ position: null, resultsRead: 2, pagesRead: 3, depth: 100 });
+    expect((await checks())[0]).toMatchObject({ status: 'done', position: null, resultsRead: 2, pagesRead: 1, depth: 100 });
+  });
+});
+
+describe('stages: a check reads further pages only while the site has not turned up', () => {
+  const sentStages = (submitted: RankSearch[][]) => submitted.flat().map((s) => [s.startPage, s.pages]);
+
+  it('a site on the first page costs one page: no further request', async () => {
+    const pid = await makeProject('first-page');
+    await addKeywords(pid, ['k']);
+    const { provider, state, submitted } = scriptedProvider();
+    const t = tracker(provider);
+    await t.tick();
+    const [row] = await checks();
+    state.results.set(row!.id, [{ position: 4, url: 'https://plumbers.na/' }]);
+    await t.tick();
+    await t.tick();
+    expect(sentStages(submitted)).toEqual([[1, 1]]);
+    expect((await checks())[0]).toMatchObject({ status: 'done', position: 4, pagesRead: 1, costMicros: 6000 });
+    expect(await repo.spentMicrosInMonth(now)).toBe(6000);
+  });
+
+  it('reads on page by page, numbering on from what the pages before held, and books each page', async () => {
+    const pid = await makeProject('page-two');
+    await addKeywords(pid, ['k']);
+    const { provider, state, submitted } = scriptedProvider();
+    const t = tracker(provider);
+    await t.tick(); // page 1 out
+    const [row] = await checks();
+    state.results.set(row!.id, Array.from({ length: 9 }, (_, i) => ({ position: i + 1, url: `https://other${i}.test/` })));
+    await t.tick(); // page 1 back without the site: page 2 goes out in the same pass
+    expect(sentStages(submitted)).toEqual([
+      [1, 1],
+      [2, 1],
+    ]);
+    expect((await checks())[0]).toMatchObject({ status: 'queued', resultsRead: 9, pagesRead: 1, costMicros: 12_000, costSettledMicros: 6000 });
+    expect(await repo.spentMicrosInMonth(now)).toBe(12_000); // the second page is booked before it is sent
+
+    state.results.set(row!.id, [
+      { position: 1, url: 'https://competitor.test/' },
+      { position: 2, url: 'https://www.plumbers.na/drains/' },
+    ]);
+    await t.tick();
+    // Page 2's second result follows page 1's nine: position 11.
+    expect((await checks())[0]).toMatchObject({ status: 'done', position: 11, resultsRead: 11, pagesRead: 2, costMicros: 12_000 });
+    expect(sentStages(submitted)).toHaveLength(2);
+  });
+
+  it('stops where Google stops, and at the depth', async () => {
+    const pid = await makeProject('stops');
+    await addKeywords(pid, ['ends', 'empty']);
+    const shallow = await makeProject('shallow-stops');
+    await addKeywords(shallow, ['two pages'], 'daily', 10);
+    await repo.putProject(shallow, { domain: 'plumbers.na', includeSubdomains: true, schedule: 'daily', depth: 20 });
+    const { provider, state, submitted } = scriptedProvider();
+    const t = tracker(provider);
+    await t.tick();
+    const rows = new Map((await checks()).map((r) => [r.keywordId, r.id]));
+    const kw = new Map((await Promise.all([pid, shallow].map((p) => repo.listKeywords(p)))).flat().map((k) => [k.keyword, k.id]));
+    const id = (k: string) => rows.get(kw.get(k)!)!;
+    state.results.set(id('ends'), [{ position: 1, url: 'https://competitor.test/' }]);
+    state.ends.add(id('ends')); // Google: nothing past this page
+    state.results.set(id('empty'), []); // an empty page: nothing more either
+    state.results.set(id('two pages'), [{ position: 1, url: 'https://competitor.test/' }]);
+    await t.tick(); // 'two pages' goes on to page 2 — the last of its top 20
+    await t.tick(); // …which misses too: done, both pages read
+    const done = new Map((await checks()).map((r) => [r.id, r]));
+    expect(done.get(id('ends'))).toMatchObject({ status: 'done', position: null, pagesRead: 1 });
+    expect(done.get(id('empty'))).toMatchObject({ status: 'done', position: null, pagesRead: 1 });
+    expect(done.get(id('two pages'))).toMatchObject({ status: 'done', position: null, pagesRead: 2, depth: 20 });
+    expect(sentStages(submitted).sort()).toEqual([
+      [1, 1],
+      [1, 1],
+      [1, 1],
+      [2, 1],
+    ]);
+  });
+
+  it('a provider that answers at once reads every stage in one pass: 1, 2, 3–5', async () => {
+    await repo.putCredentials('brightdata', { apiKey: 'k', zone: 'z' });
+    await repo.putConfig({ activeProvider: 'brightdata' });
+    const pid = await makeProject('live');
+    await addKeywords(pid, ['deep', 'top']);
+    const { provider, submitted } = liveProvider((s) => {
+      if (s.keyword === 'top') return { urls: ['https://plumbers.na/'] };
+      // 'deep': the site is on page 4, the second result there.
+      if (s.startPage === 3) return { urls: [...others(3), 'https://other4-0.test/', 'https://plumbers.na/services/', ...others(4).slice(2), ...others(5)] };
+      return { urls: others(s.startPage) };
+    });
+    expect(await tracker(provider).tick()).toMatchObject({ status: 'ok', sent: 2 });
+    expect(submitted.map((b) => b.map((s) => [s.keyword, s.startPage, s.pages]))).toEqual([
+      [
+        ['deep', 1, 1],
+        ['top', 1, 1],
+      ],
+      [['deep', 2, 1]],
+      [['deep', 3, 3]],
+    ]);
+    const rows = await checks();
+    const byKeyword = new Map((await repo.listKeywords(pid)).map((k) => [k.keyword, k.id]));
+    const deep = rows.find((r) => r.keywordId === byKeyword.get('deep'))!;
+    // 10 + 10 on pages 1–2, then the 12th result of pages 3–5: position 32. Five pages at $0.0015.
+    expect(deep).toMatchObject({ status: 'done', position: 32, pagesRead: 5, costMicros: 7500 });
+    expect(rows.find((r) => r.keywordId === byKeyword.get('top'))).toMatchObject({ status: 'done', position: 1, pagesRead: 1, costMicros: 1500 });
+    expect(await repo.spentMicrosInMonth(now)).toBe(9000);
+  });
+
+  it('a stage the budget cannot pay for waits; at the end of its day the check is done with what it read', async () => {
+    const pid = await makeProject('waits');
+    await addKeywords(pid, ['k']);
+    const { provider, state, submitted } = scriptedProvider();
+    const t = tracker(provider);
+    await t.tick();
+    const [row] = await checks();
+    state.results.set(row!.id, [
+      { position: 1, url: 'https://a.test/' },
+      { position: 2, url: 'https://b.test/' },
+    ]);
+    await repo.putConfig({ monthlyBudgetMicros: 6000 }); // page 1 is all it can pay for
+    expect(await t.tick()).toMatchObject({ status: 'budget-reached', sent: 0 });
+    expect((await checks())[0]).toMatchObject({ status: 'next', resultsRead: 2, pagesRead: 1 });
+    expect(await repo.inFlight(pid)).toEqual(new Set([row!.keywordId]));
+
+    now = new Date('2026-10-21T08:00:00Z'); // its day is over
+    await t.tick();
+    expect((await checks()).find((r) => r.id === row!.id)).toMatchObject({ status: 'done', position: null, resultsRead: 2, pagesRead: 1 });
+    expect(sentStages(submitted)).toEqual([[1, 1]]);
+    // Readers see how much was read: "not in the 2 results read", not "not in the top 100".
+    const view = await projectRankings(repo, pid, { from: '2026-10-20', to: '2026-10-20' });
+    expect(view.keywords[0]!.series).toEqual([{ day: '2026-10-20', position: null, resultsRead: 2 }]);
+  });
+
+  it('a later stage refused as a whole gives back that stage only: what the pages before cost stays booked', async () => {
+    const pid = await makeProject('later-refused');
+    await addKeywords(pid, ['k']);
+    const { provider, state, submitted } = scriptedProvider();
+    const t = tracker(provider);
+    await t.tick();
+    const [row] = await checks();
+    state.results.set(row!.id, [{ position: 1, url: 'https://a.test/' }]);
+    state.submitErrors = [new RankProviderError('DataForSEO is limiting the request rate; trying again later', 'rate')];
+    expect(await t.tick()).toMatchObject({ status: 'provider-error' });
+    expect((await checks())[0]).toMatchObject({ status: 'next', pagesRead: 1, costMicros: 6000, costSettledMicros: 6000 });
+    expect(await repo.spentMicrosInMonth(now)).toBe(6000);
+    // The next pass sends page 2 after all.
+    state.results.set(row!.id, 'pending');
+    expect(await t.tick()).toMatchObject({ status: 'ok', sent: 1 });
+    expect(sentStages(submitted)).toEqual([
+      [1, 1],
+      [2, 1],
+    ]);
+  });
+
+  it('a later stage whose reply was lost fails the check for the day, every page booked', async () => {
+    const pid = await makeProject('later-lost');
+    await addKeywords(pid, ['k']);
+    const { provider, state } = scriptedProvider();
+    const t = tracker(provider);
+    await t.tick();
+    const [row] = await checks();
+    state.results.set(row!.id, [{ position: 1, url: 'https://a.test/' }]);
+    state.submitErrors = [new RankProviderError('DataForSEO could not be reached', 'unavailable')];
+    await t.tick();
+    expect((await checks())[0]).toMatchObject({ status: 'failed', costMicros: 12_000 });
+    expect(await repo.spentMicrosInMonth(now)).toBe(12_000);
+  });
+
+  it('what the provider says a later stage cost adds to the pages before — even if the check went meanwhile', async () => {
+    const pid = await makeProject('later-cost');
+    await addKeywords(pid, ['k']);
+    const { provider, state } = scriptedProvider();
+    const t = tracker(provider);
+    await t.tick();
+    const [row] = await checks();
+    state.results.set(row!.id, [{ position: 1, url: 'https://a.test/' }]);
+    state.charged = 0.002; // page 2 cost less than its $0.006 estimate
+    state.duringSubmit = async () => {
+      state.duringSubmit = null;
+      await repo.removeKeyword(pid, row!.keywordId);
+    };
+    await t.tick();
+    expect(await checks()).toHaveLength(0);
+    expect(await repo.spentMicrosInMonth(now)).toBe(8000); // $0.006 for page 1 + $0.002 for page 2
+  });
+
+  it('a check sent before stages, for the whole depth, is finished by its one result', async () => {
+    const pid = await makeProject('legacy');
+    await addKeywords(pid, ['full', 'short', 'unsaid']);
+    const legacy = async (k: RankKeywordRow) => {
+      const id = (await repo.claim(due(k), '2026-10-20', 'dataforseo', 0.006, now))!;
+      await repo.markQueued(id, `ref-${k.keyword}`, 0.006);
+      // Sent before stages: no count of pages read at all.
+      await db.update(rankChecks).set({ pagesRead: null }).where(eq(rankChecks.id, id));
+      return id;
+    };
+    const [full, short, unsaid] = await repo.listKeywords(pid);
+    const fullId = await legacy(full!);
+    const shortId = await legacy(short!);
+    const unsaidId = await legacy(unsaid!);
+    const { provider, state, submitted } = scriptedProvider();
+    state.results.set(fullId, [{ position: 1, url: 'https://a.test/' }]);
+    state.pages.set(fullId, 10); // all ten pages it asked for
+    state.results.set(shortId, [{ position: 1, url: 'https://a.test/' }]);
+    state.pages.set(shortId, 7);
+    state.ends.add(shortId); // Google stopped after seven of the ten
+    state.results.set(unsaidId, [{ position: 1, url: 'https://a.test/' }]);
+    state.pages.set(unsaidId, 6); // six of ten, and the provider does not say Google stopped (as Apify may not)
+    await tracker(provider).tick();
+    const rows = new Map((await checks()).map((r) => [r.id, r]));
+    expect(rows.get(fullId)).toMatchObject({ status: 'done', pagesRead: 10 });
+    expect(rows.get(shortId)).toMatchObject({ status: 'done', pagesRead: 7 });
+    // Not sent on for pages 7–10: it asked for all ten, and was answered.
+    expect(rows.get(unsaidId)).toMatchObject({ status: 'done', pagesRead: 6, costMicros: 6000 });
+    expect(submitted).toHaveLength(0);
+  });
+
+  it('searches the provider never sent are given back, the refusal shown, and sent again later', async () => {
+    await repo.putCredentials('brightdata', { apiKey: 'k', zone: 'z' });
+    await repo.putConfig({ activeProvider: 'brightdata' });
+    const pid = await makeProject('unsent');
+    await addKeywords(pid, ['sent', 'refused']);
+    let refuse = true;
+    const { provider, submitted } = liveProvider((s) =>
+      s.keyword === 'refused' && refuse ? { unsent: 'Bright Data has no funds left for this request' } : { urls: ['https://plumbers.na/'] },
+    );
+    const t = tracker(provider);
+    expect(await t.tick()).toMatchObject({ status: 'provider-error', sent: 1 });
+    const byKeyword = new Map((await repo.listKeywords(pid)).map((k) => [k.keyword, k.id]));
+    const rows = await checks();
+    expect(rows.map((r) => r.keywordId)).toEqual([byKeyword.get('sent')]); // the unsent claim is gone
+    expect(await repo.spentMicrosInMonth(now)).toBe(1500); // …and so is its charge
+    expect((await repo.getConfig()).lastError?.message).toMatch(/no funds/);
+
+    refuse = false;
+    expect(await t.tick()).toMatchObject({ status: 'ok', sent: 1 });
+    expect(submitted.flat().map((s) => s.keyword).sort()).toEqual(['refused', 'refused', 'sent']); // the refused one twice
+    expect((await repo.getConfig()).lastError).toBeNull();
+  });
+
+  it('a later stage refused after its keyword went keeps what the earlier stages cost', async () => {
+    const pid = await makeProject('later-refused-gone');
+    await addKeywords(pid, ['k']);
+    const { provider, state } = scriptedProvider();
+    const t = tracker(provider);
+    await t.tick(); // page 1: $0.006
+    const [row] = await checks();
+    state.results.set(row!.id, [{ position: 1, url: 'https://a.test/' }]);
+    state.duringSubmit = async () => {
+      state.duringSubmit = null;
+      await repo.removeKeyword(pid, row!.keywordId);
+    };
+    state.submitErrors = [new RankProviderError('DataForSEO is limiting the request rate; trying again later', 'rate')];
+    await t.tick(); // page 2 claimed ($0.012 booked), the keyword removed meanwhile, then refused
+    expect(await checks()).toHaveLength(0);
+    expect(await repo.spentMicrosInMonth(now)).toBe(6000); // page 1 was paid for; page 2 never went out
+  });
+
+  it('a stage collected just after midnight still goes on; one left waiting closes six hours after its last stage', async () => {
+    const pid = await makeProject('midnight');
+    await addKeywords(pid, ['k']);
+    const { provider, state, submitted } = scriptedProvider();
+    now = new Date('2026-10-20T23:50:00Z');
+    const t = tracker(provider);
+    await t.tick();
+    const [row] = await checks();
+    state.results.set(row!.id, [{ position: 1, url: 'https://a.test/' }]);
+    now = new Date('2026-10-21T00:05:00Z');
+    await t.tick(); // collected the next day: page 2 goes out for the day it belongs to
+    expect(sentStages(submitted)).toEqual([
+      [1, 1],
+      [2, 1], // checks under way go first…
+      [1, 1], // …then the keyword's check for the new day
+    ]);
+    expect((await checks()).find((r) => r.id === row!.id)).toMatchObject({ status: 'queued', day: '2026-10-20' });
+
+    // Page 2 misses too, and the budget allows no more: it waits, and closes six hours after it was sent.
+    state.results.set(row!.id, [{ position: 1, url: 'https://b.test/' }]);
+    await repo.putConfig({ monthlyBudgetMicros: await repo.spentMicrosInMonth(now) });
+    await t.tick();
+    expect((await checks()).find((r) => r.id === row!.id)).toMatchObject({ status: 'next', pagesRead: 2 });
+    now = new Date('2026-10-21T06:06:00Z');
+    await t.tick();
+    expect((await checks()).find((r) => r.id === row!.id)).toMatchObject({ status: 'done', position: null, resultsRead: 2, pagesRead: 2 });
+  });
+
+  it('a stage the provider cut short reads on from where it stopped, not from the next stage', async () => {
+    await repo.putCredentials('brightdata', { apiKey: 'k', zone: 'z' });
+    await repo.putConfig({ activeProvider: 'brightdata' });
+    const pid = await makeProject('cut');
+    await addKeywords(pid, ['k']);
+    const { provider, submitted } = liveProvider((s) => {
+      if (s.startPage === 3) return { urls: others(3), pagesRead: 1, cut: true }; // page 3 read, 4–5 not
+      if (s.startPage === 4) return { urls: [...others(4), 'https://plumbers.na/'] };
+      return { urls: others(s.startPage) };
+    });
+    await tracker(provider).tick();
+    expect(submitted.flat().map((s) => [s.startPage, s.pages])).toEqual([
+      [1, 1],
+      [2, 1],
+      [3, 3],
+      [4, 2],
+    ]);
+    // Pages 1–3 held 30; page 4 onwards puts the site 11th: position 41. Five pages paid.
+    expect((await checks())[0]).toMatchObject({ status: 'done', position: 41, pagesRead: 5, costMicros: 7500 });
+  });
+
+  it('a pass whose stages only went on to the next still clears the last provider error', async () => {
+    await repo.putCredentials('brightdata', { apiKey: 'k', zone: 'z' });
+    await repo.putConfig({ activeProvider: 'brightdata', monthlyBudgetMicros: 1500 }); // page 1 and no more
+    const pid = await makeProject('continued');
+    await addKeywords(pid, ['k']);
+    await repo.setLastError('Bright Data is limiting the request rate; trying again later');
+    const { provider } = liveProvider((s) => ({ urls: others(s.startPage) }));
+    expect(await tracker(provider).tick()).toMatchObject({ sent: 0 });
+    expect((await checks())[0]).toMatchObject({ status: 'next' });
+    expect((await repo.getConfig()).lastError).toBeNull();
+  });
+
+  it('a check waiting for its next stage when the provider changes waits for its day to end, then is done', async () => {
+    const pid = await makeProject('switched');
+    await addKeywords(pid, ['k']);
+    const { provider, state } = scriptedProvider();
+    const t = tracker(provider);
+    await t.tick();
+    const [row] = await checks();
+    state.results.set(row!.id, [{ position: 1, url: 'https://a.test/' }]);
+    await repo.putCredentials('brightdata', { apiKey: 'k', zone: 'z' });
+    await repo.putConfig({ activeProvider: 'brightdata' });
+    const live = liveProvider(() => ({ urls: [] }));
+    const both = new RankTracker({ repo, providers: { dataforseo: provider, apify: idleApify, brightdata: live.provider }, io: { fetch: async () => Promise.reject(new Error('x')) }, now: () => now, log });
+    await both.tick(); // collected from DataForSEO: waits for page 2, which Bright Data never sends for it
+    expect((await checks())[0]).toMatchObject({ status: 'next', provider: 'dataforseo' });
+    expect(live.submitted).toHaveLength(0);
+    now = new Date('2026-10-21T08:00:00Z');
+    await both.tick();
+    expect((await checks()).find((r) => r.id === row!.id)).toMatchObject({ status: 'done', pagesRead: 1 });
   });
 });
 
@@ -612,7 +994,9 @@ describe('re-reading stored results of earlier checks (free at the provider)', (
     await t.tick();
     const row = (await checks()).find((r) => r.status === 'queued')!;
     state.results.set(row.id, [{ position: 1, url: 'https://competitor.test/' }]);
+    state.ends.add(row.id);
     await t.tick();
+    state.ends.delete(row.id);
     await db.update(rankChecks).set({ resultsRead: null, pagesRead: null, featured: false }).where(eq(rankChecks.id, row.id));
     return row.id;
   }

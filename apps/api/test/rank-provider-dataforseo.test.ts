@@ -33,14 +33,15 @@ function fakeFetch(routes: Record<string, (call: Call) => { status?: number; bod
 
 const envelope = (tasks: unknown[], extra: Record<string, unknown> = {}) => ({ status_code: 20000, status_message: 'Ok.', tasks, ...extra });
 
-const search = (checkId: string, keyword = 'plumber windhoek', depth = 100): RankSearch => ({
+const search = (checkId: string, keyword = 'plumber windhoek', pages = 10, startPage = 1): RankSearch => ({
   checkId,
   keyword,
   engine: 'google',
   device: 'desktop',
   location: { name: 'Windhoek,Khomas Region,Namibia', countryCode: 'NA' },
   languageCode: 'en',
-  depth,
+  startPage,
+  pages,
 });
 
 beforeEach(() => clearDataForSeoLocationCache());
@@ -53,11 +54,11 @@ describe('DataForSEO credentials and price', () => {
     expect(() => dataForSeo.parseCredentials({ login: 'a', password: 'b', environment: 'staging' })).toThrow(RankProviderError);
   });
 
-  it('prices a check per page of ten results, and the sandbox at nothing', () => {
-    expect(dataForSeo.estimateCostUsd(10, CREDS)).toBeCloseTo(0.0006);
-    expect(dataForSeo.estimateCostUsd(100, CREDS)).toBeCloseTo(0.006);
-    expect(dataForSeo.estimateCostUsd(25, CREDS)).toBeCloseTo(0.0018);
-    expect(dataForSeo.estimateCostUsd(100, { ...CREDS, environment: 'sandbox' })).toBe(0);
+  it('prices a request per page of ten results, and the sandbox at nothing', () => {
+    expect(dataForSeo.estimateCostUsd(1, CREDS)).toBeCloseTo(0.0006);
+    expect(dataForSeo.estimateCostUsd(10, CREDS)).toBeCloseTo(0.006);
+    expect(dataForSeo.estimateCostUsd(3, CREDS)).toBeCloseTo(0.0018);
+    expect(dataForSeo.estimateCostUsd(10, { ...CREDS, environment: 'sandbox' })).toBe(0);
   });
 });
 
@@ -87,10 +88,23 @@ describe('DataForSEO submit', () => {
       depth: 100,
       tag: 'c1',
     });
+    // The first pages need no offset.
+    expect(posted[0]).not.toHaveProperty('search_param');
     expect(out).toEqual([
       { checkId: 'c1', state: 'queued', ref: TASK_A, costUsd: 0.006 },
       { checkId: 'c2', state: 'failed', error: expect.stringContaining('Invalid Field'), costUsd: 0 },
       { checkId: 'c3', state: 'failed', error: 'DataForSEO returned no task for this search', costUsd: 0 },
+    ]);
+  });
+
+  it('asks for a later stage’s pages with Google’s own offset, by results', async () => {
+    const { fetch, calls } = fakeFetch({ '/v3/serp': () => ({ body: envelope([]) }) });
+    await dataForSeo.submit(CREDS, [search('c1', 'plumber windhoek', 1, 2), search('c2', 'plumber windhoek', 3, 3), search('c3', 'plumber windhoek', 5, 6)], { fetch });
+    const posted = calls[0]!.body as Array<Record<string, unknown>>;
+    expect(posted.map((p) => [p.search_param, p.depth])).toEqual([
+      ['start=10', 10],
+      ['start=20', 30],
+      ['start=50', 50],
     ]);
   });
 
@@ -148,8 +162,8 @@ describe('DataForSEO submit', () => {
 });
 
 describe('DataForSEO collect', () => {
-  const page = (items: unknown[], extra: Record<string, unknown> = {}) =>
-    envelope([{ id: TASK_A, status_code: 20000, result: [{ datetime: '2026-10-20 06:15:00 +00:00', items, ...extra }] }]);
+  const page = (items: unknown[], extra: Record<string, unknown> = {}, data: Record<string, unknown> = {}) =>
+    envelope([{ id: TASK_A, status_code: 20000, data, result: [{ datetime: '2026-10-20 06:15:00 +00:00', items, ...extra }] }]);
 
   it('reads organic results and featured snippets, skipping what it cannot use', async () => {
     const { fetch, calls } = fakeFetch({
@@ -162,7 +176,7 @@ describe('DataForSEO collect', () => {
           { type: 'organic', rank_group: 'x', url: 'https://broken.test/' },
           null,
           { type: 'organic', rank_group: 3, rank_absolute: 5, url: 'javascript://plumbers.na/%0aalert(1)', domain: 'plumbers.na' },
-        ], { pages_count: 3, items_count: 7 }),
+        ], { pages_count: 3, items_count: 7 }, { depth: 100 }),
       }),
     });
     const [out] = await dataForSeo.collect(CREDS, [{ checkId: 'c1', ref: TASK_A }], { fetch });
@@ -177,10 +191,23 @@ describe('DataForSEO collect', () => {
           { kind: 'organic', position: 1, absolutePosition: 3, url: 'https://other.test/', domain: 'other.test' },
           { kind: 'organic', position: 2, absolutePosition: 4, url: 'https://www.plumbers.na/', domain: 'www.plumbers.na' },
         ],
-        // How many results pages Google served: three, for a search that asked for ten.
+        // How many results pages Google served: three, for a search that asked for ten — so it has no more.
         pagesRead: 3,
+        end: true,
       },
     });
+  });
+
+  it('says Google had nothing more only when it served fewer pages than the task asked for', async () => {
+    const read = async (pagesCount: number, depth?: number) => {
+      const { fetch } = fakeFetch({ '/v3/serp/google/organic/task_get/regular/': () => ({ body: page([], { pages_count: pagesCount }, depth === undefined ? {} : { depth }) }) });
+      const [out] = await dataForSeo.collect(CREDS, [{ checkId: 'c1', ref: TASK_A }], { fetch });
+      return (out as { page: { end?: boolean } }).page.end;
+    };
+    expect(await read(1, 10)).toBeUndefined(); // one page asked, one served: maybe more after it
+    expect(await read(3, 30)).toBeUndefined();
+    expect(await read(2, 30)).toBe(true);
+    expect(await read(2)).toBeUndefined(); // the task did not say what it asked for: no conclusion
   });
 
   it('leaves the pages out when DataForSEO does not say, or says something unusable', async () => {

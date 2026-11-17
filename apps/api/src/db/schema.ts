@@ -1312,8 +1312,13 @@ export const rankChecks = sqliteTable(
     provider: text('provider').notNull(),
     /** The provider's id for the queued search, used to collect the result. */
     providerRef: text('provider_ref'),
-    /** `posting` (claimed, being sent) → `queued` (sent, result pending) → `done`, or `failed`. */
-    status: text('status', { enum: ['posting', 'queued', 'done', 'failed'] }).notNull(),
+    /**
+     * `posting` (claimed, being sent) → `queued` (sent, result pending) → `done`, or `failed`. A check reads results
+     * pages in stages (`rankStages`): when a stage did not find the site and Google has more, the check becomes `next`
+     * and is claimed again (`posting`) for the following pages. One left `next` at the end of its day is done with
+     * what it read (the budget ran out, or the provider changed).
+     */
+    status: text('status', { enum: ['posting', 'queued', 'next', 'done', 'failed'] }).notNull(),
     /** The site the check was sent for. Results are read against THIS, so a later domain change cannot mix sites. */
     domain: text('domain').notNull(),
     includeSubdomains: integer('include_subdomains', { mode: 'boolean' }).notNull(),
@@ -1326,9 +1331,15 @@ export const rankChecks = sqliteTable(
     url: text('url'),
     /** The position is the site's featured snippet (Google's first result, counted as position 1). */
     featured: integer('featured', { mode: 'boolean' }).notNull().default(false),
-    /** Results the page held (organic and featured snippets), once done. NULL = read before this was recorded. */
+    /**
+     * Results read (organic and featured snippets), once done — and, while a later stage is in flight, the results of
+     * the stages before it, which number the next stage's results. NULL = read before this was recorded.
+     */
     resultsRead: integer('results_read'),
-    /** Results pages the provider fetched, once done. Fewer than `depth / 10` = Google stopped early. */
+    /**
+     * Results pages read, once done (fewer than `depth / 10` on a miss = Google stopped early) — and, while a later
+     * stage is in flight, the pages of the stages before it, which say what the next stage asks for.
+     */
     pagesRead: integer('pages_read'),
     /**
      * When a stored result was fetched from the provider again to fill in the columns above for a check made before
@@ -1337,6 +1348,11 @@ export const rankChecks = sqliteTable(
     rereadAt: integer('reread_at', { mode: 'timestamp_ms' }),
     /** USD × 1,000,000: the estimate from the claim until the provider states the real charge. */
     costMicros: integer('cost_micros').notNull().default(0),
+    /**
+     * USD × 1,000,000: what the check's finished stages cost. A stage's estimate, and then the provider's figure for it,
+     * add to this — so a later stage never overwrites what an earlier one cost.
+     */
+    costSettledMicros: integer('cost_settled_micros').notNull().default(0),
     /** Why it failed, in words safe to show an admin. */
     error: text('error'),
     postedAt: integer('posted_at', { mode: 'timestamp_ms' }).notNull(),

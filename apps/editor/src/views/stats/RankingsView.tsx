@@ -76,7 +76,7 @@ function Position({ k }: { k: RankKeywordView }) {
   if (k.latest.position === null) {
     return (
       <span className="text-sm text-slate-500 dark:text-slate-400">
-        {k.latest.resultsRead !== undefined ? `Not in the ${k.latest.resultsRead} results returned` : `Not in top ${k.latest.depth}`}
+        {k.latest.resultsRead !== undefined ? `Not in the ${k.latest.resultsRead} results read` : `Not in top ${k.latest.depth}`}
       </span>
     );
   }

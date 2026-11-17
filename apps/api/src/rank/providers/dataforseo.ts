@@ -20,7 +20,16 @@ import {
  *   free", task_get docs).
  * - Since Google dropped `num=100` (September 2025), a deep search is fetched ten results at a time, and Google often
  *   stops serving pages early: `pages_count` says how many came back, and is passed on as `pagesRead`.
- * - The price is per page of ten results ($0.0006 on the 2026 price list), so a depth of 100 costs ten pages.
+ * - The price is per page of ten results ($0.0006 on the 2026 price list). A task is charged for the depth it asks for
+ *   when it is posted, and what Google never served is refunded once it finishes (measured 2026-11-17: tasks posted at
+ *   $0.006 settled at $0.003–$0.0054 for 5–9 pages).
+ * - A check asks for a few pages at a time (`RankSearch.startPage`/`pages`): later pages go as Google's own `start`
+ *   offset (`search_param: "start=10"`), and their results are numbered from that page — "with start=30 and depth 30,
+ *   rank_absolute 1 is the actual rank 31" — which the tracker counts on from the pages before. Measured 2026-11-17:
+ *   `start=10` with depth 10 was charged one page and answered `pages_count: 1`, the pages of THIS task.
+ * - ★ DataForSEO's searches run from its own servers, wherever they are, told the location by `location_name` (Google's
+ *   `uule` and `gl`). For a small market that is not always enough: on 2026-11-17 a Namibian company's exact name was
+ *   its #1 result from Namibia (and on Apify) but absent from DataForSEO's 84 results, which showed om.linkedin.com.
  * - The sandbox host answers in the same format with dummy results, free, with the same credentials.
  *
  * ★ Every answer is read defensively: a `null` in an array, a missing field or a body that is not JSON must
@@ -146,6 +155,8 @@ function parseDatetime(raw: unknown): Date {
 
 function pageFrom(task: Json): SerpPage {
   const result = records(task.result)[0];
+  // The pages the task asked for, from its own echo of the request: fewer back means Google served no more.
+  const asked = isRecord(task.data) ? num(task.data.depth) : undefined;
   const entries: SerpEntry[] = [];
   for (const item of records(result?.items)) {
     const kind = item.type === 'organic' || item.type === 'featured_snippet' ? item.type : undefined;
@@ -156,7 +167,9 @@ function pageFrom(task: Json): SerpPage {
     entries.push({ kind, position, absolutePosition, url: url.slice(0, 2048), domain: str(item.domain) ?? '' });
   }
   const pages = num(result?.pages_count);
-  return { checkedAt: parseDatetime(result?.datetime), entries, ...(pages !== undefined && pages >= 0 ? { pagesRead: Math.floor(pages) } : {}) };
+  const pagesRead = pages !== undefined && pages >= 0 ? Math.floor(pages) : undefined;
+  const end = pagesRead !== undefined && asked !== undefined && pagesRead < Math.ceil(asked / 10);
+  return { checkedAt: parseDatetime(result?.datetime), entries, ...(pagesRead !== undefined ? { pagesRead } : {}), ...(end ? { end } : {}) };
 }
 
 /** Each search's task in a `task_post` answer, matched by the tag the search was sent with. */
@@ -282,8 +295,8 @@ export const dataForSeo: RankProvider = {
     return { login, password, environment };
   },
 
-  estimateCostUsd(depth, creds) {
-    return environmentOf(creds) === 'sandbox' ? 0 : PRICE_PER_PAGE_USD * Math.ceil(depth / 10);
+  estimateCostUsd(pages, creds) {
+    return environmentOf(creds) === 'sandbox' ? 0 : PRICE_PER_PAGE_USD * pages;
   },
 
   async submit(creds, searches, io) {
@@ -295,7 +308,9 @@ export const dataForSeo: RankProvider = {
       language_code: s.languageCode,
       device: s.device,
       os: s.device === 'mobile' ? 'android' : 'windows',
-      depth: s.depth,
+      depth: s.pages * 10,
+      // Google's own offset, by results: pages from the third on start at 20.
+      ...(s.startPage > 1 ? { search_param: `start=${(s.startPage - 1) * 10}` } : {}),
       tag: s.checkId,
     }));
     const env = await call(creds, 'POST', '/v3/serp/google/organic/task_post', io, body);

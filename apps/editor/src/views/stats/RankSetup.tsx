@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Plus, Save } from 'lucide-react';
-import { RANK_DEPTHS, type RankDevice, type RankLocationOption, type RankProjectSettings, type RankSchedule } from '@sitewright/schema';
+import { RANK_DEPTHS, rankPagesFor, type RankDevice, type RankLocationOption, type RankProjectSettings, type RankSchedule } from '@sitewright/schema';
 import { api } from '../../api';
 import { fieldLabel, glassInput, gradientHover, gradientSurface, primaryButton, toggleInput } from '../../theme';
 import { SearchableSelect } from '../ui/SearchableSelect';
@@ -83,7 +83,7 @@ export function RankSettingsForm({
         </label>
         <label className="flex flex-col">
           <span className={fieldLabel}>Results read per check</span>
-          <select className={glassInput} value={depth} onChange={(e) => setDepth(Number(e.target.value))}>
+          <select className={glassInput} value={depth} onChange={(e) => setDepth(Number(e.target.value))} aria-describedby="rank-depth-help">
             {RANK_DEPTHS.map((d) => (
               <option key={d} value={d}>
                 Top {d}
@@ -91,6 +91,10 @@ export function RankSettingsForm({
               </option>
             ))}
           </select>
+          <span id="rank-depth-help" className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Further pages are read only while the site has not turned up: a site on the first page costs one page. At most{' '}
+            {rankPagesFor(depth)} {rankPagesFor(depth) === 1 ? 'page' : 'pages'} a check.
+          </span>
         </label>
       </div>
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">

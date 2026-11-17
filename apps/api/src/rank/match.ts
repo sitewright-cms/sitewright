@@ -1,4 +1,4 @@
-import { normalizeRankDomain } from '@sitewright/schema';
+import { normalizeRankDomain, rankNextStage } from '@sitewright/schema';
 import type { SerpEntry, SerpPage } from './providers/types.js';
 
 /** The site a results page is read for. `domain` is already normalized (no `www.`). */
@@ -71,4 +71,32 @@ export function findRank(entries: readonly SerpEntry[], target: RankTarget): Ran
 /** Everything a check keeps from a results page: where the site is, and how much of the results the page held. */
 export function readPage(page: SerpPage, target: RankTarget): PageReading {
   return { hit: findRank(page.entries, target), resultsRead: page.entries.length, pagesRead: page.pagesRead ?? null };
+}
+
+/** What the stages before this one read: their results number this stage's. Zero for a check's first stage. */
+export interface StagePrior {
+  resultsRead: number;
+  pagesRead: number;
+}
+
+/**
+ * One stage of a check (`rankStages`) read on from the stages before it: the site's position counts every result those
+ * read, and `final` says whether the check is finished — the site turned up, Google had nothing more (it said so, served
+ * fewer pages than asked or an empty one), or the depth is read. Otherwise the check goes on to the next stage.
+ *
+ * `absolutePosition` is offset by the results before it only: the stages before kept no count of ads and the like.
+ */
+export function readStage(page: SerpPage, target: RankTarget, prior: StagePrior, depth: number): { reading: PageReading; final: boolean } {
+  const own = readPage(page, target);
+  // The stage this page answers: what follows the pages already read.
+  const asked = rankNextStage(depth, prior.pagesRead);
+  const pages = own.pagesRead ?? asked?.pages ?? 0;
+  const pagesRead = prior.pagesRead + pages;
+  const hit = own.hit
+    ? { ...own.hit, position: own.hit.position + prior.resultsRead, absolutePosition: own.hit.absolutePosition + prior.resultsRead }
+    : null;
+  const reading: PageReading = { hit, resultsRead: prior.resultsRead + own.resultsRead, pagesRead };
+  // Fewer pages than asked mean Google stopped — unless the provider says it cut the stage short itself.
+  const googleStopped = page.end === true || own.resultsRead === 0 || (page.cut !== true && asked !== null && pages < asked.pages);
+  return { reading, final: hit !== null || googleStopped || rankNextStage(depth, pagesRead) === null };
 }

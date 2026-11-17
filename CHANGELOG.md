@@ -11,11 +11,19 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Bright Data as a rank-tracking provider, and the one to choose for a small market.** System Settings →
+  Integrations → Keyword rank tracking now offers Bright Data's SERP API, with an API key and a SERP API zone. Its
+  searches run through a connection in the keyword's country, so the positions are the ones people there see.
+  DataForSEO searches from its own servers abroad. For a Namibian company's own name it found the site nowhere in 84
+  results, while Bright Data, Apify and people searching from Namibia all saw it first. Every Bright Data account gets
+  5,000 free requests a month; after that, a results page costs $0.0015 on pay as you go. The setup guide under
+  Statistics → Search rankings now leads with Bright Data. See [docs/rank-tracking.md](docs/rank-tracking.md).
 - **Apify as a second rank-tracking provider.** System Settings → Integrations → Keyword rank tracking now offers
   Apify's Google Search Results Scraper beside DataForSEO, with an API token as its only credential. Searches
   that share every setting go out as one run, the budget books the listed price and then the run's real charge,
   and each run is capped at twice its estimate or at $0.50, the least cap Apify accepts. Apify has no list of
-  places, so new keywords are tracked by country; keywords already tracked for a city keep it. See
+  places, so new keywords are tracked by country; keywords already tracked for a city keep it. Google's own "Map"
+  link, which Apify lists as the first result of a local search, is not counted. See
   [docs/rank-tracking.md](docs/rank-tracking.md).
 
 ### Fixed
@@ -27,7 +35,7 @@ The running version of an instance is reported at `GET /version` (baked into the
     ordinary results after someone else's snippet start at 2.
   - **A short results list read as "not in the top 100".** Since Google stopped serving 100 results at once, a
     deep check is fetched ten at a time, and Google often stops after a few pages. Each check now keeps how many
-    results came back. A miss in a short list reads "Not in the 30 results returned", and the chart shows it as a
+    results came back. A miss in a short list reads "Not in the 30 results read", and the chart shows it as a
     dashed mark below them instead of a fall to the bottom.
 
   The DataForSEO checks of the last 29 days are read again from DataForSEO's stored results, free of charge, so
@@ -51,6 +59,12 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Changed
 
+- **A rank check reads further results pages only while the site has not turned up.** It reads page 1, then 2,
+  then 3–5, then 6–10, and stops at the page where the site appears or where Google stops. A site on the first page
+  now costs one page instead of ten. The depth (now Top 10, 20, 50 or 100) sets how far a check goes when the site is
+  not found, and the setup form says how many pages that is at most. Each stage is booked against the budget before
+  it is sent. A check the budget stops partway is recorded with what it read: "Not in the 20 results read".
+  Projects set to Top 30, which is no longer offered, were moved to Top 50.
 - **A web application firewall in front of Sitewright is no longer recommended.** [docs/waf.md](docs/waf.md)
   now says so, and why. `docs/waf/sitewright-before.conf` is now the list of exceptions for a WAF that stays
   anyway: it leaves the editor's and agents' paths alone entirely, plus one rule each on the statistics

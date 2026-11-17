@@ -16,7 +16,7 @@ import { z } from 'zod';
  */
 
 /** Providers the platform has a client for. Adding one: an id here plus a client in the api's `rank/providers`. */
-export const RANK_PROVIDER_IDS = ['dataforseo'] as const;
+export const RANK_PROVIDER_IDS = ['dataforseo', 'apify'] as const;
 export const RankProviderIdSchema = z.enum(RANK_PROVIDER_IDS);
 export type RankProviderId = z.infer<typeof RankProviderIdSchema>;
 
@@ -186,10 +186,21 @@ export const RankingsQuerySchema = z.object({
 });
 export type RankingsQuery = z.infer<typeof RankingsQuerySchema>;
 
-/** One check of one keyword. `position` is null when the site was not in the results read (see `depth`). */
+/**
+ * One check of one keyword. `position` is null when the site was not in the results read (see `depth`).
+ *
+ * Positions count the way Google counts: a featured snippet is the first result, so the ordinary results after it
+ * start at 2. A position that IS the site's featured snippet carries `featured`.
+ *
+ * `resultsRead` is present only on a MISS in a check that got back FEWER results than it asked for — Google serves
+ * results ten at a time and often stops after a few pages. The null position then means "not in those N", not "not
+ * in the top depth": the site may be just below them.
+ */
 export interface RankPoint {
   day: string;
   position: number | null;
+  featured?: true;
+  resultsRead?: number;
 }
 
 export interface RankKeywordView {
@@ -204,11 +215,15 @@ export interface RankKeywordView {
   latest: {
     day: string;
     checkedAt: string;
-    /** The organic position, 1 = the first ordinary result. Null = not in the top `depth`. */
+    /** The position, 1 = the first result, counted as Google counts (see {@link RankPoint}). Null = not in the top `depth`. */
     position: number | null;
     /** The site's page that ranked. */
     url: string | null;
     depth: number;
+    /** The position is the site's featured snippet. */
+    featured?: true;
+    /** A miss in a check that got back fewer results than `depth`: how many it read (see {@link RankPoint}). */
+    resultsRead?: number;
   } | null;
   /** Positions gained since the check before the latest (positive = moved up). Null when either is missing. */
   change: number | null;

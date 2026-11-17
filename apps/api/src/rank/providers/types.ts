@@ -37,7 +37,7 @@ export interface RankSearch {
 /** One result on a results page. */
 export interface SerpEntry {
   kind: 'organic' | 'featured_snippet';
-  /** Position among results of the same kind: organic 1 = the first ordinary result. */
+  /** Position among results of the same KIND, as providers number them (organic 1 = the first ordinary result); `../match.ts` turns it into Google's count. */
   position: number;
   /** Position among every element of the page. */
   absolutePosition: number;
@@ -50,6 +50,11 @@ export interface SerpPage {
   /** When the search engine was queried. */
   checkedAt: Date;
   entries: SerpEntry[];
+  /**
+   * Results pages the provider fetched, when it says. Google serves ten results a page and often stops after a few,
+   * so a search for 100 may come back with 30: a site not among them is not "outside the top 100".
+   */
+  pagesRead?: number;
 }
 
 /** What sending one search produced. `costUsd` is what the provider charged for it. */
@@ -58,11 +63,14 @@ export type SubmitOutcome =
   | { checkId: string; state: 'done'; page: SerpPage; costUsd: number }
   | { checkId: string; state: 'failed'; error: string; costUsd: number };
 
-/** What asking for one queued search produced. */
+/**
+ * What asking for one queued search produced. `costUsd`, when present, is what the provider says the search cost and
+ * replaces the figure booked at sending — for a provider that only knows the charge once the work is done (Apify).
+ */
 export type CollectOutcome =
   | { checkId: string; state: 'pending' }
-  | { checkId: string; state: 'done'; page: SerpPage }
-  | { checkId: string; state: 'failed'; error: string };
+  | { checkId: string; state: 'done'; page: SerpPage; costUsd?: number }
+  | { checkId: string; state: 'failed'; error: string; costUsd?: number };
 
 /**
  * The provider refused, or could not be reached for, a whole request (not one search in it).
@@ -101,6 +109,12 @@ export interface RankProvider {
   fields: readonly RankProviderField[];
   /** The most searches one `submit` may carry. */
   maxBatch: number;
+  /**
+   * How many days after a search its stored result can be fetched again through `collect`, FREE of charge — or absent
+   * when it cannot. Used once, to fill in what checks made before `pagesRead` and featured snippets were recorded did
+   * not keep. ★ Only a provider that charges for sending, never for reading, may set it.
+   */
+  freeRereadDays?: number;
   /** Validates and normalizes the fields; throws `RankProviderError('invalid')` naming what is wrong. */
   parseCredentials(raw: Readonly<Record<string, string>>): RankCredentials;
   /** The price of one search at this depth, for the budget check before sending. The provider's answer has the real one. */

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { createDb, runMigrations, type DbHandle } from '../src/db/client.js';
-import { rankChecks, rankCharges, webmasterRemovals } from '../src/db/schema.js';
+import { rankCharges, webmasterRemovals } from '../src/db/schema.js';
 import { ProjectRepository } from '../src/repo/projects.js';
 import { RankRepository } from '../src/rank/repo.js';
 
@@ -55,24 +55,14 @@ describe('migration 0041 (rank charges)', () => {
     await rank.putProject(projectId, { domain: 'plumbers.na', includeSubdomains: true, schedule: 'daily', depth: 100 });
     await rank.addKeywords(projectId, { keywords: ['a'], engine: 'google', device: 'desktop', location: { name: 'Namibia', countryCode: 'NA' }, languageCode: 'en' });
     const [k] = await rank.listKeywords(projectId);
-    const check = (id: string, day: string, postedAt: string, costMicros: number) => ({
-      id,
-      keywordId: k!.id,
-      projectId,
-      day,
-      provider: 'dataforseo',
-      status: 'done' as const,
-      domain: 'plumbers.na',
-      includeSubdomains: true,
-      depth: 100,
-      costMicros,
-      postedAt: new Date(postedAt),
-    });
-    await db.insert(rankChecks).values([
-      check('september', '2026-09-30', '2026-09-30T23:59:00Z', 6000),
-      check('october-1', '2026-10-01', '2026-10-01T00:01:00Z', 5000),
-      check('october-2', '2026-10-02', '2026-10-02T08:00:00Z', 4000),
-    ]);
+    // Written in the table's shape AT migration 40, column by column: today's schema has columns added since
+    // (0051's `featured`, with a default) that an ORM insert would name and the old table does not have.
+    const check = async (id: string, day: string, postedAt: string, costMicros: number) =>
+      db.run(sql`INSERT INTO rank_checks (id, keyword_id, project_id, day, provider, status, domain, include_subdomains, depth, cost_micros, posted_at)
+        VALUES (${id}, ${k!.id}, ${projectId}, ${day}, 'dataforseo', 'done', 'plumbers.na', 1, 100, ${costMicros}, ${Date.parse(postedAt)})`);
+    await check('september', '2026-09-30', '2026-09-30T23:59:00Z', 6000);
+    await check('october-1', '2026-10-01', '2026-10-01T00:01:00Z', 5000);
+    await check('october-2', '2026-10-02', '2026-10-02T08:00:00Z', 4000);
 
     await runMigrations(db);
 

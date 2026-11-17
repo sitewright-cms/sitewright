@@ -12,7 +12,8 @@ The Statistics tab's two other views have agent tools too. Like the views, both 
 `content:read` capability:
 
 - **Search rankings:** `get_rankings` returns the tracked keywords and where each places, for a range of days.
-  Agency staff choose the keywords.
+  Agency staff choose the keywords. See [Keyword rank tracking](rank-tracking.md) for what a position means and
+  the providers.
 - **Search performance:** `get_search_performance` returns the clicks, impressions, CTR, average position and
   top queries and pages from Google and Bing. These come from the same answers the view uses, which are kept for
   an hour, so asking again within the hour doesn't ask the search engines again.

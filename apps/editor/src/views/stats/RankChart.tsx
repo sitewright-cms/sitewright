@@ -6,7 +6,10 @@ import { longDay } from './format';
 /**
  * A keyword's POSITION over time. Up is better: position 1 is the top of the chart, the depth read is the bottom.
  * A check where the site was not in the results read is a hollow mark on the bottom line, and the line breaks
- * there rather than pretending the site was at the last position. Hovering a check shows its day and position.
+ * there rather than pretending the site was at the last position. A miss in a check that got back FEWER results
+ * than it asked for (Google often stops after a few pages) is a dashed hollow mark just below those results: the
+ * site is somewhere under them, not necessarily out of the top 100. The site's featured snippet is ringed.
+ * Hovering a check shows its day and position.
  */
 
 const W = 640;
@@ -29,15 +32,22 @@ function ticks(bottom: number): number[] {
  * so a move from 18 to 3 reads as one — unless a check was outside the results, which needs the full depth.
  */
 export function axisBottom(series: readonly RankPoint[], depth: number): number {
-  const worst = Math.max(0, ...series.map((p) => p.position ?? 0));
+  const worst = Math.max(0, ...series.map((p) => p.position ?? (p.resultsRead !== undefined ? belowShort(p.resultsRead) : 0)));
   const nice = worst <= 10 ? 10 : worst <= 20 ? 20 : worst <= 30 ? 30 : worst <= 50 ? 50 : 100;
   // A check outside the results needs the depth read — or more, when an older check read deeper and ranked lower.
-  return series.some((p) => p.position === null) ? Math.max(depth, nice) : nice;
+  return series.some((p) => p.position === null && p.resultsRead === undefined) ? Math.max(depth, nice) : nice;
 }
 
-/** "Position 4", or "Not in the top 100" (without a depth: "Not in the results read"). */
-export function positionText(position: number | null, depth?: number): string {
-  if (position !== null) return `Position ${position}`;
+/** Where a miss in a short list is drawn: the place just below the results that came back. */
+const belowShort = (resultsRead: number): number => resultsRead + 1;
+
+/**
+ * "Position 4", "Position 1 (featured snippet)", "Not in the 29 results returned" for a miss in a short list, or "Not
+ * in the top 100" (without a depth: "Not in the results read").
+ */
+export function positionText(position: number | null, depth?: number, detail: Pick<RankPoint, 'featured' | 'resultsRead'> = {}): string {
+  if (position !== null) return detail.featured ? `Position ${position} (featured snippet)` : `Position ${position}`;
+  if (detail.resultsRead !== undefined) return `Not in the ${detail.resultsRead} results returned`;
   return depth ? `Not in the top ${depth}` : 'Not in the results read';
 }
 
@@ -81,7 +91,7 @@ export function RankChart({
 
   const ranked = series.filter((p) => p.position !== null).map((p) => p.position as number);
   const summary = ranked.length
-    ? `${keyword}: ${checks(series.length)}, best position ${Math.min(...ranked)}, latest ${positionText(series.at(-1)?.position ?? null).toLowerCase()}`
+    ? `${keyword}: ${checks(series.length)}, best position ${Math.min(...ranked)}, latest ${positionText(series.at(-1)?.position ?? null, undefined, series.at(-1)).toLowerCase()}`
     : `${keyword}: ${checks(series.length)}, not in the results read in this period`;
 
   return (
@@ -106,18 +116,29 @@ export function RankChart({
         ))}
         {series.map((p) => {
           const cx = x(p.day);
-          const cy = p.position === null ? bottom : y(p.position);
-          // A past check may have read a different depth than today's setup, so its miss is not given a number.
-          const lines = [longDay(p.day), positionText(p.position)];
+          const shortBy = p.position === null ? p.resultsRead : undefined;
+          const short = shortBy !== undefined;
+          const cy = p.position !== null ? y(p.position) : shortBy !== undefined ? y(belowShort(shortBy)) : bottom;
+          // A past check may have read a different depth than today's setup, so a plain miss is not given a number.
+          const lines = [longDay(p.day), positionText(p.position, undefined, p)];
           return (
             <circle
               key={p.day}
               data-day={p.day}
+              {...(short ? { 'data-short': '' } : {})}
+              {...(p.featured ? { 'data-featured': '' } : {})}
               cx={cx}
               cy={cy}
-              r={p.position === null ? 3.5 : 4}
-              strokeWidth={p.position === null ? 1.5 : 0}
-              className={p.position === null ? 'fill-white stroke-slate-400 dark:fill-slate-900' : 'fill-[var(--sw-brand-1)]'}
+              r={p.position === null ? 3.5 : p.featured ? 5 : 4}
+              strokeWidth={p.position === null || p.featured ? 1.5 : 0}
+              strokeDasharray={short ? '2 2' : undefined}
+              className={
+                p.position === null
+                  ? 'fill-white stroke-slate-400 dark:fill-slate-900'
+                  : p.featured
+                    ? 'fill-[var(--sw-brand-1)] stroke-slate-900 dark:stroke-white'
+                    : 'fill-[var(--sw-brand-1)]'
+              }
               onMouseEnter={(e) => tip.showAt(e.currentTarget, lines)}
             />
           );
@@ -130,18 +151,23 @@ export function RankChart({
 
 /**
  * A small trend line for the table: up is better, nothing but the shape — scaled to the keyword's own range, with
- * a check outside the results at the bottom. A keyword that never ranked has no shape to show.
+ * a check outside the results at the bottom (a miss in a short list just below what came back, as on the chart). A
+ * keyword that never ranked has no shape to show.
  */
 export function RankSparkline({ series, depth }: { series: readonly RankPoint[]; depth: number }) {
   const w = 96;
   const h = 24;
   const ranked = series.filter((p) => p.position !== null).map((p) => p.position as number);
   if (series.length < 2 || ranked.length === 0) return <span className="text-xs text-slate-400 dark:text-slate-500" aria-hidden>—</span>;
+  // Where each check sits: its position; a miss in a short list just below the results that came back (as on the
+  // chart); a real miss at the depth read.
+  const level = (p: RankPoint): number | null => p.position ?? (p.resultsRead !== undefined ? belowShort(p.resultsRead) : null);
   const top = Math.min(...ranked);
-  const bottom = ranked.length < series.length ? depth : Math.max(...ranked);
+  const levels = series.map(level);
+  const bottom = levels.includes(null) ? depth : Math.max(...levels.filter((l): l is number => l !== null));
   const range = Math.max(1, bottom - top);
   const span = Math.max(1, series.length - 1);
-  const pts = series.map((p, i) => `${((i / span) * (w - 4) + 2).toFixed(1)},${(2 + ((Math.min(p.position ?? bottom, bottom) - top) / range) * (h - 4)).toFixed(1)}`);
+  const pts = levels.map((l, i) => `${((i / span) * (w - 4) + 2).toFixed(1)},${(2 + ((Math.min(l ?? bottom, bottom) - top) / range) * (h - 4)).toFixed(1)}`);
   return (
     <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} aria-hidden className="overflow-visible">
       <polyline points={pts.join(' ')} fill="none" strokeWidth={1.5} strokeLinejoin="round" className="stroke-[var(--sw-brand-1)]" />

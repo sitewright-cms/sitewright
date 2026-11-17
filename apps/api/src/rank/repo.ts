@@ -1,4 +1,4 @@
-import { and, asc, count, eq, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
 import {
   RankProviderIdSchema,
   statsRetentionStart,
@@ -23,6 +23,7 @@ import {
 import { decryptSecret, encryptSecret } from '../crypto/secret.js';
 import { newId } from '../id.js';
 import { EncryptionUnavailableError } from '../repo/instance-settings.js';
+import type { PageReading } from './match.js';
 
 /** The monthly budget until an admin sets one: small enough that a mistake is cheap. */
 export const DEFAULT_RANK_BUDGET_MICROS = 10_000_000;
@@ -76,6 +77,19 @@ export interface DoneCheck {
   url: string | null;
   depth: number;
   checkedAt: Date;
+  featured: boolean;
+  /** Null for a check finished before these were recorded (and not re-read since). */
+  resultsRead: number | null;
+  pagesRead: number | null;
+}
+
+/** A finished check whose stored result can still be fetched again, to fill in what it did not keep. */
+export interface RereadableCheck {
+  id: string;
+  ref: string;
+  depth: number;
+  domain: string;
+  includeSubdomains: boolean;
 }
 
 /** `YYYY-MM-DD` `days` before/after `day`. */
@@ -90,7 +104,22 @@ export const utcDay = (now: Date): string => now.toISOString().slice(0, 10);
 /** How far back a check still counts as recent enough, per schedule (a weekly keyword is due 7 days on). */
 const SCHEDULE_DAYS: Record<RankSchedule, number> = { daily: 1, weekly: 7 };
 
-const toMicros = (usd: number): number => Math.max(0, Math.round(usd * 1_000_000));
+/**
+ * The most one check is ever booked at. No search costs anything near it; a provider figure past it is an error
+ * (a unit mix-up, a corrupt reply), and storing it unbounded could break the month's sum.
+ */
+const MAX_CHECK_COST_USD = 100;
+const toMicros = (usd: number): number => (Number.isFinite(usd) ? Math.round(Math.min(MAX_CHECK_COST_USD, Math.max(0, usd)) * 1_000_000) : 0);
+
+/** What a results page says, as the check's columns. */
+const readingColumns = (r: PageReading) => ({
+  position: r.hit?.position ?? null,
+  absolutePosition: r.hit?.absolutePosition ?? null,
+  url: r.hit?.url ?? null,
+  featured: r.hit?.featured ?? false,
+  resultsRead: r.resultsRead,
+  pagesRead: r.pagesRead,
+});
 
 /** Retention deletes this many rows per statement, and at most this many statements per table a day. */
 const PRUNE_BATCH = 5000;
@@ -381,15 +410,13 @@ export class RankRepository {
   }
 
   /** Finished. `costUsd` replaces the booked cost when the provider stated one with the result (a live search). */
-  async markDone(id: string, hit: { position: number; absolutePosition: number; url: string } | null, checkedAt: Date, costUsd?: number): Promise<void> {
+  async markDone(id: string, reading: PageReading, checkedAt: Date, costUsd?: number): Promise<void> {
     const costMicros = costUsd !== undefined ? toMicros(costUsd) : undefined;
     const update = this.db
       .update(rankChecks)
       .set({
         status: 'done',
-        position: hit?.position ?? null,
-        absolutePosition: hit?.absolutePosition ?? null,
-        url: hit?.url ?? null,
+        ...readingColumns(reading),
         checkedAt,
         error: null,
         ...(costMicros !== undefined ? { costMicros } : {}),
@@ -431,6 +458,40 @@ export class RankRepository {
       .orderBy(asc(rankChecks.postedAt))
       .limit(limit);
     return rows.flatMap((r) => (r.ref ? [{ ...r, ref: r.ref }] : []));
+  }
+
+  /**
+   * Finished checks of `provider` posted since `since` whose stored result has never been read for what they lack
+   * (results read, pages, a featured snippet) — the checks made before those were recorded. Newest first: those
+   * shape the chart, and the oldest are the next to expire at the provider anyway.
+   */
+  async rereadable(provider: string, since: Date, limit: number): Promise<RereadableCheck[]> {
+    const rows = await this.db
+      .select({ id: rankChecks.id, ref: rankChecks.providerRef, depth: rankChecks.depth, domain: rankChecks.domain, includeSubdomains: rankChecks.includeSubdomains })
+      .from(rankChecks)
+      .where(
+        and(
+          eq(rankChecks.provider, provider),
+          eq(rankChecks.status, 'done'),
+          isNull(rankChecks.resultsRead),
+          isNull(rankChecks.rereadAt),
+          gte(rankChecks.postedAt, since),
+        ),
+      )
+      .orderBy(desc(rankChecks.postedAt))
+      .limit(limit);
+    return rows.flatMap((r) => (r.ref ? [{ ...r, ref: r.ref }] : []));
+  }
+
+  /**
+   * Records a re-read: with a reading, the check is read again from its stored result under today's rules; without
+   * one (the result is gone, or could not be read), it stays as it was. Either way it is not tried again.
+   */
+  async markReread(id: string, reading: PageReading | null, now: Date): Promise<void> {
+    await this.db
+      .update(rankChecks)
+      .set({ ...(reading ? readingColumns(reading) : {}), rereadAt: now })
+      .where(and(eq(rankChecks.id, id), eq(rankChecks.status, 'done')));
   }
 
   /** Fails checks that can no longer finish: a send cut off by a restart, a result that never came. */
@@ -491,6 +552,9 @@ export class RankRepository {
         url: rankChecks.url,
         depth: rankChecks.depth,
         checkedAt: rankChecks.checkedAt,
+        featured: rankChecks.featured,
+        resultsRead: rankChecks.resultsRead,
+        pagesRead: rankChecks.pagesRead,
       })
       .from(rankChecks)
       .where(
@@ -509,11 +573,22 @@ export class RankRepository {
   /** Each keyword's two newest finished checks for `domain`, whatever the range (for "latest" and "change"). */
   async latestTwo(projectId: string, domain: string): Promise<Map<string, DoneCheck[]>> {
     const rows = (await this.db.all(sql`
-      SELECT keyword_id AS keywordId, day, position, url, depth, checked_at AS checkedAt FROM (
+      SELECT keyword_id AS keywordId, day, position, url, depth, checked_at AS checkedAt, featured,
+        results_read AS resultsRead, pages_read AS pagesRead FROM (
         SELECT c.*, ROW_NUMBER() OVER (PARTITION BY c.keyword_id ORDER BY c.day DESC) AS rn
         FROM ${rankChecks} c WHERE c.project_id = ${projectId} AND c.domain = ${domain} AND c.status = 'done'
       ) WHERE rn <= 2 ORDER BY keyword_id, day DESC
-    `)) as Array<{ keywordId: string; day: string; position: number | null; url: string | null; depth: number; checkedAt: number | null }>;
+    `)) as Array<{
+      keywordId: string;
+      day: string;
+      position: number | null;
+      url: string | null;
+      depth: number;
+      checkedAt: number | null;
+      featured: number | null;
+      resultsRead: number | null;
+      pagesRead: number | null;
+    }>;
     const out = new Map<string, DoneCheck[]>();
     for (const r of rows) {
       const list = out.get(r.keywordId) ?? [];
@@ -524,6 +599,9 @@ export class RankRepository {
         url: r.url,
         depth: r.depth,
         checkedAt: new Date(r.checkedAt ?? Date.parse(`${r.day}T00:00:00Z`)),
+        featured: r.featured === 1,
+        resultsRead: r.resultsRead,
+        pagesRead: r.pagesRead,
       });
       out.set(r.keywordId, list);
     }

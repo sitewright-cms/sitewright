@@ -16,7 +16,10 @@ import {
  *
  * - A search is POSTED as a task (up to 100 per request) and its results page COLLECTED later by task id — it
  *   usually finishes within minutes, at worst about 45. The results are kept for 30 days, and only posting is
- *   charged, so collecting again costs nothing.
+ *   charged, so collecting again costs nothing ("You can get the results of the task within the next 30 days for
+ *   free", task_get docs).
+ * - Since Google dropped `num=100` (September 2025), a deep search is fetched ten results at a time, and Google often
+ *   stops serving pages early: `pages_count` says how many came back, and is passed on as `pagesRead`.
  * - The price is per page of ten results ($0.0006 on the 2026 price list), so a depth of 100 costs ten pages.
  * - The sandbox host answers in the same format with dummy results, free, with the same credentials.
  *
@@ -152,7 +155,8 @@ function pageFrom(task: Json): SerpPage {
     if (!kind || position === undefined || absolutePosition === undefined || !url || !WEB_URL_RE.test(url)) continue;
     entries.push({ kind, position, absolutePosition, url: url.slice(0, 2048), domain: str(item.domain) ?? '' });
   }
-  return { checkedAt: parseDatetime(result?.datetime), entries };
+  const pages = num(result?.pages_count);
+  return { checkedAt: parseDatetime(result?.datetime), entries, ...(pages !== undefined && pages >= 0 ? { pagesRead: Math.floor(pages) } : {}) };
 }
 
 /** Each search's task in a `task_post` answer, matched by the tag the search was sent with. */
@@ -265,6 +269,8 @@ export const dataForSeo: RankProvider = {
     },
   ],
   maxBatch: MAX_BATCH,
+  // A day short of the 30 the docs promise: a result read right at the edge may already be gone.
+  freeRereadDays: 29,
 
   parseCredentials(raw) {
     const login = (raw.login ?? '').trim();

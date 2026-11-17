@@ -358,6 +358,13 @@
       "when": 1793158052164,
       "tag": "0050_booking_reminders",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "6",
+      "when": 1794920396667,
+      "tag": "0051_rank_check_results",
+      "breakpoints": true
     }
   ]
 }

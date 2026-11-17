@@ -10,6 +10,7 @@ import {
   type SubmitOutcome,
 } from './types.js';
 import { countryOnlyLocations } from './country-locations.js';
+import { isGoogleSearchLink, resultUrl } from './google-links.js';
 
 /**
  * Apify's official Google Search Results Scraper (`apify/google-search-scraper`), as an alternative to DataForSEO.
@@ -270,20 +271,6 @@ function snippetUrls(item: Json): string[] {
   return out;
 }
 
-/**
- * A link to Google Search or Maps itself (the "Map" entry of a local search, a related search): no site's result.
- * Google's own sites (support.google.com and the like) are real results for some searches, and are counted.
- */
-function isGoogleLink(url: string): boolean {
-  try {
-    const u = new URL(url);
-    if (!/^(www\.|maps\.)?google(\.[a-z]{2,3}){1,2}$/i.test(u.hostname)) return false;
-    return u.hostname.toLowerCase().startsWith('maps.') || /^\/(search|maps)(\/|$)/.test(u.pathname);
-  } catch {
-    return false;
-  }
-}
-
 /** Google served nothing past these pages: the last came back empty, or says there is no next page. */
 function endOf(pages: readonly Json[]): boolean {
   const last = pages.at(-1);
@@ -310,15 +297,16 @@ function entriesOf(pages: readonly Json[]): SerpEntry[] {
   };
   for (const page of pages) {
     const snippets = snippetUrls(page);
-    for (const url of snippets) push('featured_snippet', url);
+    for (const link of snippets) push('featured_snippet', resultUrl(link) ?? link);
     for (const r of records(page.organicResults)) {
-      const url = str(r.url);
-      if (!url || isGoogleLink(url)) continue;
+      const link = str(r.url);
+      if (!link || isGoogleSearchLink(link)) continue;
       const snippet = /featured/i.test(str(r.type) ?? '');
       // Google does not repeat a snippet's page among the ordinary results; should the actor list it twice, counting
-      // both would push every result after it one place down.
-      if (!snippet && snippets.includes(url)) continue;
-      push(snippet ? 'featured_snippet' : 'organic', url);
+      // both would push every result after it one place down. Told by the link as given (see Bright Data's `linksOf`).
+      if (!snippet && snippets.includes(link)) continue;
+      // A result Google wrapped in its own redirect is read by the site it names (see google-links.ts).
+      push(snippet ? 'featured_snippet' : 'organic', resultUrl(link, str(r.displayedUrl)) ?? link);
     }
   }
   return entries;

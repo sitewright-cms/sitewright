@@ -17,7 +17,11 @@ The running version of an instance is reported at `GET /version` (baked into the
   DataForSEO searches from its own servers abroad. For a Namibian company's own name it found the site nowhere in 84
   results, while Bright Data, Apify and people searching from Namibia all saw it first. Every Bright Data account gets
   5,000 free requests a month; after that, a results page costs $0.0015 on pay as you go. The setup guide under
-  Statistics → Search rankings now leads with Bright Data. See [docs/rank-tracking.md](docs/rank-tracking.md).
+  Statistics → Search rankings now leads with Bright Data, and System Settings says which zone settings to choose
+  (Full JSON; no custom headers, with which failed requests are billed too). Results Google wraps in its own redirect
+  (`google.com/goto`, on some pages every result) are read by the address Google shows. A search Bright Data could
+  not run (an empty answer, when Google challenged its connection) costs nothing and is tried again after 16
+  seconds. See [docs/rank-tracking.md](docs/rank-tracking.md).
 - **Apify as a second rank-tracking provider.** System Settings → Integrations → Keyword rank tracking now offers
   Apify's Google Search Results Scraper beside DataForSEO, with an API token as its only credential. Searches
   that share every setting go out as one run, the budget books the listed price and then the run's real charge,

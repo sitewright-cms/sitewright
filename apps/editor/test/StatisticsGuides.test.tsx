@@ -270,6 +270,9 @@ describe('Search rankings: the holding note sits ABOVE the setup that adds keywo
     expect(brightData).toHaveTextContent('5,000 free requests a month');
     expect(brightData).toHaveTextContent('Bright Data (SERP API)');
     expect(brightData).toHaveTextContent('SERP API zone');
+    // The zone's settings that matter: Full JSON (featured snippets), no custom headers (billed failures).
+    expect(brightData).toHaveTextContent('Full JSON');
+    expect(brightData).toHaveTextContent('failed requests are billed too');
     expect(setup).toHaveTextContent('its searches run from its own servers abroad');
     const steps = within(setup).getByRole('list', { name: 'DataForSEO setup' });
     expect(within(steps).getAllByRole('listitem')).toHaveLength(5);

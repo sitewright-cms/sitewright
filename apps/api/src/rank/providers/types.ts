@@ -116,6 +116,8 @@ export interface RankProviderIo {
   largeFetch?: FetchLike;
   /** The deadline for one request to the provider. */
   timeoutMs?: number;
+  /** Waits before a request is tried again (tests pass one that does not wait). */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 /** A provider's credential fields, already checked by {@link RankProvider.parseCredentials}. */

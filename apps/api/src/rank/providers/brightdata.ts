@@ -1,5 +1,6 @@
 import { parse as secureJsonParse } from 'secure-json-parse';
 import { countryOnlyLocations } from './country-locations.js';
+import { isGoogleSearchLink, resultUrl } from './google-links.js';
 import {
   RankProviderError,
   type RankCredentials,
@@ -29,7 +30,8 @@ import {
  *   search never started for an account-wide refusal is `unsent`, its claim given back.
  * - Positions are counted here, page by page, as for Apify: featured snippets first (Google puts them above the
  *   results, and does not repeat the snippet's page among them), then the organic results — Google's own links
- *   (Search, Maps) left out.
+ *   (Search, Maps) left out, and a result Google wrapped in its own redirect read by the site it names
+ *   (`google-links.ts`: measured 2026-11-17, some pages came back with EVERY organic link a `google.com/goto`).
  *
  * ★ A message is shown to admins: it never carries the API key, a URL or a response body.
  *
@@ -55,11 +57,26 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : und
 const isRecord = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
 const records = (v: unknown): Json[] => (Array.isArray(v) ? v.filter(isRecord) : []);
 
-/** What an HTTP refusal means for the tracker. Bright Data's own error codes ride in headers the transport does not keep. */
-function errorFor(status: number): RankProviderError {
+/**
+ * A query Bright Data will not try again for 15 seconds, because it just failed or was just sent (its 429s
+ * `failed_query_rejected` and `repeat_query_rejected`): that query's trouble alone, not the account's rate.
+ */
+class QueryRejected extends RankProviderError {
+  constructor() {
+    super('Bright Data could not run this search just now', 'unavailable');
+    this.name = 'QueryRejected';
+  }
+}
+
+/**
+ * What an HTTP refusal means for the tracker. Bright Data's own error codes ride in headers the transport does not keep,
+ * so a 429 is told apart by its words — matched, never shown or kept.
+ */
+function errorFor(status: number, body: string): RankProviderError {
   if (status === 401 || status === 407) return new RankProviderError('Bright Data refused the API key or the zone', 'auth');
   if (status === 402) return new RankProviderError('Bright Data has no funds left for this request; add funds or wait for next month’s free requests', 'funds');
   if (status === 403) return new RankProviderError('Bright Data does not allow this request: check the zone is a SERP API zone, and the account’s balance', 'auth');
+  if (status === 429 && /this query (recently failed|cannot be attempted)/i.test(body)) return new QueryRejected();
   if (status === 429) return new RankProviderError('Bright Data is limiting the request rate; trying again later', 'rate');
   if (status === 400 || status === 404 || status === 422) return new RankProviderError(`Bright Data refused the request (HTTP ${status}): check the zone name`, 'invalid');
   return new RankProviderError(`Bright Data could not run the search (HTTP ${status})`, 'unavailable');
@@ -72,6 +89,30 @@ class PossiblyBilled extends RankProviderError {
     this.name = 'PossiblyBilled';
   }
 }
+
+/** An answer that came back but could not be read: possibly billed, and tried again. */
+class UnreadableAnswer extends PossiblyBilled {}
+
+/**
+ * An EMPTY answer: Bright Data's own failure, reported in headers the transport does not keep. Measured 2026-11-17: HTTP
+ * 200, no body, `x-brd-status-code: 502`, `x-brd-error-code: captcha` (Google challenged that exit). Not billed ("none
+ * of the errors in this catalog are billed"), and tried again.
+ */
+class EmptyAnswer extends RankProviderError {
+  constructor() {
+    super('Bright Data could not run the search (an empty answer)', 'unavailable');
+    this.name = 'EmptyAnswer';
+  }
+}
+
+/**
+ * Tries of one page before it fails, and the wait between them. Measured 2026-11-17: some queries came back EMPTY (Google
+ * challenged the exit; see {@link EmptyAnswer}) on one request in four or more, then were refused for 15 seconds ("this
+ * query recently failed"), and answered properly on a later try. Bright Data's own advice is to wait at least 15 seconds.
+ */
+const PAGE_TRIES = 3;
+const RETRY_WAIT_MS = 16_000;
+const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Account-wide refusals: no further request of the account can do better until an admin acts or time passes. A request
@@ -101,12 +142,13 @@ async function call(creds: RankCredentials, method: 'GET' | 'POST', path: string
   } finally {
     clearTimeout(timer);
   }
-  if (res.status >= 400) throw errorFor(res.status);
+  if (res.status >= 400) throw errorFor(res.status, text);
+  if (!text) throw new EmptyAnswer();
   try {
-    return text ? (secureJsonParse(text, undefined, { protoAction: 'remove', constructorAction: 'remove' }) as unknown) : undefined;
+    return secureJsonParse(text, undefined, { protoAction: 'remove', constructorAction: 'remove' }) as unknown;
   } catch {
     // Taken (2xx), so billed: but nothing to read.
-    throw new PossiblyBilled(UNREADABLE);
+    throw new UnreadableAnswer(`${UNREADABLE} (not JSON)`);
   }
 }
 
@@ -130,20 +172,6 @@ export function searchUrlFor(s: RankSearch, page: number): string {
   return `https://www.google.com/search?${params.join('&')}`;
 }
 
-/**
- * A link to Google Search or Maps itself (the "Map" entry of a local search): no site's result. Google's own sites
- * (support.google.com and the like) are real results for some searches, and are counted.
- */
-function isGoogleLink(url: string): boolean {
-  try {
-    const u = new URL(url);
-    if (!/^(www\.|maps\.)?google(\.[a-z]{2,3}){1,2}$/i.test(u.hostname)) return false;
-    return u.hostname.toLowerCase().startsWith('maps.') || /^\/(search|maps)(\/|$)/.test(u.pathname);
-  } catch {
-    return false;
-  }
-}
-
 /** The parsed results, whether the answer is the results themselves or Bright Data's `{ body }` wrapper around them. */
 function resultsOf(answer: unknown): Json | null {
   if (!isRecord(answer)) return null;
@@ -158,28 +186,50 @@ function resultsOf(answer: unknown): Json | null {
   }
 }
 
-/** One results page's links, in Google's order: featured snippets, then organic results (a snippet's page not twice). */
+/**
+ * A result's address: its link, or — when Google wrapped it in a redirect — the site it names. A wrapped result that
+ * names no site keeps its link: it still holds its place among the results, it is just no one's to find.
+ */
+function addressOf(r: Json): string | undefined {
+  const link = str(r.link);
+  if (!link || !WEB_URL_RE.test(link)) return undefined;
+  return resultUrl(link, str(r.display_link)) ?? link;
+}
+
+/**
+ * One results page's links, in Google's order: featured snippets, then organic results — a snippet's page not twice.
+ * Duplicates are told by the link as Google gave it: two wrapped results of one site both read as its home page, and
+ * are still two results.
+ */
 function linksOf(results: Json): Array<{ kind: SerpEntry['kind']; url: string }> {
   const out: Array<{ kind: SerpEntry['kind']; url: string }> = [];
-  const snippets = records(results.featured_snippets).flatMap((f) => {
-    const url = str(f.link);
-    return url && WEB_URL_RE.test(url) ? [url] : [];
-  });
-  for (const url of snippets) out.push({ kind: 'featured_snippet', url });
+  const snippetLinks = new Set<string>();
+  for (const f of records(results.featured_snippets)) {
+    const url = addressOf(f);
+    if (!url) continue;
+    snippetLinks.add(str(f.link)!);
+    out.push({ kind: 'featured_snippet', url });
+  }
   const organic = records(results.organic).sort((a, b) => (num(a.global_rank) ?? 0) - (num(b.global_rank) ?? 0));
   for (const r of organic) {
-    const url = str(r.link);
-    if (!url || !WEB_URL_RE.test(url) || isGoogleLink(url) || snippets.includes(url)) continue;
-    out.push({ kind: 'organic', url });
+    const link = str(r.link);
+    if (!link || isGoogleSearchLink(link) || snippetLinks.has(link)) continue;
+    const url = addressOf(r);
+    if (url) out.push({ kind: 'organic', url });
   }
   return out;
 }
 
-/** Google has a page after this one: its parsed pagination says so. Without pagination, assumed while results came. */
+/**
+ * Google has a page after this one, by any sign the parsed pagination gives: a next page, its offset or link, or a later
+ * page in its list. Without pagination it is assumed while results came — the check stops only on a clear end.
+ */
 function hasNextPage(results: Json): boolean {
   const p = results.pagination;
   if (!isRecord(p)) return true;
-  return num(p.next_page) !== undefined || num(p.next_page_start) !== undefined || str(p.next_page_link) !== undefined;
+  if (num(p.next_page) !== undefined || num(p.next_page_start) !== undefined || str(p.next_page_link) !== undefined) return true;
+  const current = num(p.current_page) ?? 0;
+  return records(p.pages).some((x) => (num(x.page) ?? 0) > current);
 }
 
 type SearchResult =
@@ -206,23 +256,45 @@ async function readSearch(creds: RankCredentials, s: RankSearch, io: RankProvide
     billedPages: billed,
     page: { checkedAt: checkedAt ?? new Date(), entries, pagesRead: read, cut: true },
   });
+  const sleep = io.sleep ?? wait;
+  /** Answers that came back (so may have been billed) but held no results, and were tried again. */
+  let unread = 0;
   for (let i = 0; i < s.pages && !end; i++) {
-    if (stop.error) return pages === 0 ? { state: 'unsent' } : partway(pages);
-    let answer: unknown;
-    try {
-      answer = await call(creds, 'POST', '/request', io, { zone: creds.zone, url: searchUrlFor(s, s.startPage + i), format: 'raw', country: s.location.countryCode.toLowerCase() });
-    } catch (err) {
-      if (!(err instanceof RankProviderError)) throw err;
-      // A lost or unreadable reply may have been billed; a request Bright Data refused or could not run was not.
-      const billed = pages + (err instanceof PossiblyBilled ? 1 : 0);
-      if (accountWide(err)) stop.error ??= err;
-      if (pages > 0) return partway(billed);
-      return accountWide(err) ? { state: 'refused', error: err } : { state: 'failed', error: err.message, billedPages: billed };
+    if (stop.error) return pages + unread === 0 ? { state: 'unsent' } : partway(pages + unread);
+    /** Stopped for an account-wide refusal elsewhere while this page waited to be tried again. */
+    const stopped = (): SearchResult =>
+      pages > 0 ? partway(pages + unread) : unread > 0 ? { state: 'failed', error: stop.error!.message, billedPages: unread } : { state: 'unsent' };
+    let results: Json | null = null;
+    for (let attempt = 1; !results; attempt++) {
+      if (attempt > 1) {
+        await sleep(RETRY_WAIT_MS);
+        if (stop.error) return stopped();
+      }
+      const again = attempt < PAGE_TRIES;
+      let answer: unknown;
+      try {
+        answer = await call(creds, 'POST', '/request', io, { zone: creds.zone, url: searchUrlFor(s, s.startPage + i), format: 'raw', country: s.location.countryCode.toLowerCase() });
+      } catch (err) {
+        if (!(err instanceof RankProviderError)) throw err;
+        // An answer that came back but could not be read may have been billed; an empty one, or a query refused for a
+        // moment, was not. All three are tried again after Bright Data's wait.
+        if (err instanceof UnreadableAnswer) unread++;
+        if (again && (err instanceof UnreadableAnswer || err instanceof EmptyAnswer || err instanceof QueryRejected)) continue;
+        // A lost reply may have been billed; a request Bright Data refused or could not run was not.
+        const billed = pages + unread + (err instanceof PossiblyBilled && !(err instanceof UnreadableAnswer) ? 1 : 0);
+        if (accountWide(err)) stop.error ??= err;
+        if (pages > 0) return partway(billed);
+        if (billed === 0 && accountWide(err)) return { state: 'refused', error: err };
+        return { state: 'failed', error: err.message, billedPages: billed };
+      }
+      results = resultsOf(answer);
+      if (results) break;
+      // Taken (2xx), so possibly billed, but no list of results in it: tried again.
+      unread++;
+      if (again) continue;
+      return pages > 0 ? partway(pages + unread) : { state: 'failed', error: `${UNREADABLE} (no list of results)`, billedPages: unread };
     }
     pages++;
-    const results = resultsOf(answer);
-    // Taken and billed, but not results: this page is paid for, not read.
-    if (!results) return pages > 1 ? partway(pages, pages - 1) : { state: 'failed', error: UNREADABLE, billedPages: pages };
     checkedAt ??= (() => {
       const general = isRecord(results.general) ? results.general : {};
       const at = Date.parse(str(general.timestamp) ?? '');
@@ -235,7 +307,7 @@ async function readSearch(creds: RankCredentials, s: RankSearch, io: RankProvide
     }
     if (links.length === 0 || !hasNextPage(results)) end = true;
   }
-  return { state: 'done', billedPages: pages, page: { checkedAt: checkedAt ?? new Date(), entries, pagesRead: pages, ...(end ? { end: true } : {}) } };
+  return { state: 'done', billedPages: pages + unread, page: { checkedAt: checkedAt ?? new Date(), entries, pagesRead: pages, ...(end ? { end: true } : {}) } };
 }
 
 function parseCredentials(raw: Readonly<Record<string, string>>): RankCredentials {
@@ -266,7 +338,13 @@ export const brightData: RankProvider = {
       required: true,
       help: 'In the SERP API zone’s Overview tab, or Account settings → API keys. Every account gets 5,000 free requests a month; one results page is one request.',
     },
-    { key: 'zone', label: 'SERP API zone', type: 'text', required: true, help: 'The zone’s name as it appears in the control panel, such as serp_api1.' },
+    {
+      key: 'zone',
+      label: 'SERP API zone',
+      type: 'text',
+      required: true,
+      help: 'The zone’s name as it appears in the control panel, such as serp_api1. In the zone’s Configuration: default data format Full JSON (Light JSON leaves out featured snippets); Google Ads Standard; custom headers and cookies off (with them, failed requests are billed too); asynchronous requests off.',
+    },
     {
       key: 'pricePer1000',
       label: 'Price per 1,000 requests (USD)',

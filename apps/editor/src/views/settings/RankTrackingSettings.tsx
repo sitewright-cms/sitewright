@@ -5,6 +5,7 @@ import { api } from '../../api';
 import { secretFieldProps } from '../../lib/secret-field';
 import { ghostButton, glassCard, glassInput } from '../../theme';
 import { SectionHelp } from '../ui/SectionHelp';
+import { RankTrackingStats } from './RankTrackingStats';
 
 /**
  * KEYWORD RANK TRACKING in System Settings (instance admins): which provider runs the searches, its credentials,
@@ -204,6 +205,11 @@ export const RankTrackingSettings = forwardRef<RankTrackingSettingsHandle, { onR
               Last refusal ({new Date(view.lastError.at).toLocaleString()}): {view.lastError.message}
             </p>
           )}
+
+          <div className="flex flex-col gap-1">
+            <h3 className="text-xs font-semibold text-slate-600 dark:text-slate-300">Last 7 days</h3>
+            <RankTrackingStats recent={view.recent} />
+          </div>
         </div>
       )}
     </fieldset>

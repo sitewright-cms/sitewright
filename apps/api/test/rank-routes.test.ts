@@ -121,6 +121,7 @@ describe('instance admin: provider, credentials, budget', () => {
     await configure(admin.t);
     const view = (await app.inject({ method: 'GET', url: '/admin/rank-tracking', ...as(admin.t) })).json() as RankTrackingAdminView;
     expect(view).toMatchObject({ activeProvider: 'dataforseo', monthlyBudgetUsd: 5, spentThisMonthUsd: 0, lastError: null });
+    expect(view.recent).toEqual([]); // no checks yet
     const dfs = view.providers.find((p) => p.id === 'dataforseo')!;
     expect(dfs).toMatchObject({ configured: true, values: { login: 'api@agency.test', environment: 'production' }, secretsSet: { password: true } });
     expect(JSON.stringify(view)).not.toContain('p4ss-word');
@@ -288,6 +289,10 @@ describe('one full run', () => {
       change: null,
     });
     expect(read.keywords[0]!.series).toHaveLength(1);
+
+    // The admin sees the day's check among the provider's figures.
+    const admin_ = (await app.inject({ method: 'GET', url: '/admin/rank-tracking', ...as(admin.t) })).json() as RankTrackingAdminView;
+    expect(admin_.recent).toEqual([expect.objectContaining({ provider: 'dataforseo', checks: 1, found: 1, notFound: 0, failed: 0, running: 0, pages: 1 })]);
 
     // An agent on a STAFF member's read key gets the same rankings through get_rankings — and still nothing that is
     // for staff in a session: no `status`, never `canManage`.

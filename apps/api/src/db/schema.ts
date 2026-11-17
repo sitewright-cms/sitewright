@@ -1317,8 +1317,12 @@ export const rankChecks = sqliteTable(
      * pages in stages (`rankStages`): when a stage did not find the site and Google has more, the check becomes `next`
      * and is claimed again (`posting`) for the following pages. One left `next` at the end of its day is done with
      * what it read (the budget ran out, or the provider changed).
+     *
+     * `retry`: waits until `retryAt` to be claimed again — a search the provider could not run (no charge) is tried
+     * again later the same day, and a keyword that ranked before and now reads "not found" is read once more to
+     * confirm (`confirming`).
      */
-    status: text('status', { enum: ['posting', 'queued', 'next', 'done', 'failed'] }).notNull(),
+    status: text('status', { enum: ['posting', 'queued', 'next', 'retry', 'done', 'failed'] }).notNull(),
     /** The site the check was sent for. Results are read against THIS, so a later domain change cannot mix sites. */
     domain: text('domain').notNull(),
     includeSubdomains: integer('include_subdomains', { mode: 'boolean' }).notNull(),
@@ -1353,6 +1357,12 @@ export const rankChecks = sqliteTable(
      * add to this — so a later stage never overwrites what an earlier one cost.
      */
     costSettledMicros: integer('cost_settled_micros').notNull().default(0),
+    /** Same-day tries after a search the provider could not run (see `retry`). */
+    attempts: integer('attempts').notNull().default(0),
+    /** When a `retry` check is claimed again. */
+    retryAt: integer('retry_at', { mode: 'timestamp_ms' }),
+    /** A second reading, to confirm a drop from a position to "not found": its result is final. */
+    confirming: integer('confirming', { mode: 'boolean' }).notNull().default(false),
     /** Why it failed, in words safe to show an admin. */
     error: text('error'),
     postedAt: integer('posted_at', { mode: 'timestamp_ms' }).notNull(),
@@ -1364,6 +1374,8 @@ export const rankChecks = sqliteTable(
     index('rank_checks_status').on(t.status),
     index('rank_checks_project_day').on(t.projectId, t.day),
     index('rank_checks_posted').on(t.postedAt),
+    // The admin's figures per day and provider.
+    index('rank_checks_day_provider').on(t.day, t.provider),
   ],
 );
 

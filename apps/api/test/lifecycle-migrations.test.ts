@@ -131,3 +131,26 @@ describe('migration 0052 (rank checks read in stages)', () => {
     expect(queued).toMatchObject({ id: 'in-flight', depth: 30, settledMicros: 0, resultsRead: 0, pagesRead: 0, fullDepth: true });
   });
 });
+
+describe('migration 0053 (same-day retries, confirmed drops)', () => {
+  it('leaves checks in flight as they were: no try counted, nothing to confirm, still collected', async () => {
+    const db = await migratedUpTo(52);
+    const projects = new ProjectRepository(db);
+    const pid = (await projects.create({ name: 'Retries', slug: 'retries' })).id;
+    await db.run(sql`INSERT INTO rank_projects (project_id, domain, include_subdomains, schedule, depth, updated_at) VALUES (${pid}, 'plumbers.na', 1, 'daily', 100, ${Date.now()})`);
+    const rank = new RankRepository(db);
+    await rank.addKeywords(pid, { keywords: ['a'], engine: 'google', device: 'desktop', location: { name: 'Namibia', countryCode: 'NA' }, languageCode: 'en' });
+    const [k] = await rank.listKeywords(pid);
+    await db.run(sql`INSERT INTO rank_checks (id, keyword_id, project_id, day, provider, provider_ref, status, domain, include_subdomains, depth, cost_micros, posted_at, pages_read, results_read, cost_settled_micros)
+      VALUES ('in-flight', ${k!.id}, ${pid}, '2026-11-17', 'dataforseo', 'ref', 'queued', 'plumbers.na', 1, 100, 1800, ${Date.now()}, 1, 10, 600)`);
+
+    await runMigrations(db);
+
+    const [queued] = await rank.queuedChecks(10);
+    expect(queued).toMatchObject({ id: 'in-flight', day: '2026-11-17', attempts: 0, confirming: false, pagesRead: 1, settledMicros: 600 });
+    // The page its earlier stage read is counted; its cost is what is booked for it.
+    expect(await rank.dailyStats('2026-11-17')).toEqual([
+      { day: '2026-11-17', provider: 'dataforseo', checks: 1, found: 0, notFound: 0, failed: 0, running: 1, retried: 0, confirmed: 0, pages: 1, costUsd: 0.0018 },
+    ]);
+  });
+});

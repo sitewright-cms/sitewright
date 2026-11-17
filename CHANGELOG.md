@@ -30,6 +30,22 @@ The running version of an instance is reported at `GET /version` (baked into the
   link, which Apify lists as the first result of a local search, is not counted. See
   [docs/rank-tracking.md](docs/rank-tracking.md).
 
+- **Rank tracking for thousands of keywords.**
+  - **Time-limited passes:** each pass sends for at most three minutes. Anything left goes out on a pass 30 seconds
+    later, and "Check now" goes ahead of a scheduled pass instead of waiting for it.
+  - **Same-day retries:** a search the provider could not run, and did not charge for, is tried again an hour later,
+    at most twice more that day.
+  - **Confirmed drops:** a keyword that ranked on its last check and now reads "not found" is read once more five
+    minutes later, and that second reading is the one recorded, because results vary from one request to the next.
+    This applies with every provider; the second reading costs what the first did.
+  - **Bright Data in parallel:** Bright Data reads 10 searches at once by default, up to 20 (System Settings →
+    **Searches at once**). A keyword several projects track in the same place is read once, and its cost is shared.
+  - **Daily figures for admins:** System Settings → Integrations → Keyword rank tracking shows the last 7 days per
+    provider: checks, found, not found, failed, retried, confirmed, pages and cost.
+  - **Load test:** in a simulated run of 5,000 keywords across 100 projects, every keyword was checked once, every
+    position read right, and the charges matched what the checks cost. See
+    [docs/rank-tracking.md](docs/rank-tracking.md#many-keywords).
+
 ### Fixed
 
 - **Keyword rankings jumped between a good position and "not in the top 100".** Two reasons, both fixed:

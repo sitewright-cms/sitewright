@@ -548,6 +548,10 @@ describe('System Settings: rank tracking', () => {
     projectsTracked: 1,
     keywordsTracked: 3,
     lastError: { message: 'The DataForSEO balance is too low; add funds to the account', at: '2026-10-20T06:00:00.000Z' },
+    recent: [
+      { day: '2026-10-20', provider: 'brightdata', checks: 120, found: 96, notFound: 20, failed: 3, running: 1, retried: 7, confirmed: 4, pages: 410, costUsd: 0.615 },
+      { day: '2026-10-19', provider: 'apify', checks: 2, found: 2, notFound: 0, failed: 0, running: 0, retried: 0, confirmed: 0, pages: 2, costUsd: 0.01 },
+    ],
     providers: [
       {
         id: 'dataforseo',
@@ -594,6 +598,25 @@ describe('System Settings: rank tracking', () => {
       monthlyBudgetUsd: 25,
       credentials: { dataforseo: { environment: 'sandbox' } },
     });
+  });
+
+  it('shows each day’s checks per provider: failures in red, nothing as a dash', async () => {
+    api.getRankTracking.mockResolvedValue(view);
+    render(<RankTrackingSettings />);
+    const table = await screen.findByRole('table', { name: 'Checks in the last 7 days' });
+    const rows = within(table).getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell').map((c) => c.textContent));
+    expect(rows).toEqual([
+      ['2026-10-20', 'Bright Data', '120', '96', '20', '3', '1', '7', '4', '410', '$0.615'],
+      ['2026-10-19', 'Apify', '2', '2', '—', '—', '—', '—', '—', '2', '$0.010'],
+    ]);
+    expect(within(table).getByText('3')).toHaveClass('text-red-600');
+  });
+
+  it('says so when there were no checks in the last 7 days', async () => {
+    api.getRankTracking.mockResolvedValue({ ...view, recent: [] });
+    render(<RankTrackingSettings />);
+    expect(await screen.findByText('No checks in the last 7 days.')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).toBeNull();
   });
 
   it('tests the saved credentials and shows the balance', async () => {

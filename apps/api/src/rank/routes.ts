@@ -58,6 +58,8 @@ export interface RankRouteDeps {
 /** The longest range a read may ask for: a year, plus slack for month lengths. */
 const MAX_RANGE_DAYS = 400;
 const DEFAULT_RANGE_DAYS = 90;
+/** Days of the admin's per-provider figures (today included). */
+const RECENT_DAYS = 7;
 /** Past this many days, a keyword's series is thinned to one point a week, so a year of 500 keywords stays small. */
 const WEEKLY_AFTER_DAYS = 120;
 
@@ -300,7 +302,8 @@ export function registerRankRoutes(app: FastifyInstance, deps: RankRouteDeps): v
 
   async function adminView(): Promise<RankTrackingAdminView> {
     const config = await repo.getConfig();
-    const [spent, totals] = await Promise.all([repo.spentMicrosInMonth(new Date()), repo.totals()]);
+    const today = utcDay(new Date());
+    const [spent, totals, recent] = await Promise.all([repo.spentMicrosInMonth(new Date()), repo.totals(), repo.dailyStats(shiftDay(today, -(RECENT_DAYS - 1)))]);
     const views: RankProviderView[] = [];
     const configured = await repo.listConfiguredProviders();
     for (const id of RankProviderIdSchema.options) {
@@ -332,6 +335,7 @@ export function registerRankRoutes(app: FastifyInstance, deps: RankRouteDeps): v
       projectsTracked: totals.projects,
       keywordsTracked: totals.keywords,
       lastError: config.lastError ? { message: config.lastError.message, at: config.lastError.at.toISOString() } : null,
+      recent,
     };
   }
 

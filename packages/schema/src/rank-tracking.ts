@@ -355,6 +355,29 @@ export interface RankTrackingAdminView {
   keywordsTracked: number;
   /** The provider's last refusal, if the most recent attempt failed. */
   lastError: { message: string; at: string } | null;
+  /** What the checks of the last days did, per day and provider, newest first. */
+  recent: RankDailyStat[];
+}
+
+/** One day's checks of one provider, for the admin: how they ended, what was tried again, what they cost. */
+export interface RankDailyStat {
+  /** The UTC day the checks were for. */
+  day: string;
+  provider: string;
+  checks: number;
+  /** Done, with the site found / not found among the results read. */
+  found: number;
+  notFound: number;
+  failed: number;
+  /** Still running: sent, waiting for a next page, or waiting to be tried again. */
+  running: number;
+  /** Checks tried again the same day after a search the provider could not run. */
+  retried: number;
+  /** Checks read a second time to confirm a drop to "not found". */
+  confirmed: number;
+  /** Results pages of the readings recorded (a confirmed drop's first reading is in its cost, not here). */
+  pages: number;
+  costUsd: number;
 }
 
 /** The ceiling on the monthly budget an admin can set, as a guard against a typo. */

@@ -33,6 +33,38 @@ one before, so a check of a deep keyword takes a few passes. After "Check now", 
 
 Projects set to Top 30, which is no longer offered, were moved to Top 50.
 
+## Many keywords
+
+A pass runs every ten minutes. It first sends what checks under way need next (the next stage, a retry that is now
+due, a confirmation), then the keywords due today. Each pass is limited to three minutes of sending, so a large
+instance spreads the day's checks over several passes. Anything not sent is left unclaimed, and the next pass starts
+30 seconds later instead of at the next ten minutes. "Check now" never waits behind a scheduled pass: the scheduled
+pass stops before its next batch (once it has sent one), and the project's check goes next. Keywords as long
+unchecked are taken in search order, so identical searches of different projects are sent in the same pass.
+
+- **Same-day retries:** a search the provider could not run and did not charge for gets tried again an hour later,
+  at most twice more that day, and never after midnight UTC (the next day's check is due by then). An empty answer still empty after its three tries counts, and so does Bright Data
+  failing (5xx). If it still cannot be read, it fails for the day; when its day ends, one that had read earlier pages
+  is recorded with what they held. A lost reply may have been billed, so it is not tried again that day.
+- **Confirmed drops:** results vary from one request to the next. When a keyword that ranked on its last check now
+  reads "not found", it is read once more five minutes later, from the first page, and that second reading is what
+  is recorded. This applies with every provider, and the second reading is paid for like the first. If the budget
+  never allows the second reading, the check ends its day as "not found". A keyword that was not found before, has
+  no earlier check, or ranked for a domain the project no longer tracks, is not read twice. Nor is one whose second
+  reading would fall after midnight UTC, the same as a retry.
+- **One search for identical keywords (Bright Data):** when several projects track the same keyword, from the same
+  place, on the same device, in the same language, Bright Data reads it once. Each project's check is booked an
+  equal share of what it cost.
+- **What admins see:** System Settings → Integrations → Keyword rank tracking shows the last 7 days per provider.
+  It lists checks, found, not found, failed, still running, retried, confirmed, pages read and cost. "Pages" counts
+  the readings recorded: a confirmed drop's first reading is in its cost, not in its pages.
+
+`apps/api/test/rank-load.test.ts` runs the tracker and the Bright Data adapter against a simulated SERP API, with
+pages that come back empty now and then, keywords several projects share, and drops to confirm. In CI it runs 300
+keywords and checks the outcome: every keyword checked once, every position the one planted, shared searches bought
+once, and the charges equal to what the checks cost. Set `SW_RANK_LOAD_KEYWORDS` (with `SW_RANK_LOAD_LATENCY_MS`
+and `SW_RANK_LOAD_TIME_SCALE`) for a measured run; see the file.
+
 ## What a position means
 
 - **Positions count the way Google and Search Console count them.** Position 1 is the first result. A featured
@@ -88,12 +120,17 @@ key may read it.
 - **Google's redirect links:** Google wraps some results in its own redirect, `google.com/goto?url=…`, and on some
   pages every result. Sitewright reads such a result by the address Google shows under it. When that address is cut
   short by a breadcrumb ("site.na › services › …"), the ranking page is recorded as the site's home page.
+- **Searches at once:** **Searches at once** sets how many searches are read at the same time: 10 unless set, at
+  most 20. A page takes about three seconds, so 10 at once read about 200 pages a minute, far under the 1,000
+  requests a minute Bright Data allows. Bright Data refuses the same query sent twice at once. Identical searches
+  are read once anyway, so that never happens.
 - **Empty answers:** some searches come back empty, when Google challenged Bright Data's connection with a captcha.
   On 17 November 2026 that was about one request in four for some searches. An empty answer is not billed, and the
   page is tried again twice, 16 seconds apart, as Bright Data advises. A search refused for a moment ("this query
-  recently failed") is tried again the same way.
-- **A request Bright Data could not run** (refused for its place, say) is not billed. That search fails for the day
-  and is tried again the next; the others go on.
+  recently failed") is tried again the same way. A search that is still empty, or Bright Data failing (5xx), is
+  tried again an hour later (see [Many keywords](#many-keywords)).
+- **A request Bright Data refused for itself** (HTTP 400, for its place, say) is not billed. That search fails for
+  the day and is tried again the next; the others go on.
 - **Results vary between requests.** The same search a few minutes apart, through two connections, can put the site
   on page 2 or leave it out of a shorter list. That is Google's answer to each request, not a fault in the reading.
 - **A reply that was lost, or came back but could not be read,** may have been billed, and is booked.

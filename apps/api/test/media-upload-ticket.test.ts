@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -80,6 +81,19 @@ describe('media upload tickets', () => {
     // …and it is really in the library.
     const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/media`, cookies: { sw_session: t } });
     expect((list.json() as { items: unknown[] }).items).toHaveLength(1);
+  });
+
+  it('★ checks the ticket BEFORE staging a byte — an unknown token never reaches the disk', async () => {
+    const staging = join(mediaRoot, '.uploads-tmp');
+    const unknown = await redeem('/media-upload/11111111-2222-3333-4444-555555555555', 'b.png', PNG_1X1);
+    expect(unknown.statusCode).toBe(404);
+    expect(unknown.json()).toEqual({ error: 'upload ticket is unknown, expired or already used' });
+    expect(existsSync(staging)).toBe(false); // the body parser, which creates it, never ran
+    // Presence guard: a live ticket does stage through that directory, so its absence above means something.
+    const { t, projectId } = await setup('early@e.test');
+    const { uploadPath } = (await mint(t, projectId)).json() as { uploadPath: string };
+    expect((await redeem(uploadPath, 'a.png', PNG_1X1)).statusCode).toBe(201);
+    expect(existsSync(staging)).toBe(true);
   });
 
   it('★ is SINGLE-USE — a replay is indistinguishable from an unknown token', async () => {

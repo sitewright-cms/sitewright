@@ -9,6 +9,28 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Security
+
+- **The editor's and agents' API checks who is calling before it reads a request body.** Each route used to
+  check the session or access key only after the body had been read and parsed, up to 4 MB for a save and
+  60 MB for a message to the on-page agent, so anyone could make the server do that work on every request.
+  Writes under `/projects`, `/admin`, `/account` and `/invites`, and calls to `/mcp`, now refuse a request
+  without a valid credential (401) first. One answer changes: a dead access key on a route that only accepts
+  a signed-in session now gets 401 instead of 403.
+- **Agents' upload links check the link before they store the upload.** An unknown, expired or used link
+  was refused (404) only after the upload had been written to disk.
+
+### Changed
+
+- **A web application firewall in front of Sitewright is no longer recommended.** [docs/waf.md](docs/waf.md)
+  now says so, and why. `docs/waf/sitewright-before.conf` is now the list of exceptions for a WAF that stays
+  anyway: it leaves the editor's and agents' paths alone entirely, plus one rule each on the statistics
+  beacon, local apps' sign-in, passwords and payment webhooks. With nginx, the guide routes those paths
+  around ModSecurity instead and limits bodies to 1 MB where it stays on, because ModSecurity holds a
+  whole body in memory before it refuses it (measured: 150 MB took the WAF from 157 to 493 MiB). The 0.82.0
+  file instead exempted requests by the format of their credential, which was too complex and too fragile
+  to recommend.
+
 ## [0.82.0] — 2026-11-17
 
 ### Added

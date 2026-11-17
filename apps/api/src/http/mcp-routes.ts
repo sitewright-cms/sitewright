@@ -30,6 +30,32 @@ const MCP_RL_BASE = 120;
 /** The rate-limit window in seconds — the floor a 429 reports when the plugin set no `retry-after`. */
 const RATE_LIMIT_WINDOW_SECONDS = 60;
 
+/**
+ * Thrown by the pre-parse bearer check when the request carries no live token; the route's error handler
+ * answers it with the OAuth challenge. Carries a 401 of its own, so even a handler that did not know it
+ * would not turn it into a 500.
+ */
+class ChallengeRequired extends Error {
+  readonly statusCode = 401;
+  constructor() {
+    super('authentication required');
+  }
+}
+
+/**
+ * Thrown by the pre-parse bearer check when the token's scope cannot be looked up for a reason other than
+ * the token itself (a 429 from the introspection's own rate limit, a 5xx). Answered as a JSON-RPC error
+ * before the body is read — so its `id` is null, as for the rate limiter's own 429.
+ */
+class IntrospectionFailed extends Error {
+  constructor(
+    readonly statusCode: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 function bearerOf(req: FastifyRequest): string | undefined {
   const header = req.headers.authorization;
   const match = header ? /^Bearer\s+(\S+)$/i.exec(header) : null;
@@ -66,8 +92,11 @@ export function registerMcpRoutes(
     origins: () => PlatformOriginSet;
   },
 ): void {
-  // A SitewrightClient whose every request is an in-process app.inject carrying the bearer token.
-  const injectClient = (token: string, publicOrigin: string): SitewrightClient => {
+  // A SitewrightClient whose every request is an in-process app.inject carrying the bearer token — and the
+  // caller's address. Without it every inject came from 127.0.0.1, so wherever a bucket is keyed by address
+  // (a bearer not yet proven live), every client shared ONE: a stranger sending made-up tokens used up the
+  // introspection budget of every agent's first call on the instance.
+  const injectClient = (token: string, publicOrigin: string, remoteAddress: string): SitewrightClient => {
     const fetchImpl: FetchLike = async (input, init) => {
       // SitewrightClient only ever issues GET/POST/PUT/DELETE.
       const res = (await app.inject({
@@ -75,6 +104,7 @@ export function registerMcpRoutes(
         url: input,
         headers: init?.headers,
         payload: init?.body,
+        remoteAddress,
         // An aborted tool call CLOSES the injected request, which is what a long route (the page-speed
         // audit) listens for to kill its browser and free its render slot.
         ...(init?.signal ? { signal: init.signal } : {}),
@@ -129,21 +159,32 @@ export function registerMcpRoutes(
   // practice (project binding + role + capabilities), so a short cache removes the hidden ceiling; every
   // TOOL call still re-validates the bearer in-process, so a revoked key fails closed within the TTL anyway.
   const SCOPE_TTL_MS = 15_000;
-  const scopeCache = new Map<string, { scope: Awaited<ReturnType<SitewrightClient['introspect']>>; exp: number }>();
+  type McpScope = Awaited<ReturnType<SitewrightClient['introspect']>>;
+  const scopeCache = new Map<string, { scope: McpScope; exp: number }>();
 
-  const handle = async (req: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
-    // issuerOf prefers SW_PUBLIC_URL, else derives from the request — same single-origin assumption
-    // the OAuth routes make (behind a TLS proxy set SW_PUBLIC_URL or TRUST_PROXY so this isn't
-    // `http://…`). Only used to point the host at our (same-origin) protected-resource metadata; the
-    // real auth boundary is the in-process token validation below.
-    const challenge = (): FastifyReply =>
-      reply
-        .code(401)
-        .header('WWW-Authenticate', `Bearer resource_metadata="${issuerOf(req, opts.origins())}/.well-known/oauth-protected-resource"`)
-        .send({ error: 'unauthorized', error_description: 'Authenticate via OAuth to use the Sitewright MCP endpoint.' });
+  // issuerOf prefers SW_PUBLIC_URL, else derives from the request — same single-origin assumption
+  // the OAuth routes make (behind a TLS proxy set SW_PUBLIC_URL or TRUST_PROXY so this isn't
+  // `http://…`). Only used to point the host at our (same-origin) protected-resource metadata; the
+  // real auth boundary is the in-process token validation below.
+  const challenge = (req: FastifyRequest, reply: FastifyReply): FastifyReply =>
+    reply
+      .code(401)
+      .header('WWW-Authenticate', `Bearer resource_metadata="${issuerOf(req, opts.origins())}/.well-known/oauth-protected-resource"`)
+      .send({ error: 'unauthorized', error_description: 'Authenticate via OAuth to use the Sitewright MCP endpoint.' });
+  /** The bearer the pre-parse check accepted, with its scope, for the handler. */
+  const authenticated = new WeakMap<FastifyRequest, { token: string; client: SitewrightClient; scope: McpScope }>();
 
+  /**
+   * The bearer is checked BEFORE the body is buffered and parsed (a `preParsing` hook, so behind the rate
+   * limiter): a request without a live token gets the challenge without the server parsing what it sent.
+   * A missing or dead token is thrown as {@link ChallengeRequired}, a failed lookup as
+   * {@link IntrospectionFailed}: every refusal happens before the body is parsed. (A failed lookup used to
+   * wait for the body so its JSON-RPC error could carry the request's id — which let a stranger who had
+   * used up the lookups get bodies parsed after all.)
+   */
+  const authenticateFirst = async (req: FastifyRequest): Promise<void> => {
     const token = bearerOf(req);
-    if (!token) return challenge();
+    if (!token) throw new ChallengeRequired();
 
     // Resolve the token's project scope (validates it); a bad/expired token → the OAuth challenge,
     // any other API error (e.g. a 429 from the introspect rate-limit) → its real status as a JSON-RPC
@@ -151,30 +192,38 @@ export function registerMcpRoutes(
     // Only an operator-CONFIGURED origin (SW_PUBLIC_URL / approved origins) — never one guessed from the
     // Host header: behind a default proxy that is the upstream's internal name, and handing an agent a
     // bearer upload ticket on `http://api:3000` is worse than a relative address. Unconfigured → relative.
-    const client = injectClient(token, resolvePlatformOrigin(req, opts.origins())?.replace(/\/$/, '') ?? '');
+    const client = injectClient(token, resolvePlatformOrigin(req, opts.origins())?.replace(/\/$/, '') ?? '', req.ip);
     // Cache key = the token's sha256 (the codebase-wide rule: raw tokens are never persisted or held
     // beyond the request), so a heap inspection of the cache yields no usable bearer material.
     const cacheKey = hashApiToken(token);
     const cached = scopeCache.get(cacheKey);
-    let scope;
     if (cached && cached.exp > Date.now()) {
-      scope = cached.scope;
       // The client instance is per-request — seed it so tool calls (which read the client's own
       // introspected scope for project paths) work without re-spending an introspect request.
-      client.primeScope(scope);
-    } else {
-      try {
-        scope = await client.introspect();
-      } catch (err) {
-        if (err instanceof SitewrightApiError) {
-          if (err.status === 401) return challenge();
-          return rpcError(reply, err.status, `mcp_unavailable: ${err.message}`, rpcIdOf(req.body));
-        }
-        throw err;
-      }
-      if (scopeCache.size > 500) scopeCache.clear(); // bound memory on token churn; refill is one introspect
-      scopeCache.set(cacheKey, { scope, exp: Date.now() + SCOPE_TTL_MS });
+      client.primeScope(cached.scope);
+      authenticated.set(req, { token, client, scope: cached.scope });
+      return;
     }
+    let scope: McpScope;
+    try {
+      scope = await client.introspect();
+    } catch (err) {
+      if (err instanceof SitewrightApiError) {
+        if (err.status === 401) throw new ChallengeRequired();
+        throw new IntrospectionFailed(err.status, `mcp_unavailable: ${err.message}`);
+      }
+      throw err;
+    }
+    if (scopeCache.size > 500) scopeCache.clear(); // bound memory on token churn; refill is one introspect
+    scopeCache.set(cacheKey, { scope, exp: Date.now() + SCOPE_TTL_MS });
+    authenticated.set(req, { token, client, scope });
+  };
+
+  const handle = async (req: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
+    const auth = authenticated.get(req);
+    // authenticateFirst either records the bearer or throws; without its record the hook is not wired.
+    if (!auth) throw new Error('mcp: the bearer was not checked before the handler (preParsing hook missing)');
+    const { token, client, scope } = auth;
 
     // Stateless transport (no session store): the bearer token carries all state, so each request is
     // independent. `enableJsonResponse` returns a single JSON reply (no SSE). staticAuth: the host
@@ -221,11 +270,20 @@ export function registerMcpRoutes(
     }
   };
 
-  // Route-level error handler: a 429 thrown by the rate-limit hook (or an unexpected 500) would otherwise
+  // Route-level error handler. A ChallengeRequired from authenticateFirst becomes the OAuth challenge, an
+  // IntrospectionFailed its JSON-RPC error. A 429 thrown by the rate-limit hook (or an unexpected 500) would otherwise
   // go out as the app-wide bare `{ error: … }` JSON — not a JSON-RPC envelope — which stateless MCP hosts
   // surface as an undefined RPC error. The rate-limit plugin's retry-after/x-ratelimit-* headers are
   // already on the reply and survive this handler; the message tells the agent to honor them.
   const mcpErrorHandler = (error: { statusCode?: number }, req: FastifyRequest, reply: FastifyReply): void => {
+    if (error instanceof ChallengeRequired) {
+      void challenge(req, reply);
+      return;
+    }
+    if (error instanceof IntrospectionFailed) {
+      void rpcError(reply, error.statusCode, error.message, rpcIdOf(req.body));
+      return;
+    }
     const status = error.statusCode ?? 500;
     if (status === 429) {
       // ★ SAY THE NUMBER. Pointing at the `retry-after` HEADER only helps a caller that can read
@@ -246,7 +304,7 @@ export function registerMcpRoutes(
     }
     void rpcError(reply, status, 'internal error', rpcIdOf(req.body));
   };
-  app.post('/mcp', { config: opts.rlAgent(MCP_RL_BASE), errorHandler: mcpErrorHandler }, handle);
+  app.post('/mcp', { config: opts.rlAgent(MCP_RL_BASE), errorHandler: mcpErrorHandler, preParsing: authenticateFirst }, handle);
   // Stateless JSON mode uses neither the standalone SSE stream (GET) nor session termination
   // (DELETE) — 405 so a spec-compliant host doesn't open and wait on a stream that never arrives
   // (and we never buffer a streaming body via .text()).

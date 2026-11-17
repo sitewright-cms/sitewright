@@ -162,6 +162,17 @@ export class UploadTicketStore {
     };
   }
 
+  /**
+   * Whether `token` names a live ticket, WITHOUT consuming it. The redeem route asks this before it reads
+   * a byte of the upload, so an unknown token costs no disk. It still `take()`s once the bytes are in:
+   * claiming the ticket up front would burn it on a transfer that breaks halfway, and the agent's retry
+   * would find it gone.
+   */
+  has(token: string): boolean {
+    const found = this.tickets.get(token);
+    return found !== undefined && found.expiresAt > this.now();
+  }
+
   /** Live ticket count (tests + the maintenance sweep). */
   get size(): number {
     this.sweep();

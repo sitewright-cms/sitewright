@@ -30,6 +30,22 @@ describe('UploadTicketStore', () => {
     expect(store.take(token)).toBeUndefined();
   });
 
+  it('has() peeks without consuming — and says no for an unknown, used or expired token', () => {
+    let now = 1_000;
+    const store = new UploadTicketStore({ ttlMs: 60_000, now: () => now });
+    const token = store.put(scope());
+    expect(store.has(token)).toBe(true);
+    expect(store.has(token)).toBe(true); // asking twice leaves it there
+    expect(store.has('11111111-2222-3333-4444-555555555555')).toBe(false);
+    expect(store.take(token)).toBeDefined(); // …so the redemption still finds it
+    expect(store.has(token)).toBe(false);
+
+    const later = store.put(scope());
+    now += 60_000; // exactly at expiry, as take() counts it
+    expect(store.has(later)).toBe(false);
+    expect(store.take(later)).toBeUndefined();
+  });
+
   it('a plain ticket carries no alt or font keys at all', () => {
     const store = new UploadTicketStore();
     const taken = store.take(store.put(scope()));

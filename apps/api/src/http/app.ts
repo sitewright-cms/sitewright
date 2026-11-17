@@ -233,6 +233,7 @@ import { isPreviewAssetPath } from './preview-asset-path.js';
 import { signPreview, verifyPreview, signShare, verifyShare, shareIdOf } from './preview-token.js';
 import { PreviewStore } from './preview-store.js';
 import { UploadTicketStore, type UploadTicketFont } from './upload-ticket-store.js';
+import { credentialRequiredBeforeBody, requestCarriesBody } from './credential-gate.js';
 import { PREVIEW_BRIDGE_JS } from './preview-bridge.js';
 import { PREVIEW_IMAGE_RETRY_JS } from './preview-image-retry.js';
 import { PreviewEncodeLane } from './preview-encode-lane.js';
@@ -3108,6 +3109,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return token;
   }
 
+  // ---- Project keys (`swk_…`: an access key, an OAuth-issued key or an agent loop's key) ----
+  // Resolved once for the route's own checks (the pre-parse credential check looks once more, before the body).
+  // Every successful resolution marks the key verified for the limiter, whichever caller made it.
+  const apiKeyMemo = new WeakMap<FastifyRequest, ResolvedApiKey | null>();
+  /** The live project key this request's bearer resolves to, or null (no bearer, unknown, revoked or expired). */
+  async function apiKeyOf(req: FastifyRequest): Promise<ResolvedApiKey | null> {
+    const cached = apiKeyMemo.get(req);
+    if (cached !== undefined) return cached;
+    const bearer = bearerToken(req);
+    const key = bearer === undefined ? null : await apiKeysRepo.resolve(bearer);
+    if (key && bearer !== undefined) markApiKeyVerified(bearer); // the limiter's agent lane opens only for a token proven live here
+    apiKeyMemo.set(req, key);
+    return key;
+  }
+
   function requireTokenCapability(token: ResolvedMemberToken, capability: MemberTokenCapability): void {
     if (!token.capabilities.includes(capability)) {
       throw new ForbiddenError(`this member token lacks the "${capability}" capability`);
@@ -3167,6 +3183,42 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (passwordChangePending(session)) {
       return reply.code(403).send({ error: PASSWORD_CHANGE_REQUIRED });
     }
+  });
+
+  // ---- A credential before the body ----
+  // The authenticated API asks who is calling inside each handler, which Fastify reaches only after it has
+  // buffered and parsed the body — up to 4 MiB for a save or an import, 60 MiB for a message to the on-page
+  // agent. Without this, a caller holding nothing could make the server do that work per request and only
+  // then be refused. Which routes: see credential-gate.ts. (The refused bytes still arrive — Node discards
+  // what is left of the request after the answer, keeping the connection usable; closing it instead would
+  // make a browser still sending a large save see a network error rather than the 401.)
+  //
+  // `preParsing`, not `onRequest`: the rate limiter is a ROUTE-level onRequest hook, which runs after every
+  // app-level one, and this check reads the database for any bearer shaped like ours. Here it runs behind
+  // the limiter, like the handlers' own checks did. Identity only — no role, project or capability: the
+  // route still decides all of that, with lookups of its own (see the preValidation hook). A refusal is a 401, as
+  // the route's own check gives, mostly with its message too; the one difference is a DEAD bearer on a
+  // session-only route, which that route answered 403 for any bearer. A request without a body is left
+  // entirely to the route.
+  const checkedBeforeBody = new WeakSet<FastifyRequest>();
+  app.addHook('preParsing', async (req) => {
+    if (!requestCarriesBody(req.headers) || !credentialRequiredBeforeBody(req.method, req.routeOptions.url)) return;
+    checkedBeforeBody.add(req);
+    // A live session first: account routes take one even when some proxy adds an Authorization header.
+    if ((await resolveSessionOf(req)) !== null) return;
+    if (bearerToken(req) === undefined) throw new UnauthorizedError('authentication required');
+    // A dead member token, or one beside a session cookie, throws its own 401 here, as it does in the route.
+    if (await memberTokenOf(req)) return;
+    if ((await apiKeyOf(req)) === null) throw new UnauthorizedError('invalid or expired API key');
+  });
+  // …and once the body is in, the route looks the credential up AFRESH. A large save can take a while to
+  // arrive, and a session ended or a key revoked meanwhile must not be honoured on the strength of a
+  // lookup made before it started — which is when the route used to look.
+  app.addHook('preValidation', async (req) => {
+    if (!checkedBeforeBody.has(req)) return;
+    sessionMemo.delete(req);
+    memberTokenMemo.delete(req);
+    apiKeyMemo.delete(req);
   });
 
   // Instance/platform admin = a user whose persisted DB `platform_role` is `admin` (the first admin is
@@ -3408,9 +3460,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         };
         return { ctx, project, apiKey };
       }
-      const key = await apiKeysRepo.resolve(bearer);
+      const key = await apiKeyOf(req);
       if (!key) throw new UnauthorizedError('invalid or expired API key');
-      markApiKeyVerified(bearer); // the limiter's agent lane opens only for a token proven live here
       // The key is bound to one project; reject any other route (no cross-project
       // reach). 404 — not 403 — so a key cannot probe which projects exist.
       if (key.projectId !== req.params.projectId) {
@@ -4375,9 +4426,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         agentInstructions: await instanceSettingsRepo.getEffectiveAgentInstructions(),
       });
     }
-    const key = await apiKeysRepo.resolve(bearer);
+    const key = await apiKeyOf(req);
     if (!key) throw new UnauthorizedError('invalid or expired API key');
-    markApiKeyVerified(bearer);
     return reply.send({
       kind: 'project',
       projectId: key.projectId,
@@ -7560,6 +7610,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // The ticket caps what may be spent on an unauthenticated request; the same ceiling the
         // multipart route uses, enforced before the body is buffered.
         bodyLimit: MAX_UPLOAD_BYTES,
+        // The ticket is this route's credential, so it is checked before the parser above writes a byte
+        // to disk — otherwise any made-up token could have the server stage up to MAX_UPLOAD_BYTES, per
+        // request, only to delete it again. Same answer as a failed redemption below. Peeked, not taken:
+        // the redemption still consumes it once the bytes are in. (Parallel uploads to ONE live ticket all
+        // pass the peek and stage, and all but one are then refused and deleted — as before, and only for
+        // someone who holds a live ticket.)
+        preParsing: async (req) => {
+          if (!uploadTickets.has(req.params.token)) throw new NotFoundError('upload ticket is unknown, expired or already used');
+        },
       },
       async (req, reply) => {
         // The body is already on disk by the time this runs (see the parser above), so EVERY exit
@@ -11997,15 +12056,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // A bearer token carrying the one capability that authors GATEWAY DEFINITIONS. Exact-string
       // check, as for every other capability — no prefix matching.
       hasProviderWriteScope: async (req) => {
-        const token = bearerToken(req);
-        if (token === undefined) return false;
+        if (bearerToken(req) === undefined) return false;
         // A member token carries the capability the same way and is held to the same rule below: its
         // OWNER must be an instance admin.
         const memberToken = await memberTokenOf(req).catch(() => null);
         if (memberToken) {
           return memberToken.capabilities.includes('payments:provider:write') && (await isInstanceAdmin(memberToken.userId));
         }
-        const key = await apiKeysRepo.resolve(token).catch(() => null);
+        const key = await apiKeyOf(req).catch(() => null);
         if (key?.capabilities.includes('payments:provider:write') !== true) return false;
         // ★★ The capability is NECESSARY BUT NOT SUFFICIENT. A gateway definition is instance-wide
         // infrastructure, while an API key is bound to ONE project and may be minted by that

@@ -82,6 +82,59 @@ describe('remote MCP transport (/mcp)', () => {
     expect(res.headers['www-authenticate']).toContain('Bearer');
   });
 
+  it('★ checks the bearer BEFORE it reads the body (a malformed body still gets the challenge)', async () => {
+    // A parsed malformed body answers 400; the challenge for it proves the body was never parsed.
+    const send = (token: string | null) =>
+      app.inject({
+        method: 'POST',
+        url: '/mcp',
+        headers: { ...MCP_HEADERS, ...(token ? { authorization: `Bearer ${token}` } : {}) },
+        payload: '{"jsonrpc":"2.0","id":1,"method":"initialize"',
+      });
+    for (const token of [null, 'swk_0000000000000000000000000000000000000000000000000000000000000000']) {
+      const res = await send(token);
+      expect(res.statusCode).toBe(401);
+      expect(res.headers['www-authenticate']).toContain('/.well-known/oauth-protected-resource');
+    }
+    // Presence guard: with a live token the same body does reach the parser.
+    const { token } = await setup();
+    expect((await send(token)).statusCode).toBe(400);
+  });
+
+  it('refuses an introspection failure other than 401 as JSON-RPC, before it reads the body', async () => {
+    const { token } = await setup();
+    // Spend the token's budget on the introspection route, so the next /mcp call's introspection is refused.
+    let refused = false;
+    for (let i = 0; i < 40 && !refused; i += 1) {
+      const self = await app.inject({ method: 'GET', url: '/api-key/self', headers: { authorization: `Bearer ${token}` } });
+      refused = self.statusCode === 429;
+    }
+    expect(refused).toBe(true);
+    // A malformed body: a 400 would mean it was parsed.
+    const res = await app.inject({ method: 'POST', url: '/mcp', headers: { ...MCP_HEADERS, authorization: `Bearer ${token}` }, payload: '{"jsonrpc":"2.0","id":7' });
+    expect(res.statusCode).toBe(429);
+    const body = res.json() as { jsonrpc: string; id: unknown; error: { message: string } };
+    expect(body.jsonrpc).toBe('2.0');
+    expect(body.id).toBeNull(); // the body was never read, as for the rate limiter's own 429
+    expect(body.error.message).toMatch(/^mcp_unavailable: /);
+  });
+
+  it('★ a stranger spending the introspection budget does not lock out another client', async () => {
+    // The in-process introspection used to come from 127.0.0.1 whoever called, so an unproven bearer's
+    // bucket was ONE for the whole instance: made-up tokens from one address refused every agent's first call.
+    const stranger = { ...MCP_HEADERS, 'content-type': 'application/json' };
+    let spent = false;
+    for (let i = 0; i < 40 && !spent; i += 1) {
+      const fake = `swk_${randomBytes(32).toString('hex')}`;
+      const res = await app.inject({ method: 'POST', url: '/mcp', remoteAddress: '203.0.113.7', headers: { ...stranger, authorization: `Bearer ${fake}` }, payload: init });
+      spent = res.statusCode === 429;
+    }
+    expect(spent).toBe(true); // presence guard: the stranger did exhaust THEIR budget
+    const { token } = await setup();
+    const res = await app.inject({ method: 'POST', url: '/mcp', remoteAddress: '198.51.100.20', headers: { ...MCP_HEADERS, authorization: `Bearer ${token}` }, payload: init });
+    expect(res.statusCode).toBe(200);
+  });
+
   it('completes the initialize handshake for a valid bearer token', async () => {
     const { token } = await setup();
     const res = await mcp(token, init);

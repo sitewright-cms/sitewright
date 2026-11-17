@@ -57,6 +57,26 @@ const ACCEPTED = {
     "image) and the fixed '**/**' that @fastify/static gives glob at startup. No user input is a pattern.",
 };
 
+/**
+ * HIGH advisories accepted ONLY while the package stays out of the production tree — the dependencies the server
+ * image is built from. Added 2026-11-17 for the first high with no fixed release at all: a high in the build and test
+ * toolchain alone (eslint, vite, vitest) never ships, yet blocked every merge, the fix included, until upstream
+ * published one.
+ *
+ * Each entry names its package, and is honoured only while a production-only audit (`pnpm audit --prod`) does NOT
+ * report it: the moment the package reaches the production tree, the advisory gates again. Critical is never
+ * waivable, and a stale entry fails like one in ACCEPTED.
+ */
+const DEV_ONLY_ACCEPTED = {
+  'GHSA-fc5q-39xc-vjpf': {
+    module: 'picomatch',
+    reason:
+      'picomatch <=4.0.7: ReDoS through a crafted glob PATTERN with repeated single-branch extglobs. No fixed release ' +
+      'exists (4.0.7 is the latest; the advisory names none). It reaches only the build and test toolchain — fdir and ' +
+      "tinyglobby under vite, vitest and typescript-eslint — never the production tree, and every pattern it is given is the repo's own config glob: no user input is a pattern.",
+  },
+};
+
 const SEVERITY_RANK = { info: 0, low: 1, moderate: 2, high: 3, critical: 4 };
 const FLOOR = SEVERITY_RANK.moderate;
 
@@ -97,6 +117,8 @@ const advisories = Object.values(report.advisories);
 const gating = [];
 const accepted = [];
 const below = [];
+/** Highs that DEV_ONLY_ACCEPTED would waive, if the production-only audit agrees they are not in production. */
+const devOnly = [];
 
 for (const a of advisories) {
   // `Object.hasOwn`, not a bare lookup: a severity of "constructor" or "toString" would otherwise
@@ -109,9 +131,37 @@ for (const a of advisories) {
     below.push(a);
     continue;
   }
-  // High and critical are never waivable, whatever the map says.
+  // High and critical are never waivable through ACCEPTED, whatever the map says.
   const waivable = rank === FLOOR && Object.hasOwn(ACCEPTED, a.github_advisory_id);
-  (waivable ? accepted : gating).push(a);
+  // A high may be, through DEV_ONLY_ACCEPTED — for the package the entry names, and only out of production (below).
+  const devCandidate =
+    rank === SEVERITY_RANK.high &&
+    Object.hasOwn(DEV_ONLY_ACCEPTED, a.github_advisory_id) &&
+    DEV_ONLY_ACCEPTED[a.github_advisory_id].module === a.module_name;
+  (waivable ? accepted : devCandidate ? devOnly : gating).push(a);
+}
+
+// Only when a dev-only waiver is in play: a second audit, of the production tree alone. Fails closed — an answer that
+// cannot be read waives nothing.
+if (devOnly.length) {
+  const prod = spawnSync('pnpm', ['audit', '--json', '--prod'], { encoding: 'utf8', shell: false, maxBuffer: 64 * 1024 * 1024 });
+  let inProduction = null;
+  try {
+    const parsed = JSON.parse(`${prod.stdout ?? ''}`);
+    if (parsed && typeof parsed.advisories === 'object' && parsed.advisories !== null) {
+      inProduction = new Set(Object.values(parsed.advisories).map((p) => p?.github_advisory_id));
+    }
+  } catch {
+    inProduction = null;
+  }
+  for (const a of devOnly) {
+    if (inProduction && !inProduction.has(a.github_advisory_id)) accepted.push(a);
+    else {
+      if (!inProduction) console.error(`  could not audit the production tree alone: ${a.github_advisory_id} gates`);
+      else console.error(`  ${a.github_advisory_id} is in the PRODUCTION tree: its dev-only acceptance does not apply`);
+      gating.push(a);
+    }
+  }
 }
 
 // Every field here comes from the registry, so none of it is guaranteed to be a string. A missing
@@ -125,7 +175,7 @@ for (const a of accepted) console.log(`  accepted     ${line(a)}`);
 
 // A stale acceptance is as dangerous as a missing one: it is an exemption nobody is re-reading.
 const seen = new Set(advisories.map((a) => a.github_advisory_id));
-const stale = Object.keys(ACCEPTED).filter((id) => !seen.has(id));
+const stale = [...Object.keys(ACCEPTED), ...Object.keys(DEV_ONLY_ACCEPTED)].filter((id) => !seen.has(id));
 
 let failed = false;
 if (gating.length) {
@@ -133,7 +183,8 @@ if (gating.length) {
   console.error(`\n✖ ${gating.length} advisory(ies) at or above ${Object.keys(SEVERITY_RANK)[FLOOR]}, not accepted:\n`);
   for (const a of gating) console.error(`    ${line(a)}\n      fixed in: ${a.patched_versions}\n      ${a.url}`);
   console.error('\n  Fix by pinning in `overrides`. If it is genuinely unreachable in this codebase,');
-  console.error('  add the GHSA id to ACCEPTED in scripts/audit-gate.mjs WITH the reason.');
+  console.error('  add the GHSA id to ACCEPTED in scripts/audit-gate.mjs WITH the reason (a moderate), or —');
+  console.error('  a high in the build and test toolchain alone, with no fix — to DEV_ONLY_ACCEPTED.');
 }
 if (stale.length) {
   failed = true;

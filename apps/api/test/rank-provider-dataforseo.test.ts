@@ -148,8 +148,8 @@ describe('DataForSEO submit', () => {
 });
 
 describe('DataForSEO collect', () => {
-  const page = (items: unknown[]) =>
-    envelope([{ id: TASK_A, status_code: 20000, result: [{ datetime: '2026-10-20 06:15:00 +00:00', items }] }]);
+  const page = (items: unknown[], extra: Record<string, unknown> = {}) =>
+    envelope([{ id: TASK_A, status_code: 20000, result: [{ datetime: '2026-10-20 06:15:00 +00:00', items, ...extra }] }]);
 
   it('reads organic results and featured snippets, skipping what it cannot use', async () => {
     const { fetch, calls } = fakeFetch({
@@ -162,7 +162,7 @@ describe('DataForSEO collect', () => {
           { type: 'organic', rank_group: 'x', url: 'https://broken.test/' },
           null,
           { type: 'organic', rank_group: 3, rank_absolute: 5, url: 'javascript://plumbers.na/%0aalert(1)', domain: 'plumbers.na' },
-        ]),
+        ], { pages_count: 3, items_count: 7 }),
       }),
     });
     const [out] = await dataForSeo.collect(CREDS, [{ checkId: 'c1', ref: TASK_A }], { fetch });
@@ -177,8 +177,23 @@ describe('DataForSEO collect', () => {
           { kind: 'organic', position: 1, absolutePosition: 3, url: 'https://other.test/', domain: 'other.test' },
           { kind: 'organic', position: 2, absolutePosition: 4, url: 'https://www.plumbers.na/', domain: 'www.plumbers.na' },
         ],
+        // How many results pages Google served: three, for a search that asked for ten.
+        pagesRead: 3,
       },
     });
+  });
+
+  it('leaves the pages out when DataForSEO does not say, or says something unusable', async () => {
+    for (const extra of [{}, { pages_count: 'many' }, { pages_count: -1 }]) {
+      const { fetch } = fakeFetch({ '/v3/serp/google/organic/task_get/regular/': () => ({ body: page([], extra) }) });
+      const [out] = await dataForSeo.collect(CREDS, [{ checkId: 'c1', ref: TASK_A }], { fetch });
+      expect(out).toMatchObject({ state: 'done' });
+      expect((out as { page: object }).page).not.toHaveProperty('pagesRead');
+    }
+  });
+
+  it('may be read again for free within the 30 days DataForSEO keeps a result', () => {
+    expect(dataForSeo.freeRereadDays).toBe(29);
   });
 
   it('reports a task still in the queue as pending, an unknown one as failed, and never puts a forged id in a URL', async () => {
@@ -268,6 +283,7 @@ describe('findRank — where the site is on a results page, the same for every p
       position: 4,
       absolutePosition: 5,
       url: 'https://www.plumbers.na/services/',
+      featured: false,
     });
   });
 
@@ -277,9 +293,26 @@ describe('findRank — where the site is on a results page, the same for every p
     expect(findRank(entries, { domain: 'plumbers.na', includeSubdomains: true })?.position).toBe(2);
   });
 
-  it('does not count a featured snippet as a position of its own', () => {
-    const entries = [entry(1, 'https://plumbers.na/faq', 'featured_snippet'), entry(6, 'https://plumbers.na/faq')];
-    expect(findRank(entries, { domain: 'plumbers.na', includeSubdomains: true })?.position).toBe(6);
+  it('counts the site’s featured snippet as position 1, as Google and Search Console do', () => {
+    // Google does not repeat the snippet's page among the ordinary results below it, so this used to read as a miss.
+    const snippet: SerpEntry = { kind: 'featured_snippet', position: 1, absolutePosition: 1, url: 'https://plumbers.na/faq', domain: '' };
+    const organic: SerpEntry = { kind: 'organic', position: 1, absolutePosition: 2, url: 'https://other.test/', domain: '' };
+    expect(findRank([snippet, organic], { domain: 'plumbers.na', includeSubdomains: true })).toEqual({
+      position: 1,
+      absolutePosition: 1,
+      url: 'https://plumbers.na/faq',
+      featured: true,
+    });
+  });
+
+  it('numbers the ordinary results after someone else’s snippet from 2, and keeps the better of two listings', () => {
+    const page: SerpEntry[] = [
+      { kind: 'featured_snippet', position: 1, absolutePosition: 1, url: 'https://other.test/', domain: '' },
+      { kind: 'organic', position: 1, absolutePosition: 2, url: 'https://third.test/', domain: '' },
+      { kind: 'organic', position: 2, absolutePosition: 3, url: 'https://plumbers.na/', domain: '' },
+      { kind: 'organic', position: 7, absolutePosition: 8, url: 'https://plumbers.na/contact/', domain: '' },
+    ];
+    expect(findRank(page, { domain: 'plumbers.na', includeSubdomains: true })).toMatchObject({ position: 3, featured: false, url: 'https://plumbers.na/' });
   });
 
   it("falls back to the provider's domain when the URL cannot be read", () => {

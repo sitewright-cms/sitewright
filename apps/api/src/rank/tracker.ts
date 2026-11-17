@@ -1,5 +1,5 @@
 import type { RankPassReport, RankProviderId, RankStatus } from '@sitewright/schema';
-import { findRank } from './match.js';
+import { readPage } from './match.js';
 import { RankProviderError, type RankCredentials, type RankProvider, type RankProviderIo, type RankSearch } from './providers/index.js';
 import { utcDay, type DueKeyword, type RankRepository } from './repo.js';
 
@@ -9,7 +9,7 @@ import { utcDay, type DueKeyword, type RankRepository } from './repo.js';
  * One pass: (1) collect results of queued checks from whichever provider holds them, (2) fail checks that can no
  * longer finish, (3) send the keywords due today, within the month's budget. Every step is decided from the
  * database, so a restart or a skipped pass loses nothing: the next pass sees the same due keywords and the same
- * queued checks.
+ * queued checks. The scheduled pass then (4) re-reads a few stored results of older checks — see `reread`.
  *
  * ★ Money:
  *   - a check is CLAIMED in the database, with its estimated cost booked, before the provider is called — so a
@@ -25,6 +25,8 @@ import { utcDay, type DueKeyword, type RankRepository } from './repo.js';
 const MAX_SENDS_PER_PASS = 1000;
 /** Queued checks asked about per pass at most. */
 const MAX_COLLECTS_PER_PASS = 500;
+/** Stored results fetched again per scheduled pass at most (free; see `reread`). */
+const MAX_REREADS_PER_PASS = 50;
 /** After a "check now", when to look for its results (the queue usually answers within minutes). */
 const FOLLOW_UP_MS = [60_000, 3 * 60_000, 10 * 60_000, 30 * 60_000];
 
@@ -46,6 +48,8 @@ export class RankTracker {
   private readonly timers = new Set<NodeJS.Timeout>();
   /** The UTC day retention last ran: it runs at most once a day, from the scheduled pass. */
   private prunedDay: string | null = null;
+  /** Providers with nothing left to re-read: no new check ever needs it, so they are not asked again until a restart. */
+  private readonly rereadDone = new Set<string>();
 
   constructor(private readonly deps: RankTrackerDeps) {}
 
@@ -62,7 +66,9 @@ export class RankTracker {
     if (this.busy) return null;
     return this.serialized(async () => {
       await this.prune();
-      return this.pass({});
+      const report = await this.pass({});
+      await this.reread();
+      return report;
     });
   }
 
@@ -185,11 +191,11 @@ export class RankTracker {
         const check = byId.get(o.checkId);
         if (!check) continue;
         if (o.state === 'done') {
-          await repo.markDone(check.id, findRank(o.page.entries, check), o.page.checkedAt);
+          await repo.markDone(check.id, readPage(o.page, check), o.page.checkedAt, o.costUsd);
           done++;
         } else if (o.state === 'failed') {
           // Final for the day: a search the provider ran and failed is not bought again until the next one.
-          await repo.markFailed(check.id, o.error);
+          await repo.markFailed(check.id, o.error, o.costUsd);
           failed++;
         }
       }
@@ -200,6 +206,55 @@ export class RankTracker {
     }
     if (done || failed) log.info({ done, failed }, 'rank tracking: collected results');
     return { done, failed };
+  }
+
+  /**
+   * RE-READS stored results of checks made before the platform kept how many results came back and whether the site's
+   * result was a featured snippet — so the recent history is read by the same rules as every check from now on.
+   *
+   * ★ Only for a provider that keeps results and charges nothing to fetch them again (`freeRereadDays`), and only
+   * within that window. Each check is tried ONCE (`markReread` records every attempt), a bounded number per pass, and
+   * never during a "check now". A failure is logged, never shown as the provider's last error: sending still works.
+   */
+  private async reread(): Promise<void> {
+    const { repo, providers, log } = this.deps;
+    const now = this.now();
+    for (const provider of Object.values(providers)) {
+      if (!provider.freeRereadDays || this.rereadDone.has(provider.id)) continue;
+      try {
+        const since = new Date(now.getTime() - provider.freeRereadDays * 86_400_000);
+        const checks = await repo.rereadable(provider.id, since, MAX_REREADS_PER_PASS);
+        if (checks.length === 0) {
+          this.rereadDone.add(provider.id);
+          continue;
+        }
+        const creds = await this.credentials(provider.id);
+        if (!creds) continue;
+        const byId = new Map(checks.map((c) => [c.id, c]));
+        const outcomes = await provider.collect(creds, checks.map((c) => ({ checkId: c.id, ref: c.ref })), this.deps.io);
+        let read = 0;
+        let featured = 0;
+        let short = 0;
+        for (const o of outcomes) {
+          const check = byId.get(o.checkId);
+          if (!check) continue;
+          // A stored result that is not ready, or not there: tried, and left as it was. Not asking again keeps the
+          // newest-first batch from filling up with the same few checks pass after pass.
+          if (o.state !== 'done') {
+            await repo.markReread(check.id, null, now);
+            continue;
+          }
+          const reading = readPage(o.page, check);
+          await repo.markReread(check.id, reading, now);
+          read++;
+          if (reading.hit?.featured) featured++;
+          if (reading.pagesRead !== null && reading.pagesRead < Math.ceil(check.depth / 10)) short++;
+        }
+        if (read > 0) log.info({ provider: provider.id, read, featured, short }, 'rank tracking: re-read stored results of earlier checks');
+      } catch (err) {
+        log.warn({ provider: provider.id, errMsg: err instanceof Error ? err.message : String(err) }, 'rank tracking: re-reading stored results failed');
+      }
+    }
   }
 
   private async send(now: Date, opts: { projectId?: string; force?: boolean }): Promise<{ status: RankStatus; sent: number; failed: number }> {
@@ -284,7 +339,9 @@ export class RankTracker {
             sent++;
           } else if (o.state === 'done') {
             const k = keywordOf.get(o.checkId);
-            await repo.markDone(o.checkId, k ? findRank(o.page.entries, k) : null, o.page.checkedAt, o.costUsd);
+            // A result for a keyword that went away meanwhile still records what the page held, with no position.
+            const reading = k ? readPage(o.page, k) : { hit: null, resultsRead: o.page.entries.length, pagesRead: o.page.pagesRead ?? null };
+            await repo.markDone(o.checkId, reading, o.page.checkedAt, o.costUsd);
             sent++;
           } else {
             await repo.markFailed(o.checkId, o.error, o.costUsd);

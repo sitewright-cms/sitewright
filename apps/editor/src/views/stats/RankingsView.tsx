@@ -73,8 +73,19 @@ function Change({ value }: { value: number | null }) {
 
 function Position({ k }: { k: RankKeywordView }) {
   if (!k.latest) return <span className="text-sm text-slate-500 dark:text-slate-400">{k.pending ? 'Checking…' : 'Not checked yet'}</span>;
-  if (k.latest.position === null) return <span className="text-sm text-slate-500 dark:text-slate-400">Not in top {k.latest.depth}</span>;
-  return <span className="text-lg font-bold tabular-nums text-slate-800 dark:text-slate-100">{k.latest.position}</span>;
+  if (k.latest.position === null) {
+    return (
+      <span className="text-sm text-slate-500 dark:text-slate-400">
+        {k.latest.resultsRead !== undefined ? `Not in the ${k.latest.resultsRead} results returned` : `Not in top ${k.latest.depth}`}
+      </span>
+    );
+  }
+  return (
+    <span className="text-lg font-bold tabular-nums text-slate-800 dark:text-slate-100">
+      {k.latest.position}
+      {k.latest.featured && <span className="ml-1.5 align-middle text-xs font-medium text-slate-500 dark:text-slate-400">featured snippet</span>}
+    </span>
+  );
 }
 
 export function RankingsView({
@@ -292,7 +303,7 @@ export function RankingsView({
       )}
 
       <p className="text-xs text-slate-500 dark:text-slate-400">
-        Positions are Google's ordinary (organic) results, 1 being the first; ads, maps and answer boxes are not counted. Days are UTC.
+        Positions count as Google counts them: 1 is the first result, and a featured snippet (the answer at the top) is a result. Ads and maps are not counted. Days are UTC.
       </p>
     </div>
   );
@@ -372,7 +383,7 @@ function KeywordRow({
             )}
             {k.latest && (
               <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                Latest: {positionText(k.latest.position, k.latest.depth)} on {longDay(k.latest.day)}
+                Latest: {positionText(k.latest.position, k.latest.depth, k.latest)} on {longDay(k.latest.day)}
                 {k.best !== null && ` · best in this period: ${k.best}`}
                 {k.latest.url && (
                   <>

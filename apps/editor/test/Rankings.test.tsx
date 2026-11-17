@@ -24,7 +24,7 @@ vi.mock('../src/api', () => ({ api, downloadStatsCsv: vi.fn() }));
 import { StatisticsTab } from '../src/views/stats/StatisticsTab';
 import type { StatisticsAccess } from '../src/lib/statistics-enabled';
 import { RankingsView } from '../src/views/stats/RankingsView';
-import { RankChart } from '../src/views/stats/RankChart';
+import { RankChart, RankSparkline, axisBottom, positionText } from '../src/views/stats/RankChart';
 import { RankTrackingSettings, type RankTrackingSettingsHandle } from '../src/views/settings/RankTrackingSettings';
 
 const project = { id: 'p1', name: 'Plumbers', slug: 'plumbers', role: 'owner' as const, siteUrl: 'https://www.plumbers.na/' };
@@ -192,6 +192,29 @@ describe('what a client reads', () => {
     expect(screen.queryByRole('region', { name: /Manage keywords/ })).toBeNull();
     expect(screen.queryByRole('form', { name: 'Add keywords' })).toBeNull();
     expect(screen.queryByText(/provider/)).toBeNull();
+  });
+
+  it('names a featured snippet, and a miss in a short list by the results that came back', async () => {
+    api.getRankings.mockResolvedValue(
+      rankings({
+        keywords: [
+          keyword({ latest: { day: '2026-10-20', checkedAt: '2026-10-20T06:00:00.000Z', position: 1, url: 'https://www.plumbers.na/', depth: 100, featured: true } }),
+          keyword({
+            id: 'k2',
+            keyword: 'geyser repair',
+            latest: { day: '2026-10-20', checkedAt: '2026-10-20T06:00:00.000Z', position: null, url: null, depth: 100, resultsRead: 29 },
+            change: null,
+            best: null,
+            series: [{ day: '2026-10-20', position: null, resultsRead: 29 }],
+          }),
+        ],
+      }),
+    );
+    render(<RankingsView project={project} />);
+    const rows = within(await screen.findByRole('table', { name: /Tracked keywords/ })).getAllByRole('row');
+    expect(rows[1]).toHaveTextContent('Not in the 29 results returned');
+    expect(rows[1]).not.toHaveTextContent('Not in top 100');
+    expect(rows[2]).toHaveTextContent('1featured snippet');
   });
 
   it('never links a ranking page whose address is not http(s): the provider’s text is shown, not run', async () => {
@@ -451,6 +474,63 @@ describe('RankChart', () => {
     const miss = Number(container.querySelector('circle[data-day="2026-10-08"]')!.getAttribute('cy'));
     expect(deep).toBeLessThan(miss); // 40 sits above the "not in the results" line of a 50-deep axis
     expect(screen.getByRole('img')).toHaveAccessibleName('k: 3 checks, best position 6, latest position 6');
+  });
+});
+
+describe('RankChart: featured snippets and short result lists', () => {
+  it('rings the site’s featured snippet and names it', () => {
+    const { container } = render(
+      <RankChart keyword="k" from="2026-10-01" to="2026-10-31" depth={100} series={[{ day: '2026-10-01', position: 3 }, { day: '2026-10-08', position: 1, featured: true }]} />,
+    );
+    expect(container.querySelector('circle[data-day="2026-10-08"]')!.hasAttribute('data-featured')).toBe(true);
+    expect(container.querySelector('circle[data-day="2026-10-01"]')!.hasAttribute('data-featured')).toBe(false);
+    expect(screen.getByRole('img')).toHaveAccessibleName('k: 2 checks, best position 1, latest position 1 (featured snippet)');
+  });
+
+  it('draws a miss in a short list just below the results that came back, not on the top-100 line', () => {
+    const { container } = render(
+      <RankChart
+        keyword="k"
+        from="2026-10-01"
+        to="2026-10-31"
+        depth={100}
+        series={[
+          { day: '2026-10-01', position: 12 },
+          { day: '2026-10-08', position: null, resultsRead: 29 },
+          { day: '2026-10-15', position: 14 },
+        ]}
+      />,
+    );
+    const short = container.querySelector('circle[data-day="2026-10-08"]')!;
+    expect(short.hasAttribute('data-short')).toBe(true);
+    // Presence guard: the axis is zoomed to 30 (the short list), not stretched to 100 as a real miss would need.
+    expect(screen.getByText('30')).toBeInTheDocument();
+    expect(screen.queryByText('100')).toBeNull();
+    expect(Number(short.getAttribute('cy'))).toBe(180 - 22); // position 30, the floor of a 30-deep axis
+    expect(screen.getByRole('img')).toHaveAccessibleName('k: 3 checks, best position 12, latest position 14');
+  });
+
+  it('the table’s trend line does not stretch to the full depth for a miss in a short list', () => {
+    const ys = (series: Parameters<typeof RankSparkline>[0]['series']) => {
+      const { container, unmount } = render(<RankSparkline series={series} depth={100} />);
+      const points = container.querySelector('polyline')!.getAttribute('points')!.split(' ').map((p) => Number(p.split(',')[1]));
+      unmount();
+      return points;
+    };
+    const short = ys([{ day: 'a', position: 12 }, { day: 'b', position: null, resultsRead: 29 }, { day: 'c', position: 14 }]);
+    const full = ys([{ day: 'a', position: 12 }, { day: 'b', position: null }, { day: 'c', position: 14 }]);
+    // Scaled 12…30, the move from 12 to 14 shows; scaled 12…100 for a real miss, it all but disappears.
+    expect(short[2]! - short[0]!).toBeGreaterThan(2);
+    expect(full[2]! - full[0]!).toBeLessThan(1);
+    expect(short[1]).toBeCloseTo(22); // the short miss sits at the bottom of its own, shorter scale
+  });
+
+  it('says what a short list means, and keeps "not in the top N" for a full one', () => {
+    expect(positionText(null, 100, { resultsRead: 29 })).toBe('Not in the 29 results returned');
+    expect(positionText(null, 100)).toBe('Not in the top 100');
+    expect(positionText(1, 100, { featured: true })).toBe('Position 1 (featured snippet)');
+    expect(axisBottom([{ day: 'd', position: null, resultsRead: 29 }, { day: 'e', position: 4 }], 100)).toBe(30);
+    expect(axisBottom([{ day: 'd', position: null }, { day: 'e', position: 4 }], 100)).toBe(100);
   });
 });
 

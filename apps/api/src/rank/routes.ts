@@ -9,6 +9,7 @@ import {
   RankTrackingAdminInputSchema,
   type ProjectRankings,
   type RankKeywordView,
+  type RankPoint,
   type RankProviderId,
   type RankProviderView,
   type RankTrackingAdminView,
@@ -67,6 +68,18 @@ const firstIssue = (err: z.ZodError): string => {
 
 const daysBetween = (from: string, to: string): number => (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000;
 
+/**
+ * What a check adds to its position: whether it is the site's featured snippet, and — for a MISS in a check that got
+ * back fewer results pages than its depth asks for — how many results it did read, so it reads "not in those N".
+ */
+function detail(c: DoneCheck): { featured?: true; resultsRead?: number } {
+  if (c.position !== null) return c.featured ? { featured: true } : {};
+  const { pagesRead, resultsRead } = c;
+  // A check that got nothing at all says nothing about where the site is: no claim either way.
+  const short = pagesRead !== null && resultsRead !== null && resultsRead > 0 && pagesRead < Math.ceil(c.depth / 10);
+  return short ? { resultsRead } : {};
+}
+
 /** The last point of each 7-day bucket counted from `from` — the shape of a long range, not every day of it. */
 function weekly(series: RankKeywordView['series'], from: string): RankKeywordView['series'] {
   const buckets = new Map<number, RankKeywordView['series'][number]>();
@@ -90,10 +103,10 @@ export async function projectRankings(
   const [history, latest] = tracking
     ? await Promise.all([repo.history(projectId, domain, range.from, range.to), repo.latestTwo(projectId, domain)])
     : [[], new Map<string, DoneCheck[]>()];
-  const seriesOf = new Map<string, Array<{ day: string; position: number | null }>>();
+  const seriesOf = new Map<string, RankPoint[]>();
   for (const h of history) {
     const list = seriesOf.get(h.keywordId) ?? [];
-    list.push({ day: h.day, position: h.position });
+    list.push({ day: h.day, position: h.position, ...detail(h) });
     seriesOf.set(h.keywordId, list);
   }
   const thin = daysBetween(range.from, range.to) > WEEKLY_AFTER_DAYS;
@@ -110,7 +123,7 @@ export async function projectRankings(
       languageCode: k.languageCode,
       paused: k.paused,
       latest: last
-        ? { day: last.day, checkedAt: last.checkedAt.toISOString(), position: last.position, url: last.url, depth: last.depth }
+        ? { day: last.day, checkedAt: last.checkedAt.toISOString(), position: last.position, url: last.url, depth: last.depth, ...detail(last) }
         : null,
       change: last?.position != null && before?.position != null ? before.position - last.position : null,
       best: positions.length ? Math.min(...positions) : null,

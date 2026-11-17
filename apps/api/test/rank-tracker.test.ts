@@ -5,6 +5,7 @@ import { makeTestDb } from './helpers.js';
 import { projects, rankCharges, rankChecks, rankProviderCredentials } from '../src/db/schema.js';
 import { RankRepository, type DueKeyword, type RankKeywordRow } from '../src/rank/repo.js';
 import { RankTracker } from '../src/rank/tracker.js';
+import { projectRankings } from '../src/rank/routes.js';
 import { RankProviderError, type CollectOutcome, type RankProvider, type RankSearch, type SubmitOutcome } from '../src/rank/providers/index.js';
 import { ProjectRepository } from '../src/repo/projects.js';
 import { registerAccount } from '../src/repo/accounts.js';
@@ -23,8 +24,12 @@ function scriptedProvider() {
     /** Thrown by the next submits, in order (null = answer normally). */
     submitErrors: [] as Array<RankProviderError | null>,
     collectError: null as RankProviderError | null,
-    /** checkId → result page entries, 'pending', or a failure message. */
-    results: new Map<string, 'pending' | { fail: string } | Array<{ position: number; url: string }>>(),
+    /** checkId → result page entries, 'pending', or a failure message. An entry is organic unless `snippet`. */
+    results: new Map<string, 'pending' | { fail: string } | Array<{ position: number; url: string; snippet?: true }>>(),
+    /** checkId → the results pages the provider says it fetched. */
+    pages: new Map<string, number>(),
+    /** Every collect request, as the check ids asked about. */
+    collected: [] as string[][],
     cost: 0.006,
     /** What the provider says it charged, when not the estimate. */
     charged: null as number | null,
@@ -47,6 +52,7 @@ function scriptedProvider() {
       return searches.map((s): SubmitOutcome => ({ checkId: s.checkId, state: 'queued', ref: `ref-${s.checkId}`, costUsd: (state.charged ?? state.cost) * (s.depth / 100) }));
     },
     async collect(_creds, queued) {
+      state.collected.push(queued.map((q) => q.checkId));
       if (state.collectError) throw state.collectError;
       return queued.map((q): CollectOutcome => {
         const r = state.results.get(q.checkId) ?? 'pending';
@@ -57,7 +63,15 @@ function scriptedProvider() {
           state: 'done',
           page: {
             checkedAt: new Date('2026-10-20T06:00:00Z'),
-            entries: r.map((e) => ({ kind: 'organic' as const, position: e.position, absolutePosition: e.position, url: e.url, domain: '' })),
+            // A snippet sits just above the organic result of the same number: `absolutePosition` keeps the page order.
+            entries: r.map((e) => ({
+              kind: e.snippet ? ('featured_snippet' as const) : ('organic' as const),
+              position: e.position,
+              absolutePosition: e.snippet ? e.position * 2 - 1 : e.position * 2,
+              url: e.url,
+              domain: '',
+            })),
+            ...(state.pages.has(q.checkId) ? { pagesRead: state.pages.get(q.checkId) } : {}),
           },
         };
       });
@@ -89,8 +103,16 @@ beforeEach(async () => {
   await repo.putConfig({ activeProvider: 'dataforseo', monthlyBudgetMicros: 1_000_000 });
 });
 
+/** The second provider, never configured in these tests: it must never be asked anything. */
+const idleApify: RankProvider = {
+  ...scriptedProvider().provider,
+  id: 'apify',
+  submit: async () => Promise.reject(new Error('apify was never configured')),
+  collect: async () => Promise.reject(new Error('apify was never configured')),
+};
+
 function tracker(provider: RankProvider): RankTracker {
-  return new RankTracker({ repo, providers: { dataforseo: provider }, io: { fetch: async () => Promise.reject(new Error('no network')) }, now: () => now, log });
+  return new RankTracker({ repo, providers: { dataforseo: provider, apify: idleApify }, io: { fetch: async () => Promise.reject(new Error('no network')) }, now: () => now, log });
 }
 
 async function addKeywords(projectId: string, keywords: string[], schedule: 'daily' | 'weekly' = 'daily', depth: 10 | 100 = 100): Promise<void> {
@@ -407,7 +429,7 @@ describe('money outlives the checks', () => {
     await addKeywords(pid, ['a']);
     const [k] = await repo.listKeywords(pid);
     const id = await repo.claim(due(k!), '2026-10-31', 'dataforseo', 0.006, new Date('2026-10-31T23:59:00Z'));
-    await repo.markDone(id!, null, new Date('2026-11-01T00:05:00Z'), 0.007);
+    await repo.markDone(id!, { hit: null, resultsRead: 100, pagesRead: 10 }, new Date('2026-11-01T00:05:00Z'), 0.007);
     expect(await repo.spentMicrosInMonth(new Date('2026-10-15T00:00:00Z'))).toBe(7000);
     expect(await repo.spentMicrosInMonth(new Date('2026-11-15T00:00:00Z'))).toBe(0);
   });
@@ -531,7 +553,7 @@ describe('housekeeping', () => {
 
   it('unreadable credentials stop the tracker, not the caller', async () => {
     const other = new RankRepository(db, randomBytes(32)); // a different key: the stored secret cannot be decrypted
-    const t = new RankTracker({ repo: other, providers: { dataforseo: scriptedProvider().provider }, io: { fetch: async () => Promise.reject(new Error('x')) }, now: () => now, log });
+    const t = new RankTracker({ repo: other, providers: { dataforseo: scriptedProvider().provider, apify: idleApify }, io: { fetch: async () => Promise.reject(new Error('x')) }, now: () => now, log });
     await expect(t.status()).resolves.toBe('no-provider');
     await expect(t.tick()).resolves.toMatchObject({ status: 'no-provider' });
   });
@@ -547,5 +569,150 @@ describe('housekeeping', () => {
     await new ProjectRepository(db).remove(pid);
     expect(await checks()).toHaveLength(0);
     expect(await repo.getProject(pid)).toBeNull();
+  });
+});
+
+describe('what a results page says, counted the way Google counts', () => {
+  it('a featured snippet is the site’s position 1, and the ordinary results after someone else’s start at 2', async () => {
+    const pid = await makeProject('snippet');
+    await addKeywords(pid, ['own snippet', 'their snippet']);
+    const { provider, state } = scriptedProvider();
+    const t = tracker(provider);
+    await t.tick();
+    const [own, theirs] = await checks();
+    // Google does not repeat the snippet's page below it: the provider lists it apart, organic numbering without it.
+    state.results.set(own!.id, [{ position: 1, url: 'https://plumbers.na/geysers/', snippet: true }, { position: 1, url: 'https://competitor.test/' }]);
+    state.results.set(theirs!.id, [{ position: 1, url: 'https://competitor.test/', snippet: true }, { position: 3, url: 'https://plumbers.na/' }]);
+    await t.tick();
+    const done = new Map((await checks()).map((r) => [r.id, r]));
+    expect(done.get(own!.id)).toMatchObject({ position: 1, featured: true, url: 'https://plumbers.na/geysers/', resultsRead: 2 });
+    expect(done.get(theirs!.id)).toMatchObject({ position: 4, featured: false });
+  });
+
+  it('keeps how many results pages came back, so a short list is told apart from "not in the top 100"', async () => {
+    const pid = await makeProject('short');
+    await addKeywords(pid, ['deep']);
+    const { provider, state } = scriptedProvider();
+    const t = tracker(provider);
+    await t.tick();
+    const [row] = await checks();
+    state.results.set(row!.id, [{ position: 1, url: 'https://competitor.test/' }, { position: 2, url: 'https://other.test/' }]);
+    state.pages.set(row!.id, 3);
+    await t.tick();
+    expect((await checks())[0]).toMatchObject({ position: null, resultsRead: 2, pagesRead: 3, depth: 100 });
+  });
+});
+
+describe('re-reading stored results of earlier checks (free at the provider)', () => {
+  /** A check finished by the previous version: done, but without what a page reading now keeps. */
+  async function legacyCheck(provider: RankProvider, state: ReturnType<typeof scriptedProvider>['state'], keyword: string): Promise<string> {
+    const pid = await makeProject(keyword.replace(/\W+/g, '-'));
+    await addKeywords(pid, [keyword]);
+    const t = tracker(provider);
+    await t.tick();
+    const row = (await checks()).find((r) => r.status === 'queued')!;
+    state.results.set(row.id, [{ position: 1, url: 'https://competitor.test/' }]);
+    await t.tick();
+    await db.update(rankChecks).set({ resultsRead: null, pagesRead: null, featured: false }).where(eq(rankChecks.id, row.id));
+    return row.id;
+  }
+
+  it('reads an earlier check again under today’s rules, once, on the scheduled pass', async () => {
+    const { provider, state } = scriptedProvider();
+    const free = { ...provider, freeRereadDays: 29 };
+    const id = await legacyCheck(free, state, 'held the snippet');
+    expect((await checks())[0]).toMatchObject({ position: null, resultsRead: null });
+
+    // What the provider still holds: the site was the featured snippet that day.
+    state.results.set(id, [{ position: 1, url: 'https://plumbers.na/', snippet: true }, { position: 1, url: 'https://competitor.test/' }]);
+    state.pages.set(id, 10);
+    state.collected.length = 0;
+    await tracker(free).tick();
+    expect((await checks())[0]).toMatchObject({ position: 1, featured: true, resultsRead: 2, pagesRead: 10, status: 'done' });
+    expect((await checks())[0]!.rereadAt).toEqual(now);
+    expect(state.collected).toEqual([[id]]);
+
+    // Never again.
+    await tracker(free).tick();
+    expect(state.collected).toEqual([[id]]);
+  });
+
+  it('a result the provider no longer has leaves the check as it was, and is not asked for again', async () => {
+    const { provider, state } = scriptedProvider();
+    const free = { ...provider, freeRereadDays: 29 };
+    const id = await legacyCheck(free, state, 'gone');
+    state.results.set(id, { fail: 'Task Not Found.' });
+    state.collected.length = 0;
+    await tracker(free).tick();
+    await tracker(free).tick();
+    expect(state.collected).toEqual([[id]]);
+    expect((await checks())[0]).toMatchObject({ status: 'done', position: null, resultsRead: null });
+    expect((await checks())[0]!.rereadAt).toEqual(now);
+  });
+
+  it('only within the provider’s free window, only for a provider that has one, and never on a "check now"', async () => {
+    const { provider, state } = scriptedProvider();
+    const free = { ...provider, freeRereadDays: 29 };
+    const id = await legacyCheck(free, state, 'window');
+    const pid = (await checks())[0]!.projectId;
+    state.collected.length = 0;
+
+    await tracker(provider).tick(); // no free re-read: nothing asked
+    await tracker(free).checkNow(pid); // a "check now" never re-reads
+    expect(state.collected).toEqual([]);
+
+    // Past the window: not asked. Presence guard below — the same check IS asked inside the window.
+    const inside = now;
+    now = new Date(inside.getTime() + 30 * 86_400_000);
+    await tracker(free).tick();
+    expect(state.collected.flat()).not.toContain(id);
+    now = inside;
+    await tracker(free).tick();
+    expect(state.collected.flat()).toContain(id);
+  });
+
+  it('a stored result that is not ready yet is tried once too, so the same few never fill every batch', async () => {
+    const { provider, state } = scriptedProvider();
+    const free = { ...provider, freeRereadDays: 29 };
+    const id = await legacyCheck(free, state, 'pending');
+    state.results.set(id, 'pending');
+    state.collected.length = 0;
+    const t = tracker(free);
+    await t.tick();
+    await t.tick();
+    expect(state.collected).toEqual([[id]]);
+    expect((await checks())[0]).toMatchObject({ status: 'done', resultsRead: null });
+    expect((await checks())[0]!.rereadAt).toEqual(now);
+  });
+});
+
+describe('what readers see', () => {
+  it('marks a featured snippet, and tells a miss in a short list apart from one in a full list', async () => {
+    const pid = await makeProject('readers');
+    await addKeywords(pid, ['k']);
+    const [k] = await repo.listKeywords(pid);
+    const at = (day: string) => new Date(`${day}T06:00:00Z`);
+    const done = async (day: string, reading: Parameters<RankRepository['markDone']>[1]) => {
+      const id = await repo.claim(due(k!), day, 'dataforseo', 0.006, at(day));
+      await repo.markDone(id!, reading, at(day));
+    };
+    await done('2026-10-16', { hit: { position: 1, absolutePosition: 1, url: 'https://plumbers.na/', featured: true }, resultsRead: 98, pagesRead: 10 });
+    await done('2026-10-17', { hit: null, resultsRead: 29, pagesRead: 3 }); // Google stopped after three pages
+    await done('2026-10-18', { hit: null, resultsRead: 97, pagesRead: 10 }); // a real miss
+    await done('2026-10-19', { hit: { position: 12, absolutePosition: 14, url: 'https://plumbers.na/', featured: false }, resultsRead: 30, pagesRead: 3 });
+    await done('2026-10-20', { hit: null, resultsRead: 30, pagesRead: null }); // the provider did not say: no claim either way
+
+    const view = await projectRankings(repo, pid, { from: '2026-10-01', to: '2026-10-20' });
+    const [kw] = view.keywords;
+    expect(kw!.series).toEqual([
+      { day: '2026-10-16', position: 1, featured: true },
+      { day: '2026-10-17', position: null, resultsRead: 29 },
+      { day: '2026-10-18', position: null },
+      { day: '2026-10-19', position: 12 },
+      { day: '2026-10-20', position: null },
+    ]);
+    expect(kw!.best).toBe(1);
+    expect(kw!.latest).toMatchObject({ day: '2026-10-20', position: null, depth: 100 });
+    expect(kw!.latest).not.toHaveProperty('resultsRead');
   });
 });

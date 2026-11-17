@@ -1324,6 +1324,17 @@ export const rankChecks = sqliteTable(
     absolutePosition: integer('absolute_position'),
     /** The site's page that ranked. */
     url: text('url'),
+    /** The position is the site's featured snippet (Google's first result, counted as position 1). */
+    featured: integer('featured', { mode: 'boolean' }).notNull().default(false),
+    /** Results the page held (organic and featured snippets), once done. NULL = read before this was recorded. */
+    resultsRead: integer('results_read'),
+    /** Results pages the provider fetched, once done. Fewer than `depth / 10` = Google stopped early. */
+    pagesRead: integer('pages_read'),
+    /**
+     * When a stored result was fetched from the provider again to fill in the columns above for a check made before
+     * they existed (DataForSEO keeps results 30 days, free to read). Set on every attempt, so each is tried once.
+     */
+    rereadAt: integer('reread_at', { mode: 'timestamp_ms' }),
     /** USD × 1,000,000: the estimate from the claim until the provider states the real charge. */
     costMicros: integer('cost_micros').notNull().default(0),
     /** Why it failed, in words safe to show an admin. */

@@ -24,6 +24,18 @@ The running version of an instance is reported at `GET /version` (baked into the
   (`docs/waf/sitewright-before.conf`), what that file costs, how to route uploads around the WAF, and what
   to exclude when a WAF can only exclude by path. `scripts/waf/run.sh` repeats the measurement.
 
+### Changed
+
+- **Dependency updates (9 development packages).**
+  - **Icons for published sites:** Lucide 1.66 → 1.70 adds 30 icons and removes none. Sixteen of the new
+    ones are new names for existing glyphs, such as `triangle-exclamation-point` for `alert-triangle`. Three
+    are redrawn (`chef-hat`, `circle-letter-j`, `square-letter-j`), and a site that uses one shows the new
+    drawing after its next build. The editor's icon search now offers the new names for warning-style icons;
+    the old names still work. Simple Icons 16.37 redraws the Python logo's path; the mark looks the same.
+  - **Also updated:** vitest and its coverage plugin 5.1, @playwright/test 1.65, and in the editor build
+    vite 8.3.6, @vitejs/plugin-react 6.3 and @tailwindcss/vite 4.3.5 (the version sites already build with),
+    plus jose. No new package enters the dependency tree.
+
 ## [0.81.0] — 2026-11-16
 
 ### Changed

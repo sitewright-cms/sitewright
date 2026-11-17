@@ -42,12 +42,12 @@ export function axisBottom(series: readonly RankPoint[], depth: number): number 
 const belowShort = (resultsRead: number): number => resultsRead + 1;
 
 /**
- * "Position 4", "Position 1 (featured snippet)", "Not in the 29 results returned" for a miss in a short list, or "Not
+ * "Position 4", "Position 1 (featured snippet)", "Not in the 29 results read" for a miss in a short list, or "Not
  * in the top 100" (without a depth: "Not in the results read").
  */
 export function positionText(position: number | null, depth?: number, detail: Pick<RankPoint, 'featured' | 'resultsRead'> = {}): string {
   if (position !== null) return detail.featured ? `Position ${position} (featured snippet)` : `Position ${position}`;
-  if (detail.resultsRead !== undefined) return `Not in the ${detail.resultsRead} results returned`;
+  if (detail.resultsRead !== undefined) return `Not in the ${detail.resultsRead} results read`;
   return depth ? `Not in the top ${depth}` : 'Not in the results read';
 }
 

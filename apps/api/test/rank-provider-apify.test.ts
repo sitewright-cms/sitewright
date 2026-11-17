@@ -41,7 +41,8 @@ const search = (checkId: string, over: Partial<RankSearch> = {}): RankSearch => 
   device: 'desktop',
   location: { name: 'Namibia', countryCode: 'NA' },
   languageCode: 'en',
-  depth: 100,
+  startPage: 1,
+  pages: 10,
   ...over,
 });
 
@@ -62,9 +63,9 @@ describe('Apify credentials, price and places', () => {
   });
 
   it('prices a search per results page, at the listing’s base rate', () => {
-    expect(apify.estimateCostUsd(100, CREDS)).toBeCloseTo(0.035);
-    expect(apify.estimateCostUsd(10, CREDS)).toBeCloseTo(0.0035);
-    expect(apify.estimateCostUsd(25, CREDS)).toBeCloseTo(0.0105);
+    expect(apify.estimateCostUsd(10, CREDS)).toBeCloseTo(0.035);
+    expect(apify.estimateCostUsd(1, CREDS)).toBeCloseTo(0.0035);
+    expect(apify.estimateCostUsd(3, CREDS)).toBeCloseTo(0.0105);
   });
 
   it('encodes a place the way Google does', () => {
@@ -104,7 +105,7 @@ describe('Apify submit', () => {
         search('c1', { keyword: 'Plumber  Windhoek' }),
         search('c2', { keyword: 'geyser repair' }),
         search('c3', { keyword: 'plumber windhoek' }), // another project, the same search: one query, one result
-        search('c4', { keyword: 'geyser repair', device: 'mobile', location: { name: 'Windhoek,Khomas Region,Namibia', countryCode: 'NA' }, depth: 30 }),
+        search('c4', { keyword: 'geyser repair', device: 'mobile', location: { name: 'Windhoek,Khomas Region,Namibia', countryCode: 'NA' }, pages: 3 }),
       ],
       { fetch },
     );
@@ -185,7 +186,7 @@ describe('Apify submit', () => {
     const { fetch, calls } = fakeFetch(() => (n++ === 0 ? { status: 201, body: { data: { id: RUN_A } } } : { status: 402, body: { error: { type: 'not-enough-usage' } } }));
     const out = await apify.submit(CREDS, [search('a'), search('b', { device: 'mobile' }), search('c', { languageCode: 'de' })], { fetch });
     expect(calls).toHaveLength(2);
-    expect(out.map((o) => [o.checkId, o.state, o.costUsd])).toEqual([
+    expect(out.map((o) => [o.checkId, o.state, 'costUsd' in o ? o.costUsd : undefined])).toEqual([
       ['a', 'queued', expect.closeTo(0.035)],
       ['b', 'failed', 0],
       ['c', 'failed', 0],
@@ -215,6 +216,34 @@ describe('Apify submit', () => {
     const { fetch, calls } = fakeFetch(() => ({ status: 201, body: { data: { id: RUN_A } } }));
     await apify.submit(CREDS, terms, { fetch });
     expect(new URL(calls[0]!.url).searchParams.get('maxTotalChargeUsd')).toBe('0.5600'); // 2 × $0.035 × 8
+  });
+
+  it('sends a later stage as Google search URLs with Google’s own offset, the place in the URL', async () => {
+    const { fetch, calls } = fakeFetch(() => ({ status: 201, body: { data: { id: RUN_A } } }));
+    const city = { name: 'Windhoek,Khomas Region,Namibia', countryCode: 'NA' };
+    const out = await apify.submit(
+      CREDS,
+      [
+        search('c1', { keyword: 'Plumber  Windhoek', startPage: 3, pages: 3 }),
+        search('c2', { keyword: 'c++ geyser & repair', startPage: 3, pages: 3 }),
+        search('c3', { keyword: 'geyser repair', startPage: 2, pages: 1, location: city }),
+        search('c4', { keyword: 'geyser repair', startPage: 1, pages: 1 }),
+      ],
+      { fetch },
+    );
+    expect(calls).toHaveLength(3); // the stage is a setting of the run: one run per stage
+    const [later, cityRun, first] = calls.map((c) => c.body as { queries: string; maxPagesPerQuery: number; locationUule?: string });
+    expect(later!.queries.split('\n')).toEqual([
+      'https://www.google.com/search?q=plumber+windhoek&gl=na&hl=en&start=20',
+      'https://www.google.com/search?q=c%2B%2B+geyser+%26+repair&gl=na&hl=en&start=20',
+    ]);
+    expect(later!.maxPagesPerQuery).toBe(3);
+    // A city goes in the URL, not as the actor's own setting (which a URL search ignores).
+    expect(cityRun!.queries).toBe(`https://www.google.com/search?q=geyser+repair&gl=na&hl=en&start=10&uule=${encodeURIComponent(uuleFor('Windhoek,Khomas Region,Namibia'))}`);
+    expect(cityRun).not.toHaveProperty('locationUule');
+    expect(first).toMatchObject({ queries: 'geyser repair', maxPagesPerQuery: 1 });
+    // Booked per page asked for: three pages, then one.
+    expect(out.map((o) => ('costUsd' in o ? o.costUsd : undefined))).toEqual([expect.closeTo(0.0105, 6), expect.closeTo(0.0105, 6), expect.closeTo(0.0035, 6), expect.closeTo(0.0035, 6)]);
   });
 });
 
@@ -378,6 +407,30 @@ describe('Apify collect', () => {
       ['organic', 'https://plumbers.na/'],
     ]);
     expect(readPage(done.page, { domain: 'plumbers.na', includeSubdomains: true }).hit?.position).toBe(3);
+  });
+
+  it('does not count Google’s own Map link as a result — Google’s own sites still count', async () => {
+    const map = 'https://www.google.com/search?q=website+development+namibia&gl=na&hl=en&udm=1';
+    const { fetch } = fakeFetch((_c, path) =>
+      path.includes('/datasets/')
+        ? { body: [page('k', 1, [map, 'https://asylum.com.na/', 'https://support.google.com/business/', 'https://plumbers.na/'])] }
+        : { body: run() },
+    );
+    const [out] = await apify.collect(CREDS, [{ checkId: 'c', ref: `${RUN_A}:1:k` }], { fetch });
+    const done = out as Extract<typeof out, { state: 'done' }>;
+    expect(done.page.entries.map((e) => e.url)).toEqual(['https://asylum.com.na/', 'https://support.google.com/business/', 'https://plumbers.na/']);
+    expect(readPage(done.page, { domain: 'plumbers.na', includeSubdomains: true }).hit?.position).toBe(3);
+  });
+
+  it('says Google had nothing more when the last page says so, or came back empty', async () => {
+    const endOf = async (records: unknown[]) => {
+      const { fetch } = fakeFetch((_c, path) => (path.includes('/datasets/') ? { body: records } : { body: run() }));
+      const [out] = await apify.collect(CREDS, [{ checkId: 'c', ref: `${RUN_A}:1:k` }], { fetch });
+      return (out as Extract<typeof out, { state: 'done' }>).page.end;
+    };
+    expect(await endOf([page('k', 1, ['https://a.test/'], { hasNextPage: true })])).toBeUndefined();
+    expect(await endOf([page('k', 1, ['https://a.test/'], { hasNextPage: false })])).toBe(true);
+    expect(await endOf([page('k', 1, ['https://a.test/']), page('k', 2, [])])).toBe(true);
   });
 
   it('throws when the token stops working, so the tracker can report it', async () => {

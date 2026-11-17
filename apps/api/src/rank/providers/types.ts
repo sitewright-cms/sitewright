@@ -30,8 +30,12 @@ export interface RankSearch {
   device: RankDevice;
   location: RankLocation;
   languageCode: string;
-  /** How many results to read. */
-  depth: number;
+  /**
+   * The results pages to read: `startPage` (1 = the first) and the `pages` from there. A check reads its depth in stages
+   * (`rankStages`) and asks for the next only when these did not hold the site, so a provider reads exactly these.
+   */
+  startPage: number;
+  pages: number;
 }
 
 /** One result on a results page. */
@@ -49,19 +53,35 @@ export interface SerpEntry {
 export interface SerpPage {
   /** When the search engine was queried. */
   checkedAt: Date;
+  /**
+   * The results of the pages asked for, numbered from the first of THEM (a request for pages 3–5 starts at 1): the
+   * tracker adds the results of the stages before it, so positions count the way they would in one long read.
+   */
   entries: SerpEntry[];
   /**
    * Results pages the provider fetched, when it says. Google serves ten results a page and often stops after a few,
    * so a search for 100 may come back with 30: a site not among them is not "outside the top 100".
    */
   pagesRead?: number;
+  /** Google has no results past these (it stopped serving pages): the check reads no further. */
+  end?: boolean;
+  /**
+   * The provider stopped before the last page asked for, for a reason of its own (a refusal partway): the pages read are
+   * kept, and the check reads on from them on a later pass — fewer pages than asked do not mean Google stopped.
+   */
+  cut?: boolean;
 }
 
 /** What sending one search produced. `costUsd` is what the provider charged for it. */
 export type SubmitOutcome =
   | { checkId: string; state: 'queued'; ref: string; costUsd: number }
   | { checkId: string; state: 'done'; page: SerpPage; costUsd: number }
-  | { checkId: string; state: 'failed'; error: string; costUsd: number };
+  | { checkId: string; state: 'failed'; error: string; costUsd: number }
+  /**
+   * Never sent, so never charged: the provider stopped before it (a refusal for the whole account partway through a
+   * request). The claim is given back, the refusal shown to the admin, and the search tried again on a later pass.
+   */
+  | { checkId: string; state: 'unsent'; error: string };
 
 /**
  * What asking for one queued search produced. `costUsd`, when present, is what the provider says the search cost and
@@ -117,8 +137,8 @@ export interface RankProvider {
   freeRereadDays?: number;
   /** Validates and normalizes the fields; throws `RankProviderError('invalid')` naming what is wrong. */
   parseCredentials(raw: Readonly<Record<string, string>>): RankCredentials;
-  /** The price of one search at this depth, for the budget check before sending. The provider's answer has the real one. */
-  estimateCostUsd(depth: number, creds: RankCredentials): number;
+  /** The price of reading `pages` results pages, for the budget check before sending. The provider's answer has the real one. */
+  estimateCostUsd(pages: number, creds: RankCredentials): number;
   submit(creds: RankCredentials, searches: readonly RankSearch[], io: RankProviderIo): Promise<SubmitOutcome[]>;
   collect(
     creds: RankCredentials,

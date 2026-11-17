@@ -171,6 +171,12 @@ describe('the Statistics tab', () => {
     expect(await screen.findByRole('form', { name: 'Rank tracking setup' })).toBeInTheDocument();
     // The site URL is the suggested domain.
     expect(screen.getByLabelText('Domain the site is published at')).toHaveValue('www.plumbers.na');
+    // Four depths; the help says further pages cost only while the site has not turned up, and the most a check reads.
+    const depth = screen.getByRole('combobox', { name: /Results read per check/ });
+    expect(within(depth).getAllByRole('option').map((o) => o.getAttribute('value'))).toEqual(['10', '20', '50', '100']);
+    expect(depth).toHaveAccessibleDescription(/only while the site has not turned up.*At most 10 pages a check/);
+    fireEvent.change(depth, { target: { value: '10' } });
+    expect(depth).toHaveAccessibleDescription(/At most 1 page a check/);
   });
 });
 
@@ -212,7 +218,7 @@ describe('what a client reads', () => {
     );
     render(<RankingsView project={project} />);
     const rows = within(await screen.findByRole('table', { name: /Tracked keywords/ })).getAllByRole('row');
-    expect(rows[1]).toHaveTextContent('Not in the 29 results returned');
+    expect(rows[1]).toHaveTextContent('Not in the 29 results read');
     expect(rows[1]).not.toHaveTextContent('Not in top 100');
     expect(rows[2]).toHaveTextContent('1featured snippet');
   });
@@ -526,7 +532,7 @@ describe('RankChart: featured snippets and short result lists', () => {
   });
 
   it('says what a short list means, and keeps "not in the top N" for a full one', () => {
-    expect(positionText(null, 100, { resultsRead: 29 })).toBe('Not in the 29 results returned');
+    expect(positionText(null, 100, { resultsRead: 29 })).toBe('Not in the 29 results read');
     expect(positionText(null, 100)).toBe('Not in the top 100');
     expect(positionText(1, 100, { featured: true })).toBe('Position 1 (featured snippet)');
     expect(axisBottom([{ day: 'd', position: null, resultsRead: 29 }, { day: 'e', position: 4 }], 100)).toBe(30);

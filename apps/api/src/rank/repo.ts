@@ -31,6 +31,11 @@ export const DEFAULT_RANK_BUDGET_MICROS = 10_000_000;
 const POSTING_STALE_MS = 60 * 60 * 1000;
 /** A queued check whose result never came. A queue answers within the hour; DataForSEO keeps results 30 days. */
 const QUEUED_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * A check waiting for its next stage this long after its last one, with its day over, is done with what it read. Not at
+ * midnight itself: a stage sent at 23:50 and collected after midnight still goes on to the next.
+ */
+const NEXT_STALE_MS = 6 * 60 * 60 * 1000;
 
 export interface RankConfig {
   activeProvider: RankProviderId | null;
@@ -58,16 +63,41 @@ export interface DueKeyword extends RankKeywordRow {
   includeSubdomains: boolean;
 }
 
-export interface QueuedCheck {
+/** A check in flight: where it stands, and the site it was sent for. */
+export interface CheckProgress {
   id: string;
   keywordId: string;
   projectId: string;
   provider: string;
-  ref: string;
   depth: number;
   /** The site the check was sent for (not the project's current setup). */
   domain: string;
   includeSubdomains: boolean;
+  /** What the check's earlier stages read (zero for its first): the stage in flight is read on from these. */
+  resultsRead: number;
+  pagesRead: number;
+  /** What the check's earlier stages cost, in micro-dollars: the stage in flight's charge adds to it. */
+  settledMicros: number;
+  /**
+   * Sent before checks were read in stages, for its whole depth at once: its one result finishes it, however many pages
+   * came back (a provider that does not say Google stopped would otherwise send it on for pages it already paid for).
+   */
+  fullDepth?: boolean;
+}
+
+/** A check whose request is with the provider: `ref` collects its result. */
+export interface QueuedCheck extends CheckProgress {
+  ref: string;
+}
+
+/** A check whose earlier stages did not find the site, due to read its next pages — with what sending them needs. */
+export interface ContinuingCheck extends CheckProgress {
+  keyword: string;
+  engine: RankEngine;
+  device: RankDevice;
+  locationName: string;
+  countryCode: string;
+  languageCode: string;
 }
 
 export interface DoneCheck {
@@ -358,6 +388,8 @@ export class RankRepository {
           domain: k.domain,
           includeSubdomains: k.includeSubdomains,
           depth: k.depth,
+          // Read in stages from its first page (a check sent before stages has no count here at all: `fullDepth`).
+          pagesRead: 0,
           costMicros: toMicros(estimateUsd),
           postedAt: now,
         })
@@ -380,12 +412,99 @@ export class RankRepository {
    * Takes back a claim the provider certainly did not act on (it refused the request as a whole), and its charge. The
    * charge goes too when the check is already gone (its project was purged meanwhile) — nothing was sent for it either
    * way — but never while the check is still there in another state: that one went out and may have been charged.
+   *
+   * A claim for a LATER stage gives back that stage only: the check returns to `next`, booked at what its earlier
+   * stages cost — those went out and were paid for. `settledMicros` is that cost, passed in rather than read: when the
+   * check went meanwhile (its keyword removed), its charge keeps what the earlier stages cost instead of going.
    */
-  async release(id: string): Promise<void> {
+  async release(id: string, settledMicros = 0): Promise<void> {
+    const firstStage = and(eq(rankChecks.id, id), eq(rankChecks.status, 'posting'), sql`COALESCE(${rankChecks.pagesRead}, 0) = 0`);
+    const laterStage = and(eq(rankChecks.id, id), eq(rankChecks.status, 'posting'), sql`${rankChecks.pagesRead} > 0`);
+    const gone = and(eq(rankCharges.checkId, id), sql`NOT EXISTS (SELECT 1 FROM ${rankChecks} WHERE ${rankChecks.id} = ${id})`);
     await this.db.batch([
-      this.db.delete(rankChecks).where(and(eq(rankChecks.id, id), eq(rankChecks.status, 'posting'))),
-      this.db.delete(rankCharges).where(and(eq(rankCharges.checkId, id), sql`NOT EXISTS (SELECT 1 FROM ${rankChecks} WHERE ${rankChecks.id} = ${id})`)),
+      this.db.delete(rankChecks).where(firstStage),
+      this.db.update(rankChecks).set({ status: 'next', costMicros: sql`${rankChecks.costSettledMicros}` }).where(laterStage),
+      settledMicros > 0 ? this.db.update(rankCharges).set({ costMicros: settledMicros }).where(gone) : this.db.delete(rankCharges).where(gone),
+      this.db
+        .update(rankCharges)
+        .set({ costMicros: sql`(SELECT ${rankChecks.costMicros} FROM ${rankChecks} WHERE ${rankChecks.id} = ${id})` })
+        .where(and(eq(rankCharges.checkId, id), sql`EXISTS (SELECT 1 FROM ${rankChecks} WHERE ${rankChecks.id} = ${id} AND ${rankChecks.status} = 'next')`)),
     ]);
+  }
+
+  /**
+   * A stage that did not find the site, with more to read: the check waits for its next stage (`next`) with what it has
+   * read so far. What the stage cost is settled — the provider's figure when it stated one with the result, otherwise
+   * the stage's booked cost — so the next stage's charge adds to it.
+   */
+  async markNext(id: string, reading: PageReading, checkedAt: Date, costUsd?: number, settledMicros = 0): Promise<void> {
+    const total = costUsd !== undefined ? settledMicros + toMicros(costUsd) : undefined;
+    const update = this.db
+      .update(rankChecks)
+      .set({
+        status: 'next',
+        ...readingColumns(reading),
+        checkedAt,
+        error: null,
+        providerRef: null,
+        // Without a figure from the provider, the booked cost stands as the stage's cost.
+        ...(total !== undefined ? { costMicros: total, costSettledMicros: total } : { costSettledMicros: sql`${rankChecks.costMicros}` }),
+      })
+      .where(eq(rankChecks.id, id));
+    if (total === undefined) await update;
+    else await this.db.batch([update, this.charge(id, total)]);
+  }
+
+  /**
+   * ★ CLAIMS a waiting check's next stage, booking the stage's estimated cost on top of what the earlier stages cost —
+   * before the provider is called, as for {@link claim}. False when the check is no longer waiting.
+   */
+  async claimStage(id: string, estimateUsd: number, now: Date): Promise<boolean> {
+    const [rows] = await this.db.batch([
+      this.db
+        .update(rankChecks)
+        .set({ status: 'posting', costMicros: sql`${rankChecks.costSettledMicros} + ${toMicros(estimateUsd)}`, postedAt: now, providerRef: null })
+        .where(and(eq(rankChecks.id, id), eq(rankChecks.status, 'next')))
+        .returning({ id: rankChecks.id }),
+      this.db
+        .update(rankCharges)
+        .set({ costMicros: sql`(SELECT ${rankChecks.costMicros} FROM ${rankChecks} WHERE ${rankChecks.id} = ${id})` })
+        .where(and(eq(rankCharges.checkId, id), sql`EXISTS (SELECT 1 FROM ${rankChecks} WHERE ${rankChecks.id} = ${id} AND ${rankChecks.status} = 'posting')`)),
+    ]);
+    return rows.length > 0;
+  }
+
+  /**
+   * Checks waiting for their next stage with `provider` — of one project, or all — oldest first. A check of a provider
+   * no longer active waits until its day ends and is then done with what it read (`expireStale`).
+   */
+  async continuing(limit: number, provider: string, projectId?: string): Promise<ContinuingCheck[]> {
+    const rows = await this.db
+      .select({
+        id: rankChecks.id,
+        keywordId: rankChecks.keywordId,
+        projectId: rankChecks.projectId,
+        provider: rankChecks.provider,
+        depth: rankChecks.depth,
+        domain: rankChecks.domain,
+        includeSubdomains: rankChecks.includeSubdomains,
+        resultsRead: rankChecks.resultsRead,
+        pagesRead: rankChecks.pagesRead,
+        settledMicros: rankChecks.costSettledMicros,
+        keyword: rankKeywords.keyword,
+        engine: rankKeywords.engine,
+        device: rankKeywords.device,
+        locationName: rankKeywords.locationName,
+        countryCode: rankKeywords.countryCode,
+        languageCode: rankKeywords.languageCode,
+      })
+      .from(rankChecks)
+      .innerJoin(rankKeywords, eq(rankKeywords.id, rankChecks.keywordId))
+      .innerJoin(projects, eq(projects.id, rankChecks.projectId))
+      .where(and(eq(rankChecks.status, 'next'), eq(rankChecks.provider, provider), isNull(projects.deletedAt), projectId ? eq(rankChecks.projectId, projectId) : undefined))
+      .orderBy(asc(rankChecks.postedAt))
+      .limit(limit);
+    return rows.map((r) => ({ ...r, resultsRead: r.resultsRead ?? 0, pagesRead: r.pagesRead ?? 0 }));
   }
 
   /**
@@ -400,18 +519,25 @@ export class RankRepository {
       .onConflictDoUpdate({ target: rankCharges.checkId, set: { costMicros } });
   }
 
-  /** Sent: the provider's id for the search, and what it charged (replacing the estimate). */
-  async markQueued(id: string, ref: string, costUsd: number): Promise<void> {
-    const costMicros = toMicros(costUsd);
+  /**
+   * Sent: the provider's id for the search, and what it charged — replacing the stage's estimate. `settledMicros` is what
+   * the check's earlier stages cost (zero for its first): passed in rather than read, so the charge comes out right
+   * even when the check went (its keyword removed) while the request was out.
+   */
+  async markQueued(id: string, ref: string, costUsd: number, settledMicros = 0): Promise<void> {
+    const costMicros = settledMicros + toMicros(costUsd);
     await this.db.batch([
       this.db.update(rankChecks).set({ status: 'queued', providerRef: ref, costMicros }).where(eq(rankChecks.id, id)),
       this.charge(id, costMicros),
     ]);
   }
 
-  /** Finished. `costUsd` replaces the booked cost when the provider stated one with the result (a live search). */
-  async markDone(id: string, reading: PageReading, checkedAt: Date, costUsd?: number): Promise<void> {
-    const costMicros = costUsd !== undefined ? toMicros(costUsd) : undefined;
+  /**
+   * Finished, with the reading of every stage it read. `costUsd` replaces the stage's booked cost when the provider
+   * stated one with the result (a live search, a run's charge); it adds to `settledMicros`, as for {@link markQueued}.
+   */
+  async markDone(id: string, reading: PageReading, checkedAt: Date, costUsd?: number, settledMicros = 0): Promise<void> {
+    const costMicros = costUsd !== undefined ? settledMicros + toMicros(costUsd) : undefined;
     const update = this.db
       .update(rankChecks)
       .set({
@@ -430,8 +556,8 @@ export class RankRepository {
    * Failed, for the day. `costUsd` is the provider's stated charge when it gave one; without it the booked cost
    * stays — the outcome is uncertain, so the budget assumes it was paid.
    */
-  async markFailed(id: string, error: string, costUsd?: number): Promise<void> {
-    const costMicros = costUsd !== undefined ? toMicros(costUsd) : undefined;
+  async markFailed(id: string, error: string, costUsd?: number, settledMicros = 0): Promise<void> {
+    const costMicros = costUsd !== undefined ? settledMicros + toMicros(costUsd) : undefined;
     const update = this.db
       .update(rankChecks)
       .set({ status: 'failed', error: error.slice(0, 300), ...(costMicros !== undefined ? { costMicros } : {}) })
@@ -452,12 +578,15 @@ export class RankRepository {
         depth: rankChecks.depth,
         domain: rankChecks.domain,
         includeSubdomains: rankChecks.includeSubdomains,
+        resultsRead: rankChecks.resultsRead,
+        pagesRead: rankChecks.pagesRead,
+        settledMicros: rankChecks.costSettledMicros,
       })
       .from(rankChecks)
       .where(and(eq(rankChecks.status, 'queued'), projectId ? eq(rankChecks.projectId, projectId) : undefined))
       .orderBy(asc(rankChecks.postedAt))
       .limit(limit);
-    return rows.flatMap((r) => (r.ref ? [{ ...r, ref: r.ref }] : []));
+    return rows.flatMap((r) => (r.ref ? [{ ...r, ref: r.ref, resultsRead: r.resultsRead ?? 0, pagesRead: r.pagesRead ?? 0, fullDepth: r.pagesRead === null }] : []));
   }
 
   /**
@@ -494,8 +623,17 @@ export class RankRepository {
       .where(and(eq(rankChecks.id, id), eq(rankChecks.status, 'done')));
   }
 
-  /** Fails checks that can no longer finish: a send cut off by a restart, a result that never came. */
+  /**
+   * Fails checks that can no longer finish: a send cut off by a restart, a result that never came. A check still
+   * waiting for its next stage once its day is over (the budget ran out, the provider changed) is DONE with what it
+   * read: the site was not in those results, and the history says how many there were.
+   */
   async expireStale(now: Date): Promise<number> {
+    const waiting = await this.db
+      .update(rankChecks)
+      .set({ status: 'done' })
+      .where(and(eq(rankChecks.status, 'next'), lt(rankChecks.day, utcDay(now)), lte(rankChecks.postedAt, new Date(now.getTime() - NEXT_STALE_MS))))
+      .returning({ id: rankChecks.id });
     const posting = await this.db
       .update(rankChecks)
       .set({ status: 'failed', error: 'the request to the provider did not finish' })
@@ -506,7 +644,7 @@ export class RankRepository {
       .set({ status: 'failed', error: 'the provider never returned a result' })
       .where(and(eq(rankChecks.status, 'queued'), lte(rankChecks.postedAt, new Date(now.getTime() - QUEUED_STALE_MS))))
       .returning({ id: rankChecks.id });
-    return posting.length + queued.length;
+    return waiting.length + posting.length + queued.length;
   }
 
   /**
@@ -613,7 +751,7 @@ export class RankRepository {
     const rows = await this.db
       .select({ keywordId: rankChecks.keywordId })
       .from(rankChecks)
-      .where(and(eq(rankChecks.projectId, projectId), inArray(rankChecks.status, ['posting', 'queued'])));
+      .where(and(eq(rankChecks.projectId, projectId), inArray(rankChecks.status, ['posting', 'queued', 'next'])));
     return new Set(rows.map((r) => r.keywordId));
   }
 

@@ -1,5 +1,4 @@
 import { parse as secureJsonParse } from 'secure-json-parse';
-import type { RankLocationOption } from '@sitewright/schema';
 import {
   RankProviderError,
   type CollectOutcome,
@@ -10,14 +9,22 @@ import {
   type SerpEntry,
   type SubmitOutcome,
 } from './types.js';
+import { countryOnlyLocations } from './country-locations.js';
 
 /**
  * Apify's official Google Search Results Scraper (`apify/google-search-scraper`), as an alternative to DataForSEO.
  *
  * - Searches that share every setting (country, place, language, device, depth) go into ONE actor run: its `queries`
  *   input takes one search per line. The run is STARTED by `submit` and READ by `collect` once it has finished.
- * - The actor writes one dataset record per results page (about ten results), so a depth of 100 asks for ten pages
- *   (`maxPagesPerQuery`); Google may serve fewer, and `pagesRead` says how many came back.
+ * - The actor writes one dataset record per results page (about ten results) and reads `maxPagesPerQuery` of them;
+ *   Google may serve fewer, and `pagesRead` says how many came back. A check asks for a few pages at a time
+ *   (`RankSearch.startPage`/`pages`). The actor has no offset of its own, so a later stage is sent as a Google search
+ *   URL with Google's `start` — measured 2026-11-17, `…&start=10` returned page 2 alone, charged as one page. The
+ *   actor numbers that record page 1 (the tracker counts on from the pages before) and files it under the URL's
+ *   keyword (`searchQuery.term` "website development namibia"), so it is matched like any other.
+ * - Google's own links among the results (its "Map" entry for local searches, `google.com/search?…&udm=…`, which the
+ *   actor lists as an organic result) are not results for any site, and are not counted: they put every position
+ *   after them one too high.
  * - Pay per event: each scraped results page is charged ("from $1.80 / 1,000", $3.50 on the listing's base rate),
  *   with no charge for platform usage. What the run reports it cost (`usageTotalUsd`, "what you actually pay", or its
  *   per-event `eventUsage`, whichever is more) replaces the estimate booked at sending, shared out among the run's
@@ -159,22 +166,34 @@ export function uuleFor(canonicalName: string): string {
   return `w+${Buffer.concat([Buffer.from([0x08, 0x02, 0x10, 0x20, 0x22]), varint(name.length), name]).toString('base64')}`;
 }
 
-/** The pages a search asks for: Google serves ten results a page. */
-const pagesFor = (depth: number): number => Math.max(1, Math.ceil(depth / 10));
+/** A country alone is the bare country name; anything more specific carries the country after commas. */
+const placeOf = (s: RankSearch): string => (s.location.name.includes(',') ? s.location.name : '');
+
+/**
+ * A later stage's search, as the Google search URL the actor accepts in place of a keyword: Google's own `start` offset
+ * (results, ten a page), the country, language and place. `q` first, the order Google itself writes.
+ */
+function searchUrlOf(term: string, s: RankSearch): string {
+  const q = encodeURIComponent(term).replace(/%20/g, '+');
+  const place = placeOf(s);
+  const uule = place ? `&uule=${encodeURIComponent(uuleFor(place))}` : '';
+  return `https://www.google.com/search?q=${q}&gl=${encodeURIComponent(s.location.countryCode.toLowerCase())}&hl=${encodeURIComponent(s.languageCode)}&start=${(s.startPage - 1) * 10}${uule}`;
+}
 
 /** The actor's input for one group of searches that share their settings. */
 function runInput(group: RankSearch[]): Json {
   const s = group[0]!;
   const terms = [...new Set(group.map((g) => termOf(g.keyword)))];
-  // A country alone is the bare country name; anything more specific carries the country after commas.
-  const place = s.location.name.includes(',') ? { locationUule: uuleFor(s.location.name) } : {};
+  const place = placeOf(s);
+  const first = s.startPage <= 1;
   return {
-    queries: terms.join('\n'),
+    // The first page by keyword (the actor sets the place); later pages by URL (its place goes in the URL).
+    queries: (first ? terms : terms.map((t) => searchUrlOf(t, s))).join('\n'),
     countryCode: s.location.countryCode.toLowerCase(),
     languageCode: s.languageCode,
-    ...place,
+    ...(first && place ? { locationUule: uuleFor(place) } : {}),
     mobileResults: s.device === 'mobile',
-    maxPagesPerQuery: pagesFor(s.depth),
+    maxPagesPerQuery: Math.max(1, s.pages),
     includeUnfilteredResults: false,
     saveHtml: false,
     saveHtmlToKeyValueStore: false,
@@ -186,16 +205,16 @@ function runInput(group: RankSearch[]): Json {
 function groupsOf(searches: readonly RankSearch[]): RankSearch[][] {
   const groups = new Map<string, RankSearch[]>();
   for (const s of searches) {
-    const key = JSON.stringify([s.location.countryCode, s.location.name.includes(',') ? s.location.name : '', s.languageCode, s.device, pagesFor(s.depth)]);
+    const key = JSON.stringify([s.location.countryCode, placeOf(s), s.languageCode, s.device, s.startPage, s.pages]);
     groups.set(key, [...(groups.get(key) ?? []), s]);
   }
   return [...groups.values()];
 }
 
-const estimate = (depth: number): number => PRICE_PER_PAGE_USD * pagesFor(depth);
+const estimate = (pages: number): number => PRICE_PER_PAGE_USD * Math.max(1, pages);
 
-/** The most a run of `terms` searches at `depth` may be charged: twice its estimate, never under Apify's least cap. */
-const runCapOf = (depth: number, terms: number): number => Math.max(MIN_RUN_CAP_USD, RUN_CHARGE_CAP * estimate(depth) * terms);
+/** The most a run of `terms` searches of `pages` pages may be charged: twice its estimate, never under Apify's least cap. */
+const runCapOf = (pages: number, terms: number): number => Math.max(MIN_RUN_CAP_USD, RUN_CHARGE_CAP * estimate(pages) * terms);
 
 /**
  * A queued search's reference: the run, how many checks share its term in that run (two projects tracking the same
@@ -252,6 +271,27 @@ function snippetUrls(item: Json): string[] {
 }
 
 /**
+ * A link to Google Search or Maps itself (the "Map" entry of a local search, a related search): no site's result.
+ * Google's own sites (support.google.com and the like) are real results for some searches, and are counted.
+ */
+function isGoogleLink(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (!/^(www\.|maps\.)?google(\.[a-z]{2,3}){1,2}$/i.test(u.hostname)) return false;
+    return u.hostname.toLowerCase().startsWith('maps.') || /^\/(search|maps)(\/|$)/.test(u.pathname);
+  } catch {
+    return false;
+  }
+}
+
+/** Google served nothing past these pages: the last came back empty, or says there is no next page. */
+function endOf(pages: readonly Json[]): boolean {
+  const last = pages.at(-1);
+  if (!last) return true;
+  return last.hasNextPage === false || records(last.organicResults).length === 0;
+}
+
+/**
  * One search's results pages as entries. Positions are counted here, page after page, rather than taken from the
  * actor. Measured 2026-11-17, the actor numbers on from page to page (page 2 starting at 7 after six results), which
  * gives the same count, but that is not documented. A featured snippet sits above the page's
@@ -273,7 +313,7 @@ function entriesOf(pages: readonly Json[]): SerpEntry[] {
     for (const url of snippets) push('featured_snippet', url);
     for (const r of records(page.organicResults)) {
       const url = str(r.url);
-      if (!url) continue;
+      if (!url || isGoogleLink(url)) continue;
       const snippet = /featured/i.test(str(r.type) ?? '');
       // Google does not repeat a snippet's page among the ordinary results; should the actor list it twice, counting
       // both would push every result after it one place down.
@@ -335,8 +375,8 @@ export const apify: RankProvider = {
 
   parseCredentials,
 
-  estimateCostUsd(depth) {
-    return estimate(depth);
+  estimateCostUsd(pages) {
+    return estimate(pages);
   },
 
   async submit(creds, searches, io) {
@@ -356,7 +396,7 @@ export const apify: RankProvider = {
         continue;
       }
       const terms = new Set(group.map((g) => termOf(g.keyword)));
-      const cap = runCapOf(group[0]!.depth, terms.size);
+      const cap = runCapOf(group[0]!.pages, terms.size);
       const params = new URLSearchParams({ timeout: String(RUN_TIMEOUT_SECS), maxTotalChargeUsd: cap.toFixed(4) });
       let runId: string | undefined;
       try {
@@ -372,19 +412,19 @@ export const apify: RankProvider = {
         // A lost reply may have started the run; any other refusal certainly did not. A started run is charged per page,
         // so it is booked at twice its estimate, not at its cap: Apify's $0.50 least cap is no measure of what it costs.
         const possiblyPaid = err.kind === 'unavailable';
-        for (const s of group) out.push({ checkId: s.checkId, state: 'failed', error: err.message, costUsd: possiblyPaid ? RUN_CHARGE_CAP * estimate(s.depth) : 0 });
+        for (const s of group) out.push({ checkId: s.checkId, state: 'failed', error: err.message, costUsd: possiblyPaid ? RUN_CHARGE_CAP * estimate(s.pages) : 0 });
         if (err.kind === 'auth' || err.kind === 'funds') stopped = err;
         continue;
       }
       if (!runId || !ID_RE.test(runId)) {
         // Taken (2xx) but unreadable: the run may exist, and spend up to its cap.
-        for (const s of group) out.push({ checkId: s.checkId, state: 'failed', error: UNREADABLE, costUsd: RUN_CHARGE_CAP * estimate(s.depth) });
+        for (const s of group) out.push({ checkId: s.checkId, state: 'failed', error: UNREADABLE, costUsd: RUN_CHARGE_CAP * estimate(s.pages) });
         continue;
       }
       const shares = new Map<string, number>();
       for (const s of group) shares.set(termOf(s.keyword), (shares.get(termOf(s.keyword)) ?? 0) + 1);
       for (const s of group) {
-        out.push({ checkId: s.checkId, state: 'queued', ref: refOf(runId, shares.get(termOf(s.keyword))!, s.keyword), costUsd: estimate(s.depth) });
+        out.push({ checkId: s.checkId, state: 'queued', ref: refOf(runId, shares.get(termOf(s.keyword))!, s.keyword), costUsd: estimate(s.pages) });
       }
     }
     return out;
@@ -439,7 +479,8 @@ export const apify: RankProvider = {
             continue;
           }
           const cost = charged === undefined ? {} : { costUsd: shareOf(charged, own.length, totalPages, c.shares, runCap) };
-          out.set(c.checkId, { checkId: c.checkId, state: 'done', page: { checkedAt, entries: entriesOf(own), pagesRead: own.length }, ...cost });
+          const page = { checkedAt, entries: entriesOf(own), pagesRead: own.length, ...(endOf(own) ? { end: true } : {}) };
+          out.set(c.checkId, { checkId: c.checkId, state: 'done', page, ...cost });
         }
       } catch (err) {
         if (!(err instanceof RankProviderError)) throw err;
@@ -460,16 +501,6 @@ export const apify: RankProvider = {
   },
 
   async searchLocations(_creds, countryCode, query) {
-    if (!/^[A-Z]{2}$/.test(countryCode)) throw new RankProviderError('a country is an ISO code such as NA', 'invalid');
-    let name: string | undefined;
-    try {
-      name = new Intl.DisplayNames(['en'], { type: 'region' }).of(countryCode);
-    } catch {
-      name = undefined;
-    }
-    if (!name || name === countryCode) return [];
-    const q = query.trim().toLowerCase();
-    const country: RankLocationOption = { name, type: 'Country', countryCode };
-    return !q || name.toLowerCase().includes(q) ? [country] : [];
+    return countryOnlyLocations(countryCode, query);
   },
 };

@@ -253,7 +253,7 @@ describe('Search rankings: the holding note sits ABOVE the setup that adds keywo
     fireEvent.click(screen.getByRole('tab', { name: /Search rankings/ }));
   }
 
-  it('no provider (an admin): (a) + DataForSEO setup with its links and the System Settings button + (c), then the setup form', async () => {
+  it('no provider (an admin): (a) + Bright Data, then DataForSEO setup with their links and the System Settings button + (c), then the setup form', async () => {
     const openSystem = vi.fn();
     api.getRankings.mockResolvedValue(staffRankings({ configured: false, tracking: null, keywords: [] }));
     render(<StatisticsTab project={project} isStaff access={access()} onOpenSystemSettings={openSystem} />);
@@ -262,12 +262,25 @@ describe('Search rankings: the holding note sits ABOVE the setup that adds keywo
     expect(note).toHaveTextContent('keyword rank tracking is set up in System Settings and enabled for this project');
     const setup = screen.getByRole('region', { name: 'Step 1: Set up rank tracking in System Settings' });
     expect(within(setup).getByText(/Done once for the whole platform/)).toBeInTheDocument();
+    // Bright Data first: its searches run from the keyword's country.
+    const lists = within(setup).getAllByRole('list');
+    expect(lists.map((l) => l.getAttribute('aria-label'))).toEqual(['Bright Data setup', 'DataForSEO setup']);
+    const brightData = within(setup).getByRole('list', { name: 'Bright Data setup' });
+    expect(within(brightData).getAllByRole('listitem')).toHaveLength(4);
+    expect(brightData).toHaveTextContent('5,000 free requests a month');
+    expect(brightData).toHaveTextContent('Bright Data (SERP API)');
+    expect(brightData).toHaveTextContent('SERP API zone');
+    expect(setup).toHaveTextContent('its searches run from its own servers abroad');
     const steps = within(setup).getByRole('list', { name: 'DataForSEO setup' });
     expect(within(steps).getAllByRole('listitem')).toHaveLength(5);
     expect(steps).toHaveTextContent('Add Funds');
     expect(steps).toHaveTextContent('Sandbox: free dummy results, for testing');
     expect(steps).toHaveTextContent('Test saved credentials');
     for (const [name, href] of [
+      [/Sign up at Bright Data/, GUIDE_URLS.brightDataSignup],
+      [/Free requests/, GUIDE_URLS.brightDataFreeTier],
+      [/Open zones/, GUIDE_URLS.brightDataZones],
+      [/SERP API quick start/, GUIDE_URLS.brightDataSerpQuickstart],
       [/Sign up at DataForSEO/, GUIDE_URLS.dataForSeoRegister],
       [/API Access/, GUIDE_URLS.dataForSeoApiAccess],
       [/DataForSEO pricing/, GUIDE_URLS.dataForSeoPricing],
@@ -295,7 +308,7 @@ describe('Search rankings: the holding note sits ABOVE the setup that adds keywo
     const setup = await screen.findByRole('region', { name: 'Step 1: Set up rank tracking in System Settings' });
     expect(setup).toHaveTextContent('An instance admin does this, once for the whole platform.');
     expect(setup).toHaveTextContent('System Settings → Integrations → Keyword rank tracking');
-    expect(within(setup).getAllByRole('listitem')).toHaveLength(5);
+    expect(within(setup).getAllByRole('listitem')).toHaveLength(9);
     expect(within(setup).getByRole('link', { name: /API Access/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', SYSTEM_BUTTON)).toBeNull();
   });

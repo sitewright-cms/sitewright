@@ -1,5 +1,6 @@
 import type { RankProviderId } from '@sitewright/schema';
 import { apify } from './apify.js';
+import { brightData } from './brightdata.js';
 import { dataForSeo } from './dataforseo.js';
 import type { RankProvider } from './types.js';
 
@@ -9,4 +10,5 @@ export * from './types.js';
 export const RANK_PROVIDERS: Readonly<Record<RankProviderId, RankProvider>> = {
   dataforseo: dataForSeo,
   apify,
+  brightdata: brightData,
 };

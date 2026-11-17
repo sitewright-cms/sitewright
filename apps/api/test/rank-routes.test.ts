@@ -262,9 +262,11 @@ describe('one full run', () => {
     const first = await app.inject({ method: 'POST', url: `/projects/${pid}/rankings/check`, ...as(dev.t) });
     expect(first.json()).toMatchObject({ status: 'ok', sent: 1 });
     const posted = calls.find((c) => c.url.endsWith('/task_post'))!.body as Array<Record<string, unknown>>;
+    // The first page only: a check of the top 100 reads further pages only while the site has not turned up.
     expect(posted).toEqual([
-      expect.objectContaining({ keyword: 'plumber windhoek', location_name: 'Windhoek,Khomas Region,Namibia', device: 'mobile', depth: 100 }),
+      expect.objectContaining({ keyword: 'plumber windhoek', location_name: 'Windhoek,Khomas Region,Namibia', device: 'mobile', depth: 10 }),
     ]);
+    expect(posted[0]).not.toHaveProperty('search_param');
 
     // Pending until collected.
     const pending = (await app.inject({ method: 'GET', url: `/projects/${pid}/rankings`, ...as(client.t) })).json() as ProjectRankings;

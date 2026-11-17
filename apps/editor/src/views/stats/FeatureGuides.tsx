@@ -24,6 +24,10 @@ import {
 
 /** Where each provider's own pages are. Checked without signing in; the consoles may move things. */
 export const GUIDE_URLS = {
+  brightDataSignup: 'https://brightdata.com/?hs_signup=1',
+  brightDataFreeTier: 'https://docs.brightdata.com/general/account/billing-and-pricing/free-tier',
+  brightDataZones: 'https://brightdata.com/cp/zones',
+  brightDataSerpQuickstart: 'https://docs.brightdata.com/products/serp-api/quickstart',
   dataForSeoRegister: 'https://app.dataforseo.com/register',
   dataForSeoApiAccess: 'https://app.dataforseo.com/api-access',
   dataForSeoPricing: 'https://dataforseo.com/pricing',
@@ -65,7 +69,11 @@ export function VisitsGuide({ onOpenSettings }: { onOpenSettings?: OpenWebsiteSe
 
 // ── Search rankings ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-function DataForSeoSetup({ step, onOpenSystemSettings }: { step?: number; onOpenSystemSettings?: OpenSystemSettings }) {
+/**
+ * How to set up a rank-tracking provider: Bright Data first — its searches run from the keyword's country, and every
+ * account gets free requests each month — then DataForSEO, cheaper per page but searching from its own servers abroad.
+ */
+function RankProviderSetup({ step, onOpenSystemSettings }: { step?: number; onOpenSystemSettings?: OpenSystemSettings }) {
   return (
     <GuideCard
       step={step}
@@ -74,32 +82,72 @@ function DataForSeoSetup({ step, onOpenSystemSettings }: { step?: number; onOpen
       intro={<SystemSettingsIntro section="rank-tracking" canOpen={Boolean(onOpenSystemSettings)} />}
       actions={<SystemSettingsButton section="rank-tracking" onOpen={onOpenSystemSettings} />}
     >
-      <Steps label="DataForSEO setup">
-        <Step>
-          Create a DataForSEO account. A new account gets a small trial balance.
-          <StepLinks links={[{ href: GUIDE_URLS.dataForSeoRegister, text: 'Sign up at DataForSEO' }]} />
-        </Step>
-        <Step>
-          Open <Ui>API Access</Ui> in the DataForSEO dashboard. It shows the <Ui>API login</Ui> (the account email) and the{' '}
-          <Ui>API password</Ui>. The API password is made for you and is not the password you sign in with. It is shown for the first 24
-          hours; after that, use <Ui>Send by e-mail</Ui> there.
-          <StepLinks links={[{ href: GUIDE_URLS.dataForSeoApiAccess, text: 'Open API Access' }]} />
-        </Step>
-        <Step>
-          Add funds with <Ui>Add Funds</Ui> in the dashboard: checks are pay as you go, and the money does not expire. To try it for free
-          first, skip this and pick the sandbox in the next step.
-          <StepLinks links={[{ href: GUIDE_URLS.dataForSeoPricing, text: 'DataForSEO pricing' }]} />
-        </Step>
-        <Step>
-          In <Ui>System Settings → Integrations → Keyword rank tracking</Ui>: set <Ui>Provider</Ui> to <Ui>DataForSEO</Ui>, paste the{' '}
-          <Ui>API login</Ui> and <Ui>API password</Ui>, and set the <Ui>Monthly budget (USD)</Ui>. Under <Ui>Searches</Ui>,{' '}
-          <Ui>Sandbox: free dummy results, for testing</Ui> costs nothing and returns made-up positions; switch to <Ui>Live searches</Ui> when
-          you are ready. Then press <Ui>Save settings</Ui>.
-        </Step>
-        <Step>
-          Press <Ui>Test saved credentials</Ui>. It answers <Ui>Connected</Ui> with the account balance.
-        </Step>
-      </Steps>
+      <GuidePart title="Bright Data (recommended)">
+        <p className="text-sm leading-relaxed">
+          Its searches run through a connection in the keyword&apos;s country, so the positions are the ones people there see.
+        </p>
+        <Steps label="Bright Data setup">
+          <Step>
+            Create a Bright Data account. Every account gets 5,000 free requests a month, with no card needed; one page of results is one
+            request.
+            <StepLinks
+              links={[
+                { href: GUIDE_URLS.brightDataSignup, text: 'Sign up at Bright Data' },
+                { href: GUIDE_URLS.brightDataFreeTier, text: 'Free requests' },
+              ]}
+            />
+          </Step>
+          <Step>
+            In the control panel, add a <Ui>SERP API</Ui> zone and note its name, such as <Ui>serp_api1</Ui>. The zone&apos;s{' '}
+            <Ui>Overview</Ui> tab shows the <Ui>API key</Ui>.
+            <StepLinks
+              links={[
+                { href: GUIDE_URLS.brightDataZones, text: 'Open zones' },
+                { href: GUIDE_URLS.brightDataSerpQuickstart, text: 'SERP API quick start' },
+              ]}
+            />
+          </Step>
+          <Step>
+            In <Ui>System Settings → Integrations → Keyword rank tracking</Ui>: set <Ui>Provider</Ui> to <Ui>Bright Data (SERP API)</Ui>, paste
+            the <Ui>API key</Ui>, enter the <Ui>SERP API zone</Ui>, and set the <Ui>Monthly budget (USD)</Ui>. Leave{' '}
+            <Ui>Price per 1,000 requests (USD)</Ui> empty unless your plan&apos;s price differs. Then press <Ui>Save settings</Ui>.
+          </Step>
+          <Step>
+            Press <Ui>Test saved credentials</Ui>. It answers <Ui>Connected</Ui>, with the balance when the key may read it.
+          </Step>
+        </Steps>
+      </GuidePart>
+      <GuidePart title="Or DataForSEO">
+        <p className="text-sm leading-relaxed">
+          Cheaper per page, but its searches run from its own servers abroad: in a small market it can miss results people there see.
+        </p>
+        <Steps label="DataForSEO setup">
+          <Step>
+            Create a DataForSEO account. A new account gets a small trial balance.
+            <StepLinks links={[{ href: GUIDE_URLS.dataForSeoRegister, text: 'Sign up at DataForSEO' }]} />
+          </Step>
+          <Step>
+            Open <Ui>API Access</Ui> in the DataForSEO dashboard. It shows the <Ui>API login</Ui> (the account email) and the{' '}
+            <Ui>API password</Ui>. The API password is made for you and is not the password you sign in with. It is shown for the first 24
+            hours; after that, use <Ui>Send by e-mail</Ui> there.
+            <StepLinks links={[{ href: GUIDE_URLS.dataForSeoApiAccess, text: 'Open API Access' }]} />
+          </Step>
+          <Step>
+            Add funds with <Ui>Add Funds</Ui> in the dashboard: checks are pay as you go, and the money does not expire. To try it for free
+            first, skip this and pick the sandbox in the next step.
+            <StepLinks links={[{ href: GUIDE_URLS.dataForSeoPricing, text: 'DataForSEO pricing' }]} />
+          </Step>
+          <Step>
+            In <Ui>System Settings → Integrations → Keyword rank tracking</Ui>: set <Ui>Provider</Ui> to <Ui>DataForSEO</Ui>, paste the{' '}
+            <Ui>API login</Ui> and <Ui>API password</Ui>, and set the <Ui>Monthly budget (USD)</Ui>. Under <Ui>Searches</Ui>,{' '}
+            <Ui>Sandbox: free dummy results, for testing</Ui> costs nothing and returns made-up positions; switch to <Ui>Live searches</Ui>{' '}
+            when you are ready. Then press <Ui>Save settings</Ui>.
+          </Step>
+          <Step>
+            Press <Ui>Test saved credentials</Ui>. It answers <Ui>Connected</Ui> with the account balance.
+          </Step>
+        </Steps>
+      </GuidePart>
     </GuideCard>
   );
 }
@@ -112,7 +160,7 @@ export function RankingsGuide({ configured, tracked, onOpenSystemSettings }: { c
   return (
     <div className="flex flex-col gap-4">
       <StaffOnlyNote feature="rankings" />
-      {!configured && <DataForSeoSetup step={1} onOpenSystemSettings={onOpenSystemSettings} />}
+      {!configured && <RankProviderSetup step={1} onOpenSystemSettings={onOpenSystemSettings} />}
       <GuideCard step={configured ? undefined : 2} title="Enable it for this project" state="No keywords yet">
         <Steps label="Enable rank tracking for this project">
           {!tracked && (

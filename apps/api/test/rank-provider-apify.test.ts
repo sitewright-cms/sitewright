@@ -422,6 +422,22 @@ describe('Apify collect', () => {
     expect(readPage(done.page, { domain: 'plumbers.na', includeSubdomains: true }).hit?.position).toBe(3);
   });
 
+  it('reads a result Google wrapped in its own redirect by the address it shows', async () => {
+    const records = [
+      {
+        searchQuery: { term: 'k', page: 1 },
+        organicResults: [
+          { url: 'https://other.test/', position: 1, type: 'organic' },
+          { url: 'https://www.google.com/goto?url=CAESabc&gsessionid=x', displayedUrl: 'https://www.plumbers.na › drains', position: 2, type: 'organic' },
+        ],
+      },
+    ];
+    const { fetch } = fakeFetch((_c, path) => (path.includes('/datasets/') ? { body: records } : { body: run() }));
+    const [out] = await apify.collect(CREDS, [{ checkId: 'c', ref: `${RUN_A}:1:k` }], { fetch });
+    const page = (out as Extract<typeof out, { state: 'done' }>).page;
+    expect(readPage(page, { domain: 'plumbers.na', includeSubdomains: true }).hit).toMatchObject({ position: 2, url: 'https://www.plumbers.na/' });
+  });
+
   it('says Google had nothing more when the last page says so, or came back empty', async () => {
     const endOf = async (records: unknown[]) => {
       const { fetch } = fakeFetch((_c, path) => (path.includes('/datasets/') ? { body: records } : { body: run() }));

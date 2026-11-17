@@ -81,8 +81,21 @@ the budget to count anything. Bright Data reports no price with a result, and ev
 month cost nothing. "Test saved credentials" checks the API key and the zone, and shows the account balance when the
 key may read it.
 
-- **A request Bright Data could not run** (Google asked to verify, say, or the place was refused) is not billed.
-  That search fails for the day and is tried again the next; the others go on.
+- **Zone settings:** in the SERP API zone's Configuration, set the default data format to **Full JSON**; Light JSON
+  leaves out featured snippets. Set Google Ads to **Standard**. Leave custom headers and cookies off, because with
+  them Bright Data bills failed requests too, and leave asynchronous requests off. The zone field in System Settings
+  says the same.
+- **Google's redirect links:** Google wraps some results in its own redirect, `google.com/goto?url=…`, and on some
+  pages every result. Sitewright reads such a result by the address Google shows under it. When that address is cut
+  short by a breadcrumb ("site.na › services › …"), the ranking page is recorded as the site's home page.
+- **Empty answers:** some searches come back empty, when Google challenged Bright Data's connection with a captcha.
+  On 17 November 2026 that was about one request in four for some searches. An empty answer is not billed, and the
+  page is tried again twice, 16 seconds apart, as Bright Data advises. A search refused for a moment ("this query
+  recently failed") is tried again the same way.
+- **A request Bright Data could not run** (refused for its place, say) is not billed. That search fails for the day
+  and is tried again the next; the others go on.
+- **Results vary between requests.** The same search a few minutes apart, through two connections, can put the site
+  on page 2 or leave it out of a shorter list. That is Google's answer to each request, not a fault in the reading.
 - **A reply that was lost, or came back but could not be read,** may have been billed, and is booked.
 - **A refusal for the whole account** (the key, funds, the rate limit) stops the rest. A search that had read some
   pages keeps them and reads on from there later. One not yet sent is given back and sent on a later pass, and the

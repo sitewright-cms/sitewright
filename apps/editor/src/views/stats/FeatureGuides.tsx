@@ -99,7 +99,9 @@ function RankProviderSetup({ step, onOpenSystemSettings }: { step?: number; onOp
           </Step>
           <Step>
             In the control panel, add a <Ui>SERP API</Ui> zone and note its name, such as <Ui>serp_api1</Ui>. The zone&apos;s{' '}
-            <Ui>Overview</Ui> tab shows the <Ui>API key</Ui>.
+            <Ui>Overview</Ui> tab shows the <Ui>API key</Ui>. In its <Ui>Configuration</Ui>, choose <Ui>Full JSON</Ui> as the default
+            data format (<Ui>Light JSON</Ui> leaves out featured snippets) and <Ui>Standard</Ui> Google Ads, and leave custom headers
+            and cookies, and asynchronous requests, off: with custom headers, failed requests are billed too.
             <StepLinks
               links={[
                 { href: GUIDE_URLS.brightDataZones, text: 'Open zones' },

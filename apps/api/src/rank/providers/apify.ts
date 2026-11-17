@@ -22,8 +22,8 @@ import {
  *   with no charge for platform usage. What the run reports it cost (`usageTotalUsd`, "what you actually pay", or its
  *   per-event `eventUsage`, whichever is more) replaces the estimate booked at sending, shared out among the run's
  *   searches by the pages each one took — never below the cheapest plan's rate for those pages, and never above the
- *   run's cap. Every run is capped (`maxTotalChargeUsd`) at twice its estimate, so a misbehaving run cannot spend past
- *   the budget's reach.
+ *   run's cap. Every run is capped (`maxTotalChargeUsd`) at twice its estimate, or at the least cap Apify accepts
+ *   ($0.50, its `pricingInfo.minimalMaxTotalChargeUsd`) when that is more: a run that misbehaves is stopped there.
  * - Places: the country goes in as `countryCode`; a place inside it (a Google canonical name such as
  *   `Windhoek,Khomas Region,Namibia`, the form keywords are stored in) as Google's own `uule` location code. Apify has
  *   no list of places, so its location picker offers the country only.
@@ -44,6 +44,11 @@ const PRICE_PER_PAGE_USD = 0.0035;
 const MIN_PRICE_PER_PAGE_USD = 0.0015;
 /** A run may cost at most this many times its estimate before Apify stops it. */
 const RUN_CHARGE_CAP = 2;
+/**
+ * The least cap Apify accepts for a run: a lower `maxTotalChargeUsd` is refused outright ("Maximum cost per run is less
+ * than the allowed minimum of $0.50"), so a run of a few searches is capped here instead.
+ */
+const MIN_RUN_CAP_USD = 0.5;
 /** The longest a run may take, in seconds: a hundred searches of ten pages finish well inside it. */
 const RUN_TIMEOUT_SECS = 3600;
 /** The most searches one `submit` may carry (one run per group of settings within it). */
@@ -189,6 +194,9 @@ function groupsOf(searches: readonly RankSearch[]): RankSearch[][] {
 
 const estimate = (depth: number): number => PRICE_PER_PAGE_USD * pagesFor(depth);
 
+/** The most a run of `terms` searches at `depth` may be charged: twice its estimate, never under Apify's least cap. */
+const runCapOf = (depth: number, terms: number): number => Math.max(MIN_RUN_CAP_USD, RUN_CHARGE_CAP * estimate(depth) * terms);
+
 /**
  * A queued search's reference: the run, how many checks share its term in that run (two projects tracking the same
  * search are one query), and the term its results are filed under. The share count travels with each check, so each
@@ -229,7 +237,11 @@ async function readDataset(creds: RankCredentials, datasetId: string, io: RankPr
 
 const pageNumber = (item: Json): number => num(isRecord(item.searchQuery) ? item.searchQuery.page : undefined) ?? 1;
 
-/** A featured snippet's link, wherever the record carries one. */
+/**
+ * A featured snippet's link, wherever the record carries one. ★ Measured 2026-11-17: no record had a snippet field,
+ * not even on searches that usually show one (Google showed an AI Overview, `aiOverview`, instead), so these names are
+ * a guess that costs nothing when absent.
+ */
 function snippetUrls(item: Json): string[] {
   const out: string[] = [];
   for (const s of [item.featuredSnippet, ...(Array.isArray(item.featuredSnippets) ? item.featuredSnippets : [])]) {
@@ -241,7 +253,8 @@ function snippetUrls(item: Json): string[] {
 
 /**
  * One search's results pages as entries. Positions are counted here, page after page, rather than taken from the
- * actor — whether its numbering restarts on each page is not documented. A featured snippet sits above the page's
+ * actor. Measured 2026-11-17, the actor numbers on from page to page (page 2 starting at 7 after six results), which
+ * gives the same count, but that is not documented. A featured snippet sits above the page's
  * first ordinary result (`absolutePosition` keeps the order on the page); a result the actor types as a snippet counts
  * as one too.
  */
@@ -273,8 +286,9 @@ function entriesOf(pages: readonly Json[]): SerpEntry[] {
 
 /**
  * What a finished run says it cost: the larger of its total (`usageTotalUsd`) and the sum of its per-event charges
- * (`eventUsage`) — which of the two carries a pay-per-event actor's charge is not spelled out, and booking the smaller
- * could let the budget run past what is really spent. Undefined when the run states neither.
+ * (`eventUsage`). Measured 2026-11-17, the total carried both (25 pages at $0.0025 and the $0.00005 start: $0.06255),
+ * but that is not spelled out, and booking the smaller could let the budget run past what is really spent. Undefined
+ * when the run states neither.
  */
 function runCharge(run: Json): number | undefined {
   const total = num(run.usageTotalUsd);
@@ -286,13 +300,16 @@ function runCharge(run: Json): number | undefined {
 
 /**
  * One check's part of a run's charge: its pages' share of every page the run read, split between the checks that
- * shared the search — held between the cheapest plan's rate and the run's cap for those pages.
+ * shared the search — held between the cheapest plan's rate and the run's cap. The cap is the one the run reports it
+ * was started with (`options.maxTotalChargeUsd`); for a run that does not say, the one it would have been given for the
+ * pages it read.
  */
-function shareOf(charged: number, pages: number, totalPages: number, shares: number): number {
-  const share = totalPages > 0 ? (charged * pages) / totalPages / shares : 0;
+function shareOf(charged: number, pages: number, totalPages: number, shares: number, runCap: number | undefined): number {
+  if (totalPages <= 0) return 0;
+  const part = pages / totalPages / shares;
   const floor = (MIN_PRICE_PER_PAGE_USD * pages) / shares;
-  const cap = (RUN_CHARGE_CAP * PRICE_PER_PAGE_USD * pages) / shares;
-  return Math.min(cap, Math.max(floor, share));
+  const cap = runCap !== undefined && runCap > 0 ? runCap : Math.max(MIN_RUN_CAP_USD, RUN_CHARGE_CAP * PRICE_PER_PAGE_USD * totalPages);
+  return Math.min(cap * part, Math.max(floor, charged * part));
 }
 
 function parseCredentials(raw: Readonly<Record<string, string>>): RankCredentials {
@@ -339,7 +356,7 @@ export const apify: RankProvider = {
         continue;
       }
       const terms = new Set(group.map((g) => termOf(g.keyword)));
-      const cap = RUN_CHARGE_CAP * estimate(group[0]!.depth) * terms.size;
+      const cap = runCapOf(group[0]!.depth, terms.size);
       const params = new URLSearchParams({ timeout: String(RUN_TIMEOUT_SECS), maxTotalChargeUsd: cap.toFixed(4) });
       let runId: string | undefined;
       try {
@@ -352,7 +369,8 @@ export const apify: RankProvider = {
         // started: each group answers for itself instead.
         const accountWide = err.kind === 'auth' || err.kind === 'funds' || err.kind === 'rate';
         if (i === 0 && (accountWide || groups.length === 1)) throw err;
-        // A lost reply may have started the run, which may then spend up to its cap; any other refusal certainly did not.
+        // A lost reply may have started the run; any other refusal certainly did not. A started run is charged per page,
+        // so it is booked at twice its estimate, not at its cap: Apify's $0.50 least cap is no measure of what it costs.
         const possiblyPaid = err.kind === 'unavailable';
         for (const s of group) out.push({ checkId: s.checkId, state: 'failed', error: err.message, costUsd: possiblyPaid ? RUN_CHARGE_CAP * estimate(s.depth) : 0 });
         if (err.kind === 'auth' || err.kind === 'funds') stopped = err;
@@ -408,6 +426,7 @@ export const apify: RankProvider = {
         const startedAt = Date.parse(str(run.startedAt) ?? '');
         const checkedAt = Number.isFinite(startedAt) ? new Date(startedAt) : new Date();
         const charged = runCharge(run);
+        const runCap = num(isRecord(run.options) ? run.options.maxTotalChargeUsd : undefined);
         // The run's charge is for EVERY page it read, whichever of its checks this pass happens to ask about.
         const totalPages = [...pages.values()].reduce((sum, p) => sum + p.length, 0);
         for (const c of checks) {
@@ -419,7 +438,7 @@ export const apify: RankProvider = {
             out.set(c.checkId, { checkId: c.checkId, state: 'failed', error: why });
             continue;
           }
-          const cost = charged === undefined ? {} : { costUsd: shareOf(charged, own.length, totalPages, c.shares) };
+          const cost = charged === undefined ? {} : { costUsd: shareOf(charged, own.length, totalPages, c.shares, runCap) };
           out.set(c.checkId, { checkId: c.checkId, state: 'done', page: { checkedAt, entries: entriesOf(own), pagesRead: own.length }, ...cost });
         }
       } catch (err) {

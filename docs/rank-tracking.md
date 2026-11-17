@@ -38,8 +38,25 @@ reading, so a keyword's change across that boundary can be off by one place.
 | Credentials | API login and API password | API token |
 | Sandbox | Free dummy results, for trying the setup | None |
 
-Searches that share every setting go to Apify as one run. Each run is capped at twice its estimated cost, so a
-misbehaving run cannot spend past the budget's reach.
+Searches that share every setting go to Apify as one run. Each run is capped at twice its estimated cost, or at
+$0.50 when that is more, because Apify refuses to start a run capped any lower. The budget books a run's estimate
+when it starts and its real charge once it has finished. A run is charged per results page, so it costs about its
+estimate. The cap only stops one that misbehaves, and such a run of a few searches could cost up to $0.50 before its
+charge is known.
+
+Measured against the real service on 17 November 2026:
+
+- **Speed:** a run of three searches at a depth of 100 finished in about five minutes. Sitewright looks for the
+  results 1, 3, 10 and 30 minutes after "Check now", so they show up at the 10-minute look.
+- **Price:** that run read 26 results pages and cost $0.06255: 25 pages at $0.0025 on that account's plan, plus
+  $0.00005 for starting the run. The last page came back empty and was not charged. The budget books the listed
+  rate of $0.0035 a page until the real charge is known.
+- **Positions:** Apify numbers results without restarting on each page. Sitewright counts them itself and gets
+  the same numbers.
+- **Featured snippets:** none of the records had a field for one. On searches that usually show a snippet,
+  Google showed an AI Overview instead. Whether Apify reports a featured snippet at all is not documented. If one
+  shows the site and Apify leaves it out, that day reads as not found, as DataForSEO checks did before snippets
+  were counted.
 
 Switching provider keeps every keyword and its history: each check records which provider ran it, and Sitewright
 works out the position itself, the same way for both. One caveat: a keyword added under Apify stores the country's

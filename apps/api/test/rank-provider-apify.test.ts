@@ -127,7 +127,10 @@ describe('Apify submit', () => {
       saveHtmlToKeyValueStore: false,
       maximumLeadsEnrichmentRecords: 0,
     });
-    expect(new URL(calls[0]!.url).searchParams.get('maxTotalChargeUsd')).toBe('0.1400'); // 2 × $0.035 × 2 searches
+    // Twice the estimate (2 × $0.035 × 2 searches = $0.14) is under the least cap Apify accepts: it refuses a run capped
+    // below $0.50 ("Maximum cost per run is less than the allowed minimum of $0.50"), so both runs ask for that.
+    expect(new URL(calls[0]!.url).searchParams.get('maxTotalChargeUsd')).toBe('0.5000');
+    expect(new URL(calls[1]!.url).searchParams.get('maxTotalChargeUsd')).toBe('0.5000');
     expect(calls[1]!.body).toMatchObject({ queries: 'geyser repair', mobileResults: true, maxPagesPerQuery: 3, locationUule: uuleFor('Windhoek,Khomas Region,Namibia') });
 
     // The two checks of one search say so in their reference: each books half of what that search cost.
@@ -171,7 +174,8 @@ describe('Apify submit', () => {
     expect(out).toEqual([
       { checkId: 'ok', state: 'queued', ref: `${RUN_A}:1:plumber windhoek`, costUsd: expect.closeTo(0.035) },
       { checkId: 'bad', state: 'failed', error: expect.stringContaining('languageCode'), costUsd: 0 },
-      // A run whose start was lost may exist and spend up to its cap: booked at the cap.
+      // A run whose start was lost may exist, charged per page: booked at twice its estimate — not at Apify's $0.50
+      // least cap, which would let a few lost replies eat the month's budget.
       { checkId: 'lost', state: 'failed', error: 'Apify could not be reached', costUsd: expect.closeTo(0.07) },
     ]);
   });
@@ -204,6 +208,13 @@ describe('Apify submit', () => {
     await expect(apify.submit(CREDS, [search('c1')], { fetch })).resolves.toEqual([
       { checkId: 'c1', state: 'failed', error: 'Apify sent a reply the platform could not read', costUsd: expect.closeTo(0.07) },
     ]);
+  });
+
+  it('caps a run big enough at twice its estimate, above Apify’s least cap', async () => {
+    const terms = Array.from({ length: 8 }, (_, i) => search(`c${i}`, { keyword: `term ${i}` }));
+    const { fetch, calls } = fakeFetch(() => ({ status: 201, body: { data: { id: RUN_A } } }));
+    await apify.submit(CREDS, terms, { fetch });
+    expect(new URL(calls[0]!.url).searchParams.get('maxTotalChargeUsd')).toBe('0.5600'); // 2 × $0.035 × 8
   });
 });
 
@@ -326,12 +337,31 @@ describe('Apify collect', () => {
     expect(await costOf({ usageTotalUsd: 0.0001, eventUsage: { 'search-page-scraped': { eventTitle: 'Page', eventTotalUsd: 0.0048 } } })).toBeCloseTo(0.0048);
     // Reported at next to nothing: still booked at the cheapest plan's rate for its two pages.
     expect(await costOf({ usageTotalUsd: 0.00001 })).toBeCloseTo(0.003);
-    // Reported far past the run's cap (a unit mix-up): held to the cap for two pages.
-    expect(await costOf({ usageTotalUsd: 500 })).toBeCloseTo(0.014);
+    // Reported far past the run's cap (a unit mix-up): held to the cap the run says it had…
+    expect(await costOf({ usageTotalUsd: 500, options: { maxTotalChargeUsd: 0.5 } })).toBeCloseTo(0.5);
+    // …or, when it does not say, the one it would have had for two pages: Apify's least, $0.50.
+    expect(await costOf({ usageTotalUsd: 500 })).toBeCloseTo(0.5);
+    expect(await costOf({ usageTotalUsd: 500 }, 2)).toBeCloseTo(0.25);
     // No figure at all: the estimate stays.
     expect(await costOf({ usageTotalUsd: undefined })).toBeUndefined();
     // Shared by two checks, collected in different passes: each books half, never the whole twice.
     expect(await costOf({ usageTotalUsd: 0.006 }, 2)).toBeCloseTo(0.003);
+
+    // A large run: each check books its pages' part of the run's cap at most.
+    const pagesOf = (count: number, terms: number) => Array.from({ length: count }, (_, i) => page(`t${i % terms}`, Math.floor(i / terms) + 1, [`https://r${i}.test/`]));
+    const heldTo = async (records: ReturnType<typeof pagesOf>, runOver: Record<string, unknown>) => {
+      const { fetch } = fakeFetch((_c, path, query) => {
+        if (!path.includes('/datasets/')) return { body: run(runOver) };
+        const offset = Number(query.get('offset'));
+        return { body: records.slice(offset, offset + Number(query.get('limit'))) };
+      });
+      const [out] = await apify.collect(CREDS, [{ checkId: 'c', ref: `${RUN_A}:1:t0` }], { fetch });
+      return (out as { costUsd?: number }).costUsd;
+    };
+    expect(await heldTo(pagesOf(80, 8), { usageTotalUsd: 500, options: { maxTotalChargeUsd: 0.56 } })).toBeCloseTo(0.07); // $0.56 × 10 of 80 pages
+    expect(await heldTo(pagesOf(80, 8), { usageTotalUsd: 500 })).toBeCloseTo(0.07); // max($0.50, 2 × $0.0035 × 80) × 10/80
+    // More records than the run asked for (repeats, retries): still never past the cap it was started with.
+    expect(await heldTo(pagesOf(300, 1), { usageTotalUsd: 500, options: { maxTotalChargeUsd: 0.5 } })).toBeCloseTo(0.5);
   });
 
   it('does not count a snippet’s page twice when the actor also lists it among the ordinary results', async () => {

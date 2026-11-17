@@ -14,8 +14,9 @@ The running version of an instance is reported at `GET /version` (baked into the
 - **Apify as a second rank-tracking provider.** System Settings → Integrations → Keyword rank tracking now offers
   Apify's Google Search Results Scraper beside DataForSEO, with an API token as its only credential. Searches
   that share every setting go out as one run, the budget books the listed price and then the run's real charge,
-  and each run is capped at twice its estimate. Apify has no list of places, so new keywords are tracked by
-  country; keywords already tracked for a city keep it. See [docs/rank-tracking.md](docs/rank-tracking.md).
+  and each run is capped at twice its estimate or at $0.50, the least cap Apify accepts. Apify has no list of
+  places, so new keywords are tracked by country; keywords already tracked for a city keep it. See
+  [docs/rank-tracking.md](docs/rank-tracking.md).
 
 ### Fixed
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { makeHarness, sessionToken, type Harness } from './harness.js';
+import { liveApiKey, makeHarness, sessionToken, type Harness } from './harness.js';
 
 const SESSION_COOKIE = 'sw_session';
 const PASSWORD = 'Pw-secret-1';
@@ -132,8 +132,8 @@ describe('account management (/account/email, /account/password)', () => {
   });
 
   it('is session-only: a Bearer credential is forbidden on both routes', async () => {
-    // The Bearer gate fires on presence (before any session check), so a fake token suffices.
-    const auth = { authorization: 'Bearer swk_fake_token' };
+    // A LIVE key: a dead one is already refused (401) before the body is read, so it would prove nothing here.
+    const auth = { authorization: `Bearer ${await liveApiKey(await harness.signup({ password: PASSWORD }))}` };
     const e = await harness.app.inject({ method: 'PUT', url: '/account/email', headers: auth, payload: { email: 'x@test.local', currentPassword: PASSWORD } });
     expect(e.statusCode).toBe(403);
     const p = await harness.app.inject({ method: 'PUT', url: '/account/password', headers: auth, payload: { currentPassword: PASSWORD, newPassword: 'New-pw-9876' } });

@@ -16,7 +16,7 @@ vi.mock('@simplewebauthn/server', () => ({
   verifyAuthenticationResponse: (args: unknown) => verifyAuth(args),
 }));
 
-import { makeHarness, sessionToken, type Harness, type TestClient } from './harness.js';
+import { liveApiKey, makeHarness, sessionToken, type Harness, type TestClient } from './harness.js';
 import { registrationOf } from './passkey-fixtures.js';
 
 const SESSION_COOKIE = 'sw_session';
@@ -286,7 +286,8 @@ describe('passkeys (WebAuthn registration + passwordless login)', () => {
   });
 
   it('passkey management is session-only — a Bearer credential is forbidden', async () => {
-    const auth = { authorization: 'Bearer swk_fake' };
+    // A LIVE key: a dead one is already refused (401) before the body is read, so it would prove nothing here.
+    const auth = { authorization: `Bearer ${await liveApiKey(await harness.signup({ password: PASSWORD }))}` };
     for (const [method, url, payload] of [
       ['POST', '/account/passkeys/register/options', undefined],
       ['POST', '/account/passkeys/register/verify', { handle: 'h', response: { id: 'x' }, name: 'X' }],

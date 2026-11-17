@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { generateSync } from 'otplib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { makeHarness, sessionToken, type Harness, type TestClient } from './harness.js';
+import { liveApiKey, makeHarness, sessionToken, type Harness, type TestClient } from './harness.js';
 
 const SESSION_COOKIE = 'sw_session';
 const PASSWORD = 'Pw-secret-1';
@@ -189,7 +189,8 @@ describe('TOTP two-factor (enrol, login gate, recovery codes)', () => {
   });
 
   it('MFA management is session-only — a Bearer credential is forbidden', async () => {
-    const auth = { authorization: 'Bearer swk_fake' };
+    // A LIVE key: a dead one is already refused (401) before the body is read, so it would prove nothing here.
+    const auth = { authorization: `Bearer ${await liveApiKey(await harness.signup({ password: PASSWORD }))}` };
     for (const [method, url, payload] of [
       ['POST', '/account/mfa/totp/setup', undefined],
       ['POST', '/account/mfa/totp/confirm', { code: '123456' }],

@@ -15,6 +15,18 @@ export function sessionToken(res: Resp): string {
   return c.value;
 }
 
+/**
+ * A LIVE project API key owned by `client`, on a new project of theirs — for asserting what a real bearer
+ * may not do. A made-up token no longer stands in for one: a write that carries a body is refused with 401
+ * for a dead credential before the route's own rule (a 403 for any bearer, say) is ever reached.
+ */
+export async function liveApiKey(client: TestClient): Promise<string> {
+  const projectId = await client.createProject(undefined, undefined, { localHosting: false });
+  const res = await client.post(`/projects/${projectId}/api-keys`, { name: 'agent', role: 'owner', capabilities: ['content:read'], expiresInDays: 30 });
+  if (res.statusCode !== 201) throw new Error(`api key mint failed (${res.statusCode}): ${res.body}`);
+  return (res.json() as { token: string }).token;
+}
+
 /** Content + publish helpers scoped to one project. */
 export interface ProjectClient {
   readonly projectId: string;

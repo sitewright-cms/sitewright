@@ -43,9 +43,15 @@ const API = 'https://api.brightdata.com';
 const DEFAULT_PRICE_PER_1000_USD = 1.5;
 const MAX_PRICE_PER_1000_USD = 100;
 /** The most searches one `submit` carries: each may read up to five pages, one request each. */
-const MAX_BATCH = 10;
-/** Searches read at once. Bright Data refuses the same query sent concurrently, and a burst trips its rate limit. */
-const CONCURRENCY = 4;
+const MAX_BATCH = 50;
+/**
+ * Searches read at once, unless the admin sets another number (up to {@link MAX_CONCURRENCY}). A page takes about three
+ * seconds, so ten at once read some 200 pages a minute — far under the 1,000 requests a minute Bright Data allows even
+ * an unfunded account. Identical searches are read once (see `submit`): Bright Data refuses the same query sent twice
+ * at once.
+ */
+const DEFAULT_CONCURRENCY = 10;
+const MAX_CONCURRENCY = 20;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const ZONE_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const WEB_URL_RE = /^https?:\/\//i;
@@ -235,7 +241,8 @@ function hasNextPage(results: Json): boolean {
 type SearchResult =
   /** Its pages read — all of them, or (`page.cut`) those before a failure partway. */
   | { state: 'done'; page: SerpPage; billedPages: number }
-  | { state: 'failed'; error: string; billedPages: number }
+  /** `retry`: Bright Data could not run it and charged nothing — worth trying again later (see `SubmitOutcome`). */
+  | { state: 'failed'; error: string; billedPages: number; retry?: boolean }
   /** Its first request was refused for the whole account: nothing was sent or billed for it. */
   | { state: 'refused'; error: RankProviderError }
   /** Never started: an account-wide refusal stopped the rest. */
@@ -285,7 +292,10 @@ async function readSearch(creds: RankCredentials, s: RankSearch, io: RankProvide
         if (accountWide(err)) stop.error ??= err;
         if (pages > 0) return partway(billed);
         if (billed === 0 && accountWide(err)) return { state: 'refused', error: err };
-        return { state: 'failed', error: err.message, billedPages: billed };
+        // Not run and not charged — an empty answer, a query refused for a moment, Bright Data failing (5xx): later today
+        // may go better. A request refused for itself (400) would only be refused again.
+        const couldNotRun = err instanceof EmptyAnswer || err instanceof QueryRejected || (err.kind === 'unavailable' && !(err instanceof PossiblyBilled));
+        return { state: 'failed', error: err.message, billedPages: billed, ...(couldNotRun && billed === 0 ? { retry: true } : {}) };
       }
       results = resultsOf(answer);
       if (results) break;
@@ -315,16 +325,36 @@ function parseCredentials(raw: Readonly<Record<string, string>>): RankCredential
   if (!apiKey || apiKey.length > 300 || /\s/.test(apiKey)) throw new RankProviderError('Enter the Bright Data API key', 'invalid');
   const zone = (raw.zone ?? '').trim();
   if (!ZONE_RE.test(zone)) throw new RankProviderError('Enter the SERP API zone’s name: letters, digits, _ and - only', 'invalid');
+  const out: Record<string, string> = { apiKey, zone };
   const priceRaw = (raw.pricePer1000 ?? '').trim().replace(',', '.');
-  if (!priceRaw) return { apiKey, zone };
-  const price = Number(priceRaw);
-  // Above zero: a free price would leave the monthly budget nothing to count, and real charges past the free requests
-  // would then go unchecked.
-  if (!Number.isFinite(price) || price <= 0 || price > MAX_PRICE_PER_1000_USD) {
-    throw new RankProviderError(`The price per 1,000 requests is a number of dollars above 0, up to ${MAX_PRICE_PER_1000_USD}`, 'invalid');
+  if (priceRaw) {
+    const price = Number(priceRaw);
+    // Above zero: a free price would leave the monthly budget nothing to count, and real charges past the free requests
+    // would then go unchecked.
+    if (!Number.isFinite(price) || price <= 0 || price > MAX_PRICE_PER_1000_USD) {
+      throw new RankProviderError(`The price per 1,000 requests is a number of dollars above 0, up to ${MAX_PRICE_PER_1000_USD}`, 'invalid');
+    }
+    out.pricePer1000 = String(price);
   }
-  return { apiKey, zone, pricePer1000: String(price) };
+  const concurrencyRaw = (raw.concurrency ?? '').trim();
+  if (concurrencyRaw) {
+    const n = Number(concurrencyRaw);
+    if (!Number.isInteger(n) || n < 1 || n > MAX_CONCURRENCY) {
+      throw new RankProviderError(`Searches at once is a whole number from 1 to ${MAX_CONCURRENCY}`, 'invalid');
+    }
+    out.concurrency = String(n);
+  }
+  return out;
 }
+
+const concurrencyOf = (creds: RankCredentials): number => {
+  const n = Number(creds.concurrency);
+  return Number.isInteger(n) && n >= 1 && n <= MAX_CONCURRENCY ? n : DEFAULT_CONCURRENCY;
+};
+
+/** What makes two searches the same request: two projects tracking one keyword in one place read it once. */
+const requestKey = (s: RankSearch): string =>
+  JSON.stringify([s.keyword.trim().toLowerCase(), s.location.name, s.location.countryCode, s.languageCode, s.device, s.startPage, s.pages]);
 
 export const brightData: RankProvider = {
   id: 'brightdata',
@@ -352,6 +382,13 @@ export const brightData: RankProvider = {
       required: false,
       help: `What the budget books per results page. Leave empty for the pay-as-you-go $${DEFAULT_PRICE_PER_1000_USD.toFixed(2)}.`,
     },
+    {
+      key: 'concurrency',
+      label: 'Searches at once',
+      type: 'text',
+      required: false,
+      help: `How many searches are read at the same time: more finish a large pass sooner. Leave empty for ${DEFAULT_CONCURRENCY}; at most ${MAX_CONCURRENCY}.`,
+    },
   ],
   maxBatch: MAX_BATCH,
 
@@ -366,28 +403,38 @@ export const brightData: RankProvider = {
     if (searches.length > MAX_BATCH) throw new RankProviderError(`at most ${MAX_BATCH} searches per request`, 'invalid');
     const price = priceOf(creds);
     const stop: { error?: RankProviderError } = {};
-    const results: SearchResult[] = new Array(searches.length);
+    // Identical searches (two projects tracking one keyword in one place) are read ONCE, and share what it cost.
+    const groups = new Map<string, RankSearch[]>();
+    for (const s of searches) groups.set(requestKey(s), [...(groups.get(requestKey(s)) ?? []), s]);
+    const requests = [...groups.values()];
+    const results: SearchResult[] = new Array(requests.length);
     let next = 0;
     const worker = async (): Promise<void> => {
-      while (next < searches.length) {
+      while (next < requests.length) {
         const i = next++;
-        const s = searches[i]!;
+        const s = requests[i]![0]!;
         // The country goes into the URL and routes the search: anything but an ISO code is not sent.
         results[i] = /^[A-Z]{2}$/i.test(s.location.countryCode)
           ? await readSearch(creds, s, io, stop)
           : { state: 'failed', error: 'the keyword’s country is not an ISO code', billedPages: 0 };
       }
     };
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, searches.length) }, worker));
+    await Promise.all(Array.from({ length: Math.min(concurrencyOf(creds), requests.length) }, worker));
     // Refused for the whole account before anything was sent or billed: the request as a whole, so the tracker gives
     // every claim back and shows the admin why.
     if (stop.error && results.every((r) => r.state === 'refused' || r.state === 'unsent')) throw stop.error;
-    return searches.map((s, i): SubmitOutcome => {
+    const out = new Map<string, SubmitOutcome>();
+    requests.forEach((group, i) => {
       const r = results[i]!;
-      if (r.state === 'done') return { checkId: s.checkId, state: 'done', page: r.page, costUsd: price * r.billedPages };
-      if (r.state === 'failed') return { checkId: s.checkId, state: 'failed', error: r.error, costUsd: price * r.billedPages };
-      return { checkId: s.checkId, state: 'unsent', error: r.state === 'refused' ? r.error.message : (stop.error?.message ?? 'not sent') };
+      const share = (billed: number): number => (price * billed) / group.length;
+      for (const s of group) {
+        if (r.state === 'done') out.set(s.checkId, { checkId: s.checkId, state: 'done', page: r.page, costUsd: share(r.billedPages) });
+        else if (r.state === 'failed') {
+          out.set(s.checkId, { checkId: s.checkId, state: 'failed', error: r.error, costUsd: share(r.billedPages), ...(r.retry ? { retry: true } : {}) });
+        } else out.set(s.checkId, { checkId: s.checkId, state: 'unsent', error: r.state === 'refused' ? r.error.message : (stop.error?.message ?? 'not sent') });
+      }
     });
+    return searches.map((s) => out.get(s.checkId)!);
   },
 
   // Every search is answered at once: nothing is ever queued.

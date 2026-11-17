@@ -1,7 +1,8 @@
-import { and, asc, count, desc, eq, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import {
   RankProviderIdSchema,
   statsRetentionStart,
+  type RankDailyStat,
   type RankDevice,
   type RankEngine,
   type RankKeywordsInput,
@@ -69,6 +70,8 @@ export interface CheckProgress {
   keywordId: string;
   projectId: string;
   provider: string;
+  /** The UTC day the check is for. */
+  day: string;
   depth: number;
   /** The site the check was sent for (not the project's current setup). */
   domain: string;
@@ -78,6 +81,10 @@ export interface CheckProgress {
   pagesRead: number;
   /** What the check's earlier stages cost, in micro-dollars: the stage in flight's charge adds to it. */
   settledMicros: number;
+  /** Same-day tries after a search the provider could not run. */
+  attempts: number;
+  /** The check is a second reading confirming a drop to "not found": its result is final. */
+  confirming: boolean;
   /**
    * Sent before checks were read in stages, for its whole depth at once: its one result finishes it, however many pages
    * came back (a provider that does not say Google stopped would otherwise send it on for pages it already paid for).
@@ -360,8 +367,19 @@ export class RankRepository {
           sql`NOT ${recent}`,
         ),
       )
-      // NULL (never checked) sorts first in SQLite's ascending order.
-      .orderBy(sql`${lastChecked} ASC`, asc(rankKeywords.createdAt))
+      // NULL (never checked) sorts first in SQLite's ascending order. Among keywords as long unchecked, identical
+      // searches side by side: a provider that reads them once (two projects tracking one keyword in one place) finds
+      // them in the same pass, however far apart they were added.
+      .orderBy(
+        sql`${lastChecked} ASC`,
+        asc(rankKeywords.engine),
+        sql`lower(trim(${rankKeywords.keyword}))`,
+        asc(rankKeywords.locationName),
+        asc(rankKeywords.countryCode),
+        asc(rankKeywords.languageCode),
+        asc(rankKeywords.device),
+        asc(rankKeywords.createdAt),
+      )
       .limit(limit);
     return rows.map((r) => ({ ...r.k, depth: r.depth, domain: r.domain, includeSubdomains: r.includeSubdomains }));
   }
@@ -418,17 +436,24 @@ export class RankRepository {
    * check went meanwhile (its keyword removed), its charge keeps what the earlier stages cost instead of going.
    */
   async release(id: string, settledMicros = 0): Promise<void> {
-    const firstStage = and(eq(rankChecks.id, id), eq(rankChecks.status, 'posting'), sql`COALESCE(${rankChecks.pagesRead}, 0) = 0`);
-    const laterStage = and(eq(rankChecks.id, id), eq(rankChecks.status, 'posting'), sql`${rankChecks.pagesRead} > 0`);
+    // A check's first claim, never tried before: nothing about it is worth keeping. Anything else goes back to waiting,
+    // its earlier tries kept: a later stage as `next` (what it read stands), a retry or a confirmation that has read
+    // nothing yet as `retry`, due at once — never `next`, which would end its day as a "not found" it never read.
+    const fresh = sql`COALESCE(${rankChecks.pagesRead}, 0) = 0 AND ${rankChecks.attempts} = 0 AND ${rankChecks.confirming} = 0`;
+    const firstStage = and(eq(rankChecks.id, id), eq(rankChecks.status, 'posting'), fresh);
+    const waiting = and(eq(rankChecks.id, id), eq(rankChecks.status, 'posting'), sql`NOT (${fresh})`);
     const gone = and(eq(rankCharges.checkId, id), sql`NOT EXISTS (SELECT 1 FROM ${rankChecks} WHERE ${rankChecks.id} = ${id})`);
     await this.db.batch([
       this.db.delete(rankChecks).where(firstStage),
-      this.db.update(rankChecks).set({ status: 'next', costMicros: sql`${rankChecks.costSettledMicros}` }).where(laterStage),
+      this.db
+        .update(rankChecks)
+        .set({ status: sql`CASE WHEN COALESCE(${rankChecks.pagesRead}, 0) = 0 THEN 'retry' ELSE 'next' END`, costMicros: sql`${rankChecks.costSettledMicros}` })
+        .where(waiting),
       settledMicros > 0 ? this.db.update(rankCharges).set({ costMicros: settledMicros }).where(gone) : this.db.delete(rankCharges).where(gone),
       this.db
         .update(rankCharges)
         .set({ costMicros: sql`(SELECT ${rankChecks.costMicros} FROM ${rankChecks} WHERE ${rankChecks.id} = ${id})` })
-        .where(and(eq(rankCharges.checkId, id), sql`EXISTS (SELECT 1 FROM ${rankChecks} WHERE ${rankChecks.id} = ${id} AND ${rankChecks.status} = 'next')`)),
+        .where(and(eq(rankCharges.checkId, id), sql`EXISTS (SELECT 1 FROM ${rankChecks} WHERE ${rankChecks.id} = ${id} AND ${rankChecks.status} IN ('next', 'retry'))`)),
     ]);
   }
 
@@ -456,6 +481,104 @@ export class RankRepository {
   }
 
   /**
+   * A search the provider could not run, tried again at `retryAt` (the same day): the check waits as `retry`, its pages
+   * read so far kept, so the retry reads on from the stage that failed. What the failed try cost is settled — the
+   * provider's figure when it gave one (usually nothing: a search it could not run is not charged), otherwise its booked
+   * cost.
+   */
+  async markRetry(id: string, error: string, retryAt: Date, costUsd?: number, settledMicros = 0): Promise<void> {
+    const total = costUsd !== undefined ? settledMicros + toMicros(costUsd) : undefined;
+    const update = this.db
+      .update(rankChecks)
+      .set({
+        status: 'retry',
+        retryAt,
+        attempts: sql`${rankChecks.attempts} + 1`,
+        error: error.slice(0, 300),
+        providerRef: null,
+        ...(total !== undefined ? { costMicros: total, costSettledMicros: total } : { costSettledMicros: sql`${rankChecks.costMicros}` }),
+      })
+      .where(eq(rankChecks.id, id));
+    if (total === undefined) await update;
+    else await this.db.batch([update, this.charge(id, total)]);
+  }
+
+  /**
+   * A keyword that ranked before now reads "not found": read once more from the first page at `retryAt`, and THAT reading
+   * is recorded. What the first reading cost is settled, as for {@link markNext}.
+   */
+  async markConfirm(id: string, retryAt: Date, costUsd?: number, settledMicros = 0): Promise<void> {
+    const total = costUsd !== undefined ? settledMicros + toMicros(costUsd) : undefined;
+    const update = this.db
+      .update(rankChecks)
+      .set({
+        status: 'retry',
+        retryAt,
+        confirming: true,
+        providerRef: null,
+        error: null,
+        // From the first page again.
+        pagesRead: 0,
+        resultsRead: 0,
+        position: null,
+        absolutePosition: null,
+        url: null,
+        featured: false,
+        ...(total !== undefined ? { costMicros: total, costSettledMicros: total } : { costSettledMicros: sql`${rankChecks.costMicros}` }),
+      })
+      .where(eq(rankChecks.id, id));
+    if (total === undefined) await update;
+    else await this.db.batch([update, this.charge(id, total)]);
+  }
+
+  /** The position of the keyword's last finished check before `day` — null when it was not found, undefined when there is none. */
+  async lastPosition(keywordId: string, day: string, domain: string): Promise<number | null | undefined> {
+    const [row] = await this.db
+      .select({ position: rankChecks.position, domain: rankChecks.domain })
+      .from(rankChecks)
+      .where(and(eq(rankChecks.keywordId, keywordId), eq(rankChecks.status, 'done'), lt(rankChecks.day, day)))
+      .orderBy(desc(rankChecks.day))
+      .limit(1);
+    // A check for another domain (the project changed it) says nothing about this one.
+    return row && row.domain === domain ? row.position : undefined;
+  }
+
+  /** What the checks of each day since `fromDay` did, per provider, newest first (the admin's view). */
+  async dailyStats(fromDay: string): Promise<RankDailyStat[]> {
+    const rows = await this.db
+      .select({
+        day: rankChecks.day,
+        provider: rankChecks.provider,
+        checks: count(),
+        found: sql<number>`SUM(CASE WHEN ${rankChecks.status} = 'done' AND ${rankChecks.position} IS NOT NULL THEN 1 ELSE 0 END)`,
+        notFound: sql<number>`SUM(CASE WHEN ${rankChecks.status} = 'done' AND ${rankChecks.position} IS NULL THEN 1 ELSE 0 END)`,
+        failed: sql<number>`SUM(CASE WHEN ${rankChecks.status} = 'failed' THEN 1 ELSE 0 END)`,
+        running: sql<number>`SUM(CASE WHEN ${rankChecks.status} IN ('posting', 'queued', 'next', 'retry') THEN 1 ELSE 0 END)`,
+        retried: sql<number>`SUM(CASE WHEN ${rankChecks.attempts} > 0 THEN 1 ELSE 0 END)`,
+        confirmed: sql<number>`SUM(CASE WHEN ${rankChecks.confirming} THEN 1 ELSE 0 END)`,
+        pages: sql<number>`COALESCE(SUM(${rankChecks.pagesRead}), 0)`,
+        costMicros: sql<number>`COALESCE(SUM(${rankChecks.costMicros}), 0)`,
+      })
+      .from(rankChecks)
+      .where(gte(rankChecks.day, fromDay))
+      .groupBy(rankChecks.day, rankChecks.provider)
+      .orderBy(desc(rankChecks.day), asc(rankChecks.provider));
+    return rows.map((r) => ({
+      day: r.day,
+      provider: r.provider,
+      checks: Number(r.checks),
+      found: Number(r.found),
+      notFound: Number(r.notFound),
+      failed: Number(r.failed),
+      running: Number(r.running),
+      retried: Number(r.retried),
+      confirmed: Number(r.confirmed),
+      pages: Number(r.pages),
+      costUsd: Number(r.costMicros) / 1_000_000,
+    }));
+  }
+
+  /**
    * ★ CLAIMS a waiting check's next stage, booking the stage's estimated cost on top of what the earlier stages cost —
    * before the provider is called, as for {@link claim}. False when the check is no longer waiting.
    */
@@ -464,7 +587,7 @@ export class RankRepository {
       this.db
         .update(rankChecks)
         .set({ status: 'posting', costMicros: sql`${rankChecks.costSettledMicros} + ${toMicros(estimateUsd)}`, postedAt: now, providerRef: null })
-        .where(and(eq(rankChecks.id, id), eq(rankChecks.status, 'next')))
+        .where(and(eq(rankChecks.id, id), inArray(rankChecks.status, ['next', 'retry'])))
         .returning({ id: rankChecks.id }),
       this.db
         .update(rankCharges)
@@ -478,19 +601,23 @@ export class RankRepository {
    * Checks waiting for their next stage with `provider` — of one project, or all — oldest first. A check of a provider
    * no longer active waits until its day ends and is then done with what it read (`expireStale`).
    */
-  async continuing(limit: number, provider: string, projectId?: string): Promise<ContinuingCheck[]> {
+  async continuing(limit: number, provider: string, now: Date, projectId?: string): Promise<ContinuingCheck[]> {
+    const waiting = or(eq(rankChecks.status, 'next'), and(eq(rankChecks.status, 'retry'), lte(rankChecks.retryAt, now)));
     const rows = await this.db
       .select({
         id: rankChecks.id,
         keywordId: rankChecks.keywordId,
         projectId: rankChecks.projectId,
         provider: rankChecks.provider,
+        day: rankChecks.day,
         depth: rankChecks.depth,
         domain: rankChecks.domain,
         includeSubdomains: rankChecks.includeSubdomains,
         resultsRead: rankChecks.resultsRead,
         pagesRead: rankChecks.pagesRead,
         settledMicros: rankChecks.costSettledMicros,
+        attempts: rankChecks.attempts,
+        confirming: rankChecks.confirming,
         keyword: rankKeywords.keyword,
         engine: rankKeywords.engine,
         device: rankKeywords.device,
@@ -501,7 +628,7 @@ export class RankRepository {
       .from(rankChecks)
       .innerJoin(rankKeywords, eq(rankKeywords.id, rankChecks.keywordId))
       .innerJoin(projects, eq(projects.id, rankChecks.projectId))
-      .where(and(eq(rankChecks.status, 'next'), eq(rankChecks.provider, provider), isNull(projects.deletedAt), projectId ? eq(rankChecks.projectId, projectId) : undefined))
+      .where(and(waiting, eq(rankChecks.provider, provider), isNull(projects.deletedAt), projectId ? eq(rankChecks.projectId, projectId) : undefined))
       .orderBy(asc(rankChecks.postedAt))
       .limit(limit);
     return rows.map((r) => ({ ...r, resultsRead: r.resultsRead ?? 0, pagesRead: r.pagesRead ?? 0 }));
@@ -575,12 +702,15 @@ export class RankRepository {
         projectId: rankChecks.projectId,
         provider: rankChecks.provider,
         ref: rankChecks.providerRef,
+        day: rankChecks.day,
         depth: rankChecks.depth,
         domain: rankChecks.domain,
         includeSubdomains: rankChecks.includeSubdomains,
         resultsRead: rankChecks.resultsRead,
         pagesRead: rankChecks.pagesRead,
         settledMicros: rankChecks.costSettledMicros,
+        attempts: rankChecks.attempts,
+        confirming: rankChecks.confirming,
       })
       .from(rankChecks)
       .where(and(eq(rankChecks.status, 'queued'), projectId ? eq(rankChecks.projectId, projectId) : undefined))
@@ -629,10 +759,26 @@ export class RankRepository {
    * read: the site was not in those results, and the history says how many there were.
    */
   async expireStale(now: Date): Promise<number> {
+    const over = and(lt(rankChecks.day, utcDay(now)), lte(rankChecks.postedAt, new Date(now.getTime() - NEXT_STALE_MS)));
     const waiting = await this.db
       .update(rankChecks)
       .set({ status: 'done' })
-      .where(and(eq(rankChecks.status, 'next'), lt(rankChecks.day, utcDay(now)), lte(rankChecks.postedAt, new Date(now.getTime() - NEXT_STALE_MS))))
+      .where(and(eq(rankChecks.status, 'next'), over))
+      .returning({ id: rankChecks.id });
+    // A retry its day ran out on: a confirmation that never ran keeps the first reading's answer — not found (how many
+    // results it read is gone with the restart); a search that read earlier pages is done with what they held; one the
+    // provider never ran at all stays failed.
+    const confirming = sql`${rankChecks.confirming} = 1`;
+    const readSome = sql`COALESCE(${rankChecks.pagesRead}, 0) > 0`;
+    const retries = await this.db
+      .update(rankChecks)
+      .set({
+        status: sql`CASE WHEN ${confirming} OR ${readSome} THEN 'done' ELSE 'failed' END`,
+        error: sql`CASE WHEN ${confirming} OR ${readSome} THEN NULL ELSE ${rankChecks.error} END`,
+        resultsRead: sql`CASE WHEN ${confirming} THEN NULL ELSE ${rankChecks.resultsRead} END`,
+        pagesRead: sql`CASE WHEN ${confirming} THEN NULL ELSE ${rankChecks.pagesRead} END`,
+      })
+      .where(and(eq(rankChecks.status, 'retry'), over))
       .returning({ id: rankChecks.id });
     const posting = await this.db
       .update(rankChecks)
@@ -644,7 +790,7 @@ export class RankRepository {
       .set({ status: 'failed', error: 'the provider never returned a result' })
       .where(and(eq(rankChecks.status, 'queued'), lte(rankChecks.postedAt, new Date(now.getTime() - QUEUED_STALE_MS))))
       .returning({ id: rankChecks.id });
-    return waiting.length + posting.length + queued.length;
+    return waiting.length + retries.length + posting.length + queued.length;
   }
 
   /**
@@ -751,7 +897,7 @@ export class RankRepository {
     const rows = await this.db
       .select({ keywordId: rankChecks.keywordId })
       .from(rankChecks)
-      .where(and(eq(rankChecks.projectId, projectId), inArray(rankChecks.status, ['posting', 'queued', 'next'])));
+      .where(and(eq(rankChecks.projectId, projectId), inArray(rankChecks.status, ['posting', 'queued', 'next', 'retry'])));
     return new Set(rows.map((r) => r.keywordId));
   }
 

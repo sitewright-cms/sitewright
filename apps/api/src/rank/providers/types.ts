@@ -72,11 +72,15 @@ export interface SerpPage {
   cut?: boolean;
 }
 
-/** What sending one search produced. `costUsd` is what the provider charged for it. */
+/**
+ * What sending one search produced. `costUsd` is what the provider charged for it. A failure with `retry` is one the
+ * provider could not run and did not charge for (a challenge page, a query refused for a moment): it is tried again
+ * later the same day. Without it a failure is final for the day.
+ */
 export type SubmitOutcome =
   | { checkId: string; state: 'queued'; ref: string; costUsd: number }
   | { checkId: string; state: 'done'; page: SerpPage; costUsd: number }
-  | { checkId: string; state: 'failed'; error: string; costUsd: number }
+  | { checkId: string; state: 'failed'; error: string; costUsd: number; retry?: boolean }
   /**
    * Never sent, so never charged: the provider stopped before it (a refusal for the whole account partway through a
    * request). The claim is given back, the refusal shown to the admin, and the search tried again on a later pass.
@@ -90,7 +94,7 @@ export type SubmitOutcome =
 export type CollectOutcome =
   | { checkId: string; state: 'pending' }
   | { checkId: string; state: 'done'; page: SerpPage; costUsd?: number }
-  | { checkId: string; state: 'failed'; error: string; costUsd?: number };
+  | { checkId: string; state: 'failed'; error: string; costUsd?: number; retry?: boolean };
 
 /**
  * The provider refused, or could not be reached for, a whole request (not one search in it).

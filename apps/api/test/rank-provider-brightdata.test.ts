@@ -227,7 +227,11 @@ describe('Bright Data submit', () => {
 
   it('a search refused for itself (HTTP 400) fails alone: the others go on', async () => {
     const { fetch, calls } = fakeFetch((_c, google) => (google?.searchParams.get('q') === 'bad' ? { status: 400, body: '' } : { body: serp(['https://a.test/']) }));
-    const out = await brightData.submit(CREDS, [search('bad', { keyword: 'bad' }), search('a'), search('b'), search('c'), search('d')], { fetch, sleep: noSleep });
+    const out = await brightData.submit(
+      CREDS,
+      [search('bad', { keyword: 'bad' }), search('a', { keyword: 'a' }), search('b', { keyword: 'b' }), search('c', { keyword: 'c' }), search('d', { keyword: 'd' })],
+      { fetch, sleep: noSleep },
+    );
     expect(calls).toHaveLength(5);
     expect(out.map((o) => [o.checkId, o.state, costOf(o)])).toEqual([
       ['bad', 'failed', 0],
@@ -308,12 +312,14 @@ describe('Bright Data submit', () => {
         ? { status: 429, body: 'This query cannot be attempted at this time. Please try again later, after a minimum of 15 seconds.' }
         : { body: serp(['https://a.test/']) },
     );
-    const out = await brightData.submit(CREDS, [search('stuck', { keyword: 'stuck' }), search('a'), search('b')], { fetch: rejected.fetch, sleep: noSleep });
+    const out = await brightData.submit(CREDS, [search('stuck', { keyword: 'stuck' }), search('a', { keyword: 'a' }), search('b', { keyword: 'b' })], { fetch: rejected.fetch, sleep: noSleep });
     expect(out.map((o) => [o.checkId, o.state, costOf(o)])).toEqual([
       ['stuck', 'failed', 0],
       ['a', 'done', expect.closeTo(0.0015, 6)],
       ['b', 'done', expect.closeTo(0.0015, 6)],
     ]);
+    // Not run, not charged: worth trying again later today.
+    expect(out[0]).toMatchObject({ retry: true });
     expect(rejected.calls.filter((c) => new URL(c.body!.url!).searchParams.get('q') === 'stuck')).toHaveLength(3);
 
     const throttled = fakeFetch(() => ({ status: 429, body: 'The request was auto-throttled due to low success rate.' }));
@@ -362,8 +368,59 @@ describe('Bright Data submit', () => {
     expect(both[1]).toMatchObject({ error: expect.stringMatching(/no funds/) });
   });
 
+  it('reads identical searches once — two projects tracking one keyword in one place — and splits what it cost', async () => {
+    const { fetch, calls } = fakeFetch(() => ({ body: serp(['https://a.test/', 'https://plumbers.na/']) }));
+    const out = await brightData.submit(
+      CREDS,
+      [search('p1'), search('p2', { keyword: ' Website Development NAMIBIA ' }), search('mobile', { device: 'mobile' }), search('later', { startPage: 2 })],
+      { fetch, sleep: noSleep },
+    );
+    // p1 and p2 are one request; another device or page is another.
+    expect(calls).toHaveLength(3);
+    expect(out.map((o) => [o.checkId, o.state, costOf(o)])).toEqual([
+      ['p1', 'done', expect.closeTo(0.00075, 6)],
+      ['p2', 'done', expect.closeTo(0.00075, 6)],
+      ['mobile', 'done', expect.closeTo(0.0015, 6)],
+      ['later', 'done', expect.closeTo(0.0015, 6)],
+    ]);
+    expect((out[1] as Extract<(typeof out)[number], { state: 'done' }>).page.entries.map((e) => e.url)).toEqual(['https://a.test/', 'https://plumbers.na/']);
+  });
+
+  it('reads as many searches at once as the admin sets (10 unless set), never more', async () => {
+    let inFlight = 0;
+    let most = 0;
+    const slow: FetchLike = async () => {
+      inFlight++;
+      most = Math.max(most, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight--;
+      return { ok: true, status: 200, text: async () => JSON.stringify(serp(['https://a.test/'], { last: true })) };
+    };
+    const thirty = Array.from({ length: 30 }, (_, i) => search(`c${i}`, { keyword: `k${i}` }));
+    await brightData.submit(CREDS, thirty, { fetch: slow, sleep: noSleep });
+    expect(most).toBe(10);
+    most = 0;
+    await brightData.submit(brightData.parseCredentials({ apiKey: 'k', zone: 'z', concurrency: '3' }), thirty, { fetch: slow, sleep: noSleep });
+    expect(most).toBe(3);
+    expect(() => brightData.parseCredentials({ apiKey: 'k', zone: 'z', concurrency: '21' })).toThrow(/1 to 20/);
+    expect(() => brightData.parseCredentials({ apiKey: 'k', zone: 'z', concurrency: '2.5' })).toThrow(/whole number/);
+  });
+
+  it('marks only failures Bright Data could not run and did not charge as worth trying again', async () => {
+    const outcomes = async (answer: Answer) => {
+      const { fetch } = fakeFetch(() => answer);
+      const [o] = await brightData.submit(CREDS, [search('c1')], { fetch, sleep: noSleep });
+      return o as Extract<SubmitOutcome, { state: 'failed' }>;
+    };
+    expect(await outcomes({ body: '' })).toMatchObject({ state: 'failed', retry: true, costUsd: 0 }); // empty (captcha)
+    expect(await outcomes({ status: 502, body: '' })).toMatchObject({ state: 'failed', retry: true, costUsd: 0 });
+    expect(await outcomes({ status: 400, body: '' })).not.toHaveProperty('retry'); // refused for itself
+    expect(await outcomes(new Error('socket hang up'))).not.toHaveProperty('retry'); // may have been charged
+    expect(await outcomes({ body: {} })).not.toHaveProperty('retry'); // answered, so possibly charged
+  });
+
   it('refuses more searches than one request may carry', async () => {
-    const many = Array.from({ length: 11 }, (_, i) => search(`c${i}`));
+    const many = Array.from({ length: 51 }, (_, i) => search(`c${i}`));
     await expect(brightData.submit(CREDS, many, { fetch: async () => Promise.reject(new Error('never')) })).rejects.toBeInstanceOf(RankProviderError);
   });
 

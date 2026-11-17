@@ -1,7 +1,7 @@
 import { rankNextStage, type RankPassReport, type RankProviderId, type RankStatus } from '@sitewright/schema';
 import { readPage, readStage } from './match.js';
 import { RankProviderError, type RankCredentials, type RankProvider, type RankProviderIo, type RankSearch, type SerpPage } from './providers/index.js';
-import { utcDay, type CheckProgress, type RankRepository } from './repo.js';
+import { utcDay, type CheckProgress, type ContinuingCheck, type DueKeyword, type RankRepository } from './repo.js';
 
 /**
  * THE RANK TRACKER — sends due checks to the active provider and collects their results.
@@ -40,12 +40,27 @@ const MAX_REREADS_PER_PASS = 50;
 const FOLLOW_UP_MS = [1, 3, 6, 10, 15, 20, 30, 45, 60].map((m) => m * 60_000);
 /** Rounds of sending in one pass: a live provider's answers can call for every stage of a check in turn. */
 const MAX_SEND_ROUNDS = 6;
+/**
+ * How long a pass keeps SENDING: past it, no further chunk is claimed, and what is left goes out on the next pass. A
+ * live provider reads a page in seconds, so a pass of a thousand keywords would otherwise run for most of an hour —
+ * with every "check now" waiting behind it.
+ */
+const PASS_SEND_BUDGET_MS = 3 * 60_000;
+/** A pass that ran out of time is followed this soon by the next, not at the next scheduled one: the day's work goes on. */
+const CONTINUE_AFTER_MS = 30_000;
+/** A search the provider could not run is tried again this much later, the same day, at most this many times. */
+const RETRY_AFTER_MS = 60 * 60_000;
+const MAX_RETRIES_PER_DAY = 2;
+/** A keyword that ranked before and now reads "not found" is read again this much later, to confirm the drop. */
+const CONFIRM_AFTER_MS = 5 * 60_000;
 
 export interface RankTrackerDeps {
   repo: RankRepository;
   providers: Readonly<Record<RankProviderId, RankProvider>>;
   io: RankProviderIo;
   now?: () => Date;
+  /** Milliseconds, for how long a pass has run (tests drive it). */
+  clock?: () => number;
   log: { info: (obj: object, msg: string) => void; warn: (obj: object, msg: string) => void };
 }
 
@@ -55,6 +70,45 @@ const micros = (usd: number): number => Math.max(0, Math.round(usd * 1_000_000))
 interface Claimed {
   search: RankSearch;
   check: CheckProgress;
+}
+
+/** Work for a pass: the next stage of a check under way (or due again), or a keyword due its first. */
+type Work = { kind: 'stage'; check: ContinuingCheck } | { kind: 'due'; keyword: DueKeyword };
+
+/**
+ * What makes two pieces of work the same search: the provider can read it once for both (two projects tracking one
+ * keyword in one place). Kept side by side, they go out in one request.
+ */
+function searchKey(w: Work): string {
+  const k = w.kind === 'stage' ? w.check : w.keyword;
+  const stage = rankNextStage(k.depth, w.kind === 'stage' ? w.check.pagesRead : 0);
+  return JSON.stringify([k.engine, k.keyword.trim().toLowerCase(), k.locationName, k.countryCode, k.languageCode, k.device, stage?.startPage, stage?.pages]);
+}
+
+/** The work in chunks of at most `size`, identical searches together (a group larger than a chunk is split). */
+function chunksOf(work: readonly Work[], size: number): Work[][] {
+  const groups = new Map<string, Work[]>();
+  for (const w of work) {
+    const key = searchKey(w);
+    groups.set(key, [...(groups.get(key) ?? []), w]);
+  }
+  const chunks: Work[][] = [];
+  let current: Work[] = [];
+  for (const group of groups.values()) {
+    if (current.length > 0 && current.length + group.length > size) {
+      chunks.push(current);
+      current = [];
+    }
+    for (const w of group) {
+      if (current.length === size) {
+        chunks.push(current);
+        current = [];
+      }
+      current.push(w);
+    }
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
 }
 
 export class RankTracker {
@@ -67,11 +121,21 @@ export class RankTracker {
   private prunedDay: string | null = null;
   /** Providers with nothing left to re-read: no new check ever needs it, so they are not asked again until a restart. */
   private readonly rereadDone = new Set<string>();
+  /** A "check now" waits behind the scheduled pass: that pass stops sending at its next chunk. */
+  private yieldRequested = false;
+  /** The pass that carries on what a pass ran out of time for, when one is set. */
+  private continuation: ReturnType<typeof setTimeout> | null = null;
+  /** Shut down: no further pass is set (one under way may still finish). */
+  private closed = false;
 
   constructor(private readonly deps: RankTrackerDeps) {}
 
   private now(): Date {
     return this.deps.now?.() ?? new Date();
+  }
+
+  private clock(): number {
+    return this.deps.clock?.() ?? Date.now();
   }
 
   /**
@@ -83,7 +147,7 @@ export class RankTracker {
     if (this.busy) return null;
     return this.serialized(async () => {
       await this.prune();
-      const report = await this.pass({});
+      const report = await this.pass({ yieldable: true });
       await this.reread();
       return report;
     });
@@ -109,8 +173,13 @@ export class RankTracker {
   async checkNow(projectId: string): Promise<RankPassReport | null> {
     if (this.checking.has(projectId)) return null;
     this.checking.add(projectId);
+    // A scheduled pass under way stops sending at its next chunk; what it leaves goes out on the next one.
+    if (this.busy) this.yieldRequested = true;
     try {
-      const report = await this.serialized(() => this.pass({ projectId, force: true }));
+      const report = await this.serialized(() => {
+        this.yieldRequested = false;
+        return this.pass({ projectId, force: true });
+      });
       if (report.sent > 0) this.followUp();
       return report;
     } finally {
@@ -130,11 +199,32 @@ export class RankTracker {
 
   /** Stops the follow-up timers (app shutdown). */
   close(): void {
+    this.closed = true;
     for (const t of this.timers) clearTimeout(t);
     this.timers.clear();
+    this.continuation = null;
+  }
+
+  /** Sets the pass that carries on what this one ran out of time for (one at a time). */
+  private continueSoon(): void {
+    if (this.continuation || this.closed) return;
+    const t = setTimeout(() => {
+      this.timers.delete(t);
+      this.continuation = null;
+      // Busy with a "check now": carried on once that is done, not left for the next scheduled pass.
+      void this.tick()
+        .then((report) => {
+          if (report === null) this.continueSoon();
+        })
+        .catch((err) => this.deps.log.warn({ errMsg: err instanceof Error ? err.message : String(err) }, 'rank tracking continuation failed'));
+    }, CONTINUE_AFTER_MS);
+    t.unref();
+    this.timers.add(t);
+    this.continuation = t;
   }
 
   private followUp(): void {
+    if (this.closed) return;
     for (const ms of FOLLOW_UP_MS) {
       const t = setTimeout(() => {
         this.timers.delete(t);
@@ -171,7 +261,7 @@ export class RankTracker {
     }
   }
 
-  private async pass(opts: { projectId?: string; force?: boolean }): Promise<RankPassReport> {
+  private async pass(opts: { projectId?: string; force?: boolean; yieldable?: boolean }): Promise<RankPassReport> {
     const now = this.now();
     // Collect BEFORE expiring: after downtime, a result the provider still holds must be read, not thrown away
     // (and paid for again) because the platform was not running to ask for it.
@@ -209,12 +299,16 @@ export class RankTracker {
         const check = byId.get(o.checkId);
         if (!check) continue;
         if (o.state === 'done') {
-          if (await this.record(check, o.page, o.costUsd)) done++;
+          if ((await this.record(check, o.page, o.costUsd)) === 'done') done++;
           else continued++;
         } else if (o.state === 'failed') {
-          // Final for the day: a search the provider ran and failed is not bought again until the next one.
-          await repo.markFailed(check.id, o.error, o.costUsd, check.settledMicros);
-          failed++;
+          // Final for the day — a search the provider ran and failed is not bought again until the next one — unless the
+          // provider could not run it at all (and charged nothing): then it is tried again later today.
+          if (o.retry && (await this.retry(check, o.error, o.costUsd))) continued++;
+          else {
+            await repo.markFailed(check.id, o.error, o.costUsd, check.settledMicros);
+            failed++;
+          }
         }
       }
     }
@@ -228,14 +322,39 @@ export class RankTracker {
 
   /**
    * Records a stage's results page: the check is DONE when the site turned up, Google had nothing more, or the depth is
-   * read; otherwise it waits for its next stage. True when it is done.
+   * read; otherwise it waits for its NEXT stage. A keyword that ranked last time and now reads "not found" is read once
+   * more to CONFIRM it — results vary from one request to the next, and a lone miss is often one of those — and that
+   * second reading is what is recorded.
    */
-  private async record(check: CheckProgress, page: SerpPage, costUsd: number | undefined): Promise<boolean> {
+  private async record(check: CheckProgress, page: SerpPage, costUsd: number | undefined): Promise<'done' | 'next' | 'confirm'> {
+    const { repo } = this.deps;
     // A check sent for its whole depth before stages: its one result is all it asked for.
     const { reading, final } = check.fullDepth ? { reading: readPage(page, check), final: true } : readStage(page, check, check, check.depth);
-    if (final) await this.deps.repo.markDone(check.id, reading, page.checkedAt, costUsd, check.settledMicros);
-    else await this.deps.repo.markNext(check.id, reading, page.checkedAt, costUsd, check.settledMicros);
-    return final;
+    if (!final) {
+      await repo.markNext(check.id, reading, page.checkedAt, costUsd, check.settledMicros);
+      return 'next';
+    }
+    const confirmAt = new Date(this.now().getTime() + CONFIRM_AFTER_MS);
+    // Within the check's own day (a reading after midnight would be another day's), and for the site that ranked: a
+    // project that changed its domain has nothing to confirm.
+    if (reading.hit === null && !check.confirming && !check.fullDepth && utcDay(confirmAt) === check.day) {
+      const before = await repo.lastPosition(check.keywordId, check.day, check.domain);
+      if (before !== null && before !== undefined) {
+        await repo.markConfirm(check.id, confirmAt, costUsd, check.settledMicros);
+        return 'confirm';
+      }
+    }
+    await repo.markDone(check.id, reading, page.checkedAt, costUsd, check.settledMicros);
+    return 'done';
+  }
+
+  /** Puts a check the provider could not run back for later today, unless it has had its tries. True when it will be tried again. */
+  private async retry(check: CheckProgress, error: string, costUsd: number | undefined): Promise<boolean> {
+    const at = new Date(this.now().getTime() + RETRY_AFTER_MS);
+    // Within the check's own day: past midnight, the keyword's next check is due anyway.
+    if (check.attempts >= MAX_RETRIES_PER_DAY || utcDay(at) !== check.day) return false;
+    await this.deps.repo.markRetry(check.id, error, at, costUsd, check.settledMicros);
+    return true;
   }
 
   /**
@@ -287,7 +406,10 @@ export class RankTracker {
     }
   }
 
-  private async send(now: Date, opts: { projectId?: string; force?: boolean }): Promise<{ status: RankStatus; sent: number; failed: number }> {
+  private async send(
+    now: Date,
+    opts: { projectId?: string; force?: boolean; yieldable?: boolean },
+  ): Promise<{ status: RankStatus; sent: number; failed: number }> {
     const { repo, providers, log } = this.deps;
     const config = await repo.getConfig();
     if (!config.activeProvider) return { status: 'no-provider', sent: 0, failed: 0 };
@@ -298,27 +420,49 @@ export class RankTracker {
     // What is booked this month — claims in flight included, at their estimate.
     const budget = { remaining: config.monthlyBudgetMicros - (await repo.spentMicrosInMonth(now)), over: false };
     const idle: RankStatus = config.lastError ? 'provider-error' : budget.remaining > 0 ? 'ok' : 'budget-reached';
+    const deadline = this.clock() + PASS_SEND_BUDGET_MS;
+    let chunks = 0;
+    // A scheduled pass sends at least one chunk before it gives way to a "check now": however often staff press it,
+    // the day's checks still move.
+    const stop = (): boolean => this.clock() >= deadline || (opts.yieldable === true && this.yieldRequested && chunks > 0);
     let sent = 0;
     let failed = 0;
     let continued = 0;
     let claimedAny = false;
     let refused = false;
-    // First the next stages of checks under way (what they have read is paid for; finishing them is worth more), then
-    // the keywords due. Later rounds send the stages that a live provider's answers in this pass called for.
-    for (let round = 0; round < MAX_SEND_ROUNDS; round++) {
-      const claimed = await this.claimStages(provider, creds, now, budget, opts.projectId);
-      if (round === 0) claimed.push(...(await this.claimDue(provider, creds, now, budget, opts)));
-      if (claimed.length === 0) break;
-      claimedAny = true;
-      const r = await this.submit(provider, creds, claimed);
-      sent += r.sent;
-      failed += r.failed;
-      continued += r.continued;
-      if (r.refused) {
-        refused = true;
-        break;
+    let outOfTime = false;
+    // First the next stages of checks under way and the retries now due (what they have read is paid for; finishing
+    // them is worth more), then the keywords due. Later rounds send the stages that a live provider's answers in this
+    // pass called for. Work is claimed a chunk at a time, so a pass that runs out of time leaves the rest UNCLAIMED.
+    for (let round = 0; round < MAX_SEND_ROUNDS && !refused && !outOfTime; round++) {
+      const work: Work[] = (await repo.continuing(MAX_SENDS_PER_PASS, provider.id, now, opts.projectId)).map((check) => ({ kind: 'stage', check }));
+      if (round === 0) work.push(...(await repo.dueKeywords(utcDay(now), MAX_SENDS_PER_PASS, opts)).map((keyword): Work => ({ kind: 'due', keyword })));
+      if (work.length === 0) break;
+      let roundContinued = 0;
+      for (const chunk of chunksOf(work, provider.maxBatch)) {
+        if (stop()) {
+          outOfTime = true;
+          break;
+        }
+        const claimed = await this.claim(provider, creds, now, budget, chunk);
+        if (claimed.length === 0) continue;
+        claimedAny = true;
+        chunks++;
+        const r = await this.submit(provider, creds, claimed);
+        sent += r.sent;
+        failed += r.failed;
+        continued += r.continued;
+        roundContinued += r.continued;
+        if (r.refused) {
+          refused = true;
+          break;
+        }
       }
-      if (r.continued === 0) break;
+      if (roundContinued === 0) break;
+    }
+    if (outOfTime) {
+      log.info({ provider: provider.id, sent }, 'rank tracking: the pass stopped sending; the rest goes out on the next');
+      this.continueSoon();
     }
     if (!claimedAny) return { status: budget.over ? 'budget-reached' : idle, sent: 0, failed: 0 };
     const status: RankStatus = refused ? 'provider-error' : budget.over ? 'budget-reached' : 'ok';
@@ -327,56 +471,36 @@ export class RankTracker {
     return { status, sent, failed };
   }
 
-  /** Claims the next stage of every check waiting for one with this provider, within the budget. */
-  private async claimStages(
-    provider: RankProvider,
-    creds: RankCredentials,
-    now: Date,
-    budget: { remaining: number; over: boolean },
-    projectId?: string,
-  ): Promise<Claimed[]> {
-    const claimed: Claimed[] = [];
-    for (const c of await this.deps.repo.continuing(MAX_SENDS_PER_PASS, provider.id, projectId)) {
-      const stage = rankNextStage(c.depth, c.pagesRead);
-      if (!stage) continue; // nothing left to read: done when its day ends
-      const estimate = provider.estimateCostUsd(stage.pages, creds);
-      if (micros(estimate) > budget.remaining) {
-        budget.over = true; // waits; done with what it read when its day ends, if the budget never allows it
-        continue;
-      }
-      if (!(await this.deps.repo.claimStage(c.id, estimate, now))) continue;
-      budget.remaining -= micros(estimate);
-      claimed.push({
-        check: c,
-        search: {
-          checkId: c.id,
-          keyword: c.keyword,
-          engine: c.engine,
-          device: c.device,
-          location: { name: c.locationName, countryCode: c.countryCode },
-          languageCode: c.languageCode,
-          ...stage,
-        },
-      });
-    }
-    return claimed;
-  }
-
   /**
-   * Claims the first stage of every keyword due today, within the budget. A keyword the rest of the budget cannot pay
-   * for is skipped, not the end: a cheaper one later in the list may still fit.
+   * Claims one chunk of work within the budget: the next stage of a check under way, or the first of a keyword due. A
+   * piece the rest of the budget cannot pay for is skipped, not the end: a cheaper one later may still fit.
    */
-  private async claimDue(
+  private async claim(
     provider: RankProvider,
     creds: RankCredentials,
     now: Date,
     budget: { remaining: number; over: boolean },
-    opts: { projectId?: string; force?: boolean },
+    chunk: readonly Work[],
   ): Promise<Claimed[]> {
     const { repo, log } = this.deps;
     const day = utcDay(now);
     const claimed: Claimed[] = [];
-    for (const k of await repo.dueKeywords(day, MAX_SENDS_PER_PASS, opts)) {
+    for (const w of chunk) {
+      if (w.kind === 'stage') {
+        const c = w.check;
+        const stage = rankNextStage(c.depth, c.pagesRead);
+        if (!stage) continue; // nothing left to read: done when its day ends
+        const estimate = provider.estimateCostUsd(stage.pages, creds);
+        if (micros(estimate) > budget.remaining) {
+          budget.over = true; // waits; done with what it read when its day ends, if the budget never allows it
+          continue;
+        }
+        if (!(await repo.claimStage(c.id, estimate, now))) continue;
+        budget.remaining -= micros(estimate);
+        claimed.push({ check: c, search: searchOf(c, c.id, stage) });
+        continue;
+      }
+      const k = w.keyword;
       const stage = rankNextStage(k.depth, 0)!;
       const estimate = provider.estimateCostUsd(stage.pages, creds);
       if (micros(estimate) > budget.remaining) {
@@ -393,29 +517,22 @@ export class RankTracker {
       }
       if (!checkId) continue;
       budget.remaining -= micros(estimate);
-      claimed.push({
-        check: {
-          id: checkId,
-          keywordId: k.id,
-          projectId: k.projectId,
-          provider: provider.id,
-          depth: k.depth,
-          domain: k.domain,
-          includeSubdomains: k.includeSubdomains,
-          resultsRead: 0,
-          pagesRead: 0,
-          settledMicros: 0,
-        },
-        search: {
-          checkId,
-          keyword: k.keyword,
-          engine: k.engine,
-          device: k.device,
-          location: { name: k.locationName, countryCode: k.countryCode },
-          languageCode: k.languageCode,
-          ...stage,
-        },
-      });
+      const check: CheckProgress = {
+        id: checkId,
+        keywordId: k.id,
+        projectId: k.projectId,
+        provider: provider.id,
+        day,
+        depth: k.depth,
+        domain: k.domain,
+        includeSubdomains: k.includeSubdomains,
+        resultsRead: 0,
+        pagesRead: 0,
+        settledMicros: 0,
+        attempts: 0,
+        confirming: false,
+      };
+      claimed.push({ check, search: searchOf(k, checkId, stage) });
     }
     return claimed;
   }
@@ -468,12 +585,14 @@ export class RankTracker {
             sent++;
           } else if (o.state === 'done') {
             // A result for a keyword that went away meanwhile still records what the page held (and its cost).
-            if (await this.record(check, o.page, o.costUsd)) sent++;
-            else continued++;
+            if ((await this.record(check, o.page, o.costUsd)) === 'next') continued++;
+            else sent++;
           } else if (o.state === 'unsent') {
             // Never sent, never charged: given back, and tried again on a later pass.
             await repo.release(o.checkId, check.settledMicros);
             notSent ??= o.error;
+          } else if (o.retry && (await this.retry(check, o.error, o.costUsd))) {
+            sent++; // sent, and to be tried again later today
           } else {
             await repo.markFailed(o.checkId, o.error, o.costUsd, check.settledMicros);
             failed++;
@@ -492,4 +611,21 @@ export class RankTracker {
     }
     return { sent, failed, continued, refused };
   }
+}
+
+/** The request for one stage of a check. */
+function searchOf(
+  k: { keyword: string; engine: RankSearch['engine']; device: RankSearch['device']; locationName: string; countryCode: string; languageCode: string },
+  checkId: string,
+  stage: { startPage: number; pages: number },
+): RankSearch {
+  return {
+    checkId,
+    keyword: k.keyword,
+    engine: k.engine,
+    device: k.device,
+    location: { name: k.locationName, countryCode: k.countryCode },
+    languageCode: k.languageCode,
+    ...stage,
+  };
 }

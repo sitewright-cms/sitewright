@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { makeTestDb } from './helpers.js';
 import { projects, rankCharges, rankChecks, rankProviderCredentials } from '../src/db/schema.js';
@@ -92,7 +92,9 @@ function scriptedProvider() {
  * A provider that answers every search at once (as Bright Data does), from `pageOf` — results numbered from the first
  * page asked for. $0.0015 per page.
  */
-function liveProvider(pageOf: (s: RankSearch) => { urls: string[]; end?: boolean; pagesRead?: number; cut?: true } | { unsent: string }) {
+function liveProvider(
+  pageOf: (s: RankSearch) => { urls: string[]; end?: boolean; pagesRead?: number; cut?: true } | { unsent: string } | { fail: string; retry?: true },
+) {
   const submitted: RankSearch[][] = [];
   const provider: RankProvider = {
     ...scriptedProvider().provider,
@@ -103,6 +105,7 @@ function liveProvider(pageOf: (s: RankSearch) => { urls: string[]; end?: boolean
       return searches.map((s): SubmitOutcome => {
         const answer = pageOf(s);
         if ('unsent' in answer) return { checkId: s.checkId, state: 'unsent', error: answer.unsent };
+        if ('fail' in answer) return { checkId: s.checkId, state: 'failed', error: answer.fail, costUsd: 0, ...(answer.retry ? { retry: true } : {}) };
         const { urls, end, cut } = answer;
         const pagesRead = answer.pagesRead ?? s.pages;
         const entries = urls.map((url, i) => ({ kind: 'organic' as const, position: i + 1, absolutePosition: i + 1, url, domain: '' }));
@@ -147,9 +150,21 @@ const idle = (id: 'apify' | 'brightdata' | 'dataforseo'): RankProvider => ({
 });
 const idleApify = idle('apify');
 
-function tracker(provider: RankProvider): RankTracker {
+function tracker(provider: RankProvider, clock?: () => number): RankTracker {
   const providers = { dataforseo: idle('dataforseo'), apify: idleApify, brightdata: idle('brightdata'), [provider.id]: provider };
-  return new RankTracker({ repo, providers, io: { fetch: async () => Promise.reject(new Error('no network')) }, now: () => now, log });
+  return new RankTracker({ repo, providers, io: { fetch: async () => Promise.reject(new Error('no network')) }, now: () => now, log, ...(clock ? { clock } : {}) });
+}
+
+/** Bright Data as the active provider (credentials stored). */
+async function useLive(): Promise<void> {
+  await repo.putCredentials('brightdata', { apiKey: 'k', zone: 'z' });
+  await repo.putConfig({ activeProvider: 'brightdata' });
+}
+
+/** A finished check of the keyword on an earlier day, at `position`. */
+async function checkedBefore(k: RankKeywordRow, day: string, position: number | null): Promise<void> {
+  const id = (await repo.claim(due(k), day, 'brightdata', 0.0015, new Date(`${day}T06:00:00Z`)))!;
+  await repo.markDone(id, { hit: position === null ? null : { position, absolutePosition: position, url: 'https://plumbers.na/', featured: false }, resultsRead: 50, pagesRead: 5 }, new Date(`${day}T06:00:00Z`));
 }
 
 async function addKeywords(projectId: string, keywords: string[], schedule: 'daily' | 'weekly' = 'daily', depth: 10 | 100 = 100): Promise<void> {
@@ -982,6 +997,325 @@ describe('stages: a check reads further pages only while the site has not turned
     now = new Date('2026-10-21T08:00:00Z');
     await both.tick();
     expect((await checks()).find((r) => r.id === row!.id)).toMatchObject({ status: 'done', pagesRead: 1 });
+  });
+});
+
+describe('at scale: passes that end in time, searches read once, same-day retries, confirmed drops', () => {
+  it('a pass stops sending when its time is up; what is left is not claimed, and goes out on the next pass', async () => {
+    const pid = await makeProject('time-box');
+    await addKeywords(pid, ['a', 'b', 'c', 'd', 'e', 'f']);
+    let t = 0;
+    const { provider, submitted } = scriptedProvider();
+    const slow: RankProvider = {
+      ...provider,
+      async submit(creds, searches, io) {
+        t += 100_000; // each chunk takes 100 seconds
+        return provider.submit(creds, searches, io);
+      },
+    };
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const tr = tracker(slow, () => t);
+      expect(await tr.tick()).toMatchObject({ sent: 4 }); // two chunks of two; the third would start past 3 minutes
+      expect(await checks()).toHaveLength(4); // the rest was never claimed
+      // The next pass follows half a minute later — not at the next scheduled one.
+      await vi.advanceTimersByTimeAsync(29_000);
+      expect(submitted.flat()).toHaveLength(4);
+      await vi.advanceTimersByTimeAsync(1_000);
+      for (let i = 0; i < 500 && (await checks()).length < 6; i++) await new Promise((r) => setImmediate(r));
+      expect(await checks()).toHaveLength(6);
+      expect(submitted.flat().map((s) => s.keyword).sort()).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
+      tr.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a "check now" makes the scheduled pass stop at its next chunk, and goes next', async () => {
+    const big = await makeProject('big');
+    await addKeywords(big, ['a1', 'a2', 'a3', 'a4', 'a5', 'a6']);
+    const small = await makeProject('small');
+    await addKeywords(small, ['b1']);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let calls = 0;
+    const { provider } = scriptedProvider();
+    const held: RankProvider = {
+      ...provider,
+      async submit(creds, searches, io) {
+        if (++calls === 1) await gate;
+        return provider.submit(creds, searches, io);
+      },
+    };
+    const tr = tracker(held);
+    const scheduled = tr.tick();
+    while (calls === 0) await new Promise((r) => setTimeout(r, 1));
+    const now_ = tr.checkNow(small);
+    release();
+    expect(await scheduled).toMatchObject({ sent: 2 }); // its first chunk only
+    expect(await now_).toMatchObject({ sent: 1 }); // then the check now
+    const sentFor = new Map((await checks()).map((r) => [r.projectId, 0]));
+    for (const r of await checks()) sentFor.set(r.projectId, (sentFor.get(r.projectId) ?? 0) + 1);
+    expect(sentFor.get(small)).toBe(1);
+    expect(sentFor.get(big)).toBe(2);
+  });
+
+  it('a scheduled pass sends one chunk before it gives way, however early "check now" is pressed', async () => {
+    const big = await makeProject('big-early');
+    await addKeywords(big, ['a1', 'a2', 'a3', 'a4']);
+    const small = await makeProject('small-early');
+    await addKeywords(small, ['b1']);
+    const { provider } = scriptedProvider();
+    let pressed: Promise<unknown> | undefined;
+    const early: RankProvider = {
+      ...provider,
+      // Read as the pass starts sending: "check now" is pressed before its first chunk.
+      parseCredentials: (raw) => {
+        pressed ??= tr.checkNow(small);
+        return provider.parseCredentials(raw);
+      },
+    };
+    const tr = tracker(early); // read by `early` only once the pass runs
+    expect(await tr.tick()).toMatchObject({ sent: 2 }); // one chunk (of two), then it gives way
+    await pressed;
+    expect((await checks()).filter((r) => r.projectId === small)).toHaveLength(1);
+    expect((await checks()).filter((r) => r.projectId === big)).toHaveLength(2);
+  });
+
+  it('a continuation that finds a "check now" running carries on after it, not at the next scheduled pass', async () => {
+    const big = await makeProject('big-cont');
+    await addKeywords(big, ['a1', 'a2', 'a3', 'a4', 'a5', 'a6']);
+    const small = await makeProject('small-cont');
+    await addKeywords(small, ['b1']);
+    let t = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const { provider } = scriptedProvider();
+    const slow: RankProvider = {
+      ...provider,
+      async submit(creds, searches, io) {
+        t += 100_000;
+        if (searches.some((x) => x.keyword === 'b1')) await gate;
+        return provider.submit(creds, searches, io);
+      },
+    };
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const tr = tracker(slow, () => t);
+      expect(await tr.tick()).toMatchObject({ sent: 4 }); // out of time: a continuation is set
+      const held = tr.checkNow(small); // busy until the gate opens
+      await vi.advanceTimersByTimeAsync(30_000); // the continuation finds it busy
+      expect((await checks()).filter((r) => r.projectId === big)).toHaveLength(4);
+      release();
+      await held;
+      await vi.advanceTimersByTimeAsync(30_000); // and carries on half a minute later
+      for (let i = 0; i < 500 && (await checks()).length < 7; i++) await new Promise((r) => setImmediate(r));
+      expect((await checks()).filter((r) => r.projectId === big)).toHaveLength(6);
+      tr.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('identical searches of different projects go out in the same request', async () => {
+    const one = await makeProject('one-site');
+    await addKeywords(one, ['plumber windhoek', 'geyser repair', 'blocked drain']);
+    const two = await makeProject('two-site');
+    await addKeywords(two, ['zebra', 'plumber windhoek']);
+    const { provider, submitted } = scriptedProvider(); // batches of two
+    await tracker(provider).tick();
+    const batchOf = (keyword: string) => submitted.findIndex((b) => b.some((s) => s.keyword === keyword));
+    const together = submitted.find((b) => b.filter((s) => s.keyword === 'plumber windhoek').length === 2);
+    expect(together).toBeDefined();
+    expect(submitted.flat()).toHaveLength(5);
+    expect(batchOf('zebra')).toBeGreaterThanOrEqual(0);
+  });
+
+  it('takes identical searches together however far apart they were added, so a pass limit does not split them', async () => {
+    const first = await makeProject('first-added');
+    await addKeywords(first, ['aardvark plumbing']);
+    const filler = await makeProject('filler');
+    await addKeywords(filler, ['bravo', 'charlie', 'delta']);
+    const last = await makeProject('last-added');
+    await addKeywords(last, [' Aardvark Plumbing ']);
+    // Added first and last, with three between: by age alone a limit of two would take one of them and 'bravo'.
+    const due = await repo.dueKeywords('2026-10-20', 2);
+    expect(due.map((k) => [k.projectId, k.keyword.trim().toLowerCase()])).toEqual([
+      [first, 'aardvark plumbing'],
+      [last, 'aardvark plumbing'],
+    ]);
+  });
+
+  it('a search the provider could not run is tried again an hour later the same day, at most twice', async () => {
+    await useLive();
+    const pid = await makeProject('flaky');
+    await addKeywords(pid, ['flaky', 'never']);
+    let flakyFails = 1;
+    const { provider, submitted } = liveProvider((s) => {
+      if (s.keyword === 'never') return { fail: 'Bright Data could not run the search (an empty answer)', retry: true };
+      if (s.keyword === 'flaky' && flakyFails-- > 0) return { fail: 'Bright Data could not run the search (an empty answer)', retry: true };
+      return { urls: ['https://plumbers.na/'] };
+    });
+    const tr = tracker(provider);
+    await tr.tick();
+    const byKeyword = async () => new Map((await checks()).map((r) => [r.keywordId, r]));
+    const ids = new Map((await repo.listKeywords(pid)).map((k) => [k.keyword, k.id]));
+    expect((await byKeyword()).get(ids.get('flaky')!)).toMatchObject({ status: 'retry', attempts: 1, retryAt: new Date(now.getTime() + 3_600_000), costMicros: 0 });
+    expect(await repo.inFlight(pid)).toEqual(new Set([ids.get('flaky'), ids.get('never')]));
+
+    now = new Date(now.getTime() + 30 * 60_000);
+    await tr.tick(); // half an hour on: not yet
+    expect(submitted.flat()).toHaveLength(2);
+
+    now = new Date(now.getTime() + 31 * 60_000);
+    await tr.tick();
+    expect((await byKeyword()).get(ids.get('flaky')!)).toMatchObject({ status: 'done', position: 1, attempts: 1 });
+    expect((await byKeyword()).get(ids.get('never')!)).toMatchObject({ status: 'retry', attempts: 2 });
+    now = new Date(now.getTime() + 61 * 60_000);
+    await tr.tick();
+    // Two tries after the first: final for the day.
+    expect((await byKeyword()).get(ids.get('never')!)).toMatchObject({ status: 'failed', attempts: 2, error: expect.stringMatching(/empty answer/) });
+    expect(submitted.flat().filter((s) => s.keyword === 'never')).toHaveLength(3);
+  });
+
+  it('a retry its day runs out on stays failed; a refused retry goes back to waiting, never deleted', async () => {
+    await useLive();
+    const pid = await makeProject('retry-edges');
+    await addKeywords(pid, ['k']);
+    let answer: 'fail' | 'unsent' = 'fail';
+    const { provider } = liveProvider(() => (answer === 'fail' ? { fail: 'Bright Data could not run the search', retry: true } : { unsent: 'Bright Data is limiting the request rate' }));
+    const tr = tracker(provider);
+    await tr.tick();
+    expect((await checks())[0]).toMatchObject({ status: 'retry', attempts: 1 });
+    answer = 'unsent';
+    now = new Date(now.getTime() + 61 * 60_000);
+    await tr.tick(); // claimed for its retry, then given back: still there, due again — never a "not found" it never read
+    expect(await checks()).toHaveLength(1);
+    expect((await checks())[0]).toMatchObject({ status: 'retry', attempts: 1, position: null, resultsRead: null });
+    now = new Date('2026-10-21T08:00:00Z'); // its day is over
+    await tr.tick();
+    expect((await checks()).find((r) => r.day === '2026-10-20')).toMatchObject({ status: 'failed' });
+  });
+
+  it('a retry partway through a check that its day runs out on is done with the pages it read', async () => {
+    await useLive();
+    const pid = await makeProject('retry-partway');
+    await addKeywords(pid, ['k']);
+    const { provider } = liveProvider((s) => (s.startPage === 1 ? { urls: others(1) } : { fail: 'Bright Data could not run the search', retry: true }));
+    const tr = tracker(provider);
+    await tr.tick();
+    expect((await checks())[0]).toMatchObject({ status: 'retry', attempts: 1, pagesRead: 1, resultsRead: 10 });
+    now = new Date('2026-10-21T08:00:00Z');
+    await tr.tick();
+    expect((await checks()).find((r) => r.day === '2026-10-20')).toMatchObject({ status: 'done', position: null, pagesRead: 1, resultsRead: 10, error: null });
+  });
+
+  it('a keyword that ranked before and now reads "not found" is read again to confirm, and that reading counts', async () => {
+    await useLive();
+    const pid = await makeProject('confirm');
+    await addKeywords(pid, ['dropped', 'recovers', 'never ranked']);
+    const ks = new Map((await repo.listKeywords(pid)).map((k) => [k.keyword, k]));
+    await checkedBefore(ks.get('dropped')!, '2026-10-19', 4);
+    await checkedBefore(ks.get('recovers')!, '2026-10-19', 6);
+    await checkedBefore(ks.get('never ranked')!, '2026-10-19', null);
+    let firstReading = true;
+    const { provider, submitted } = liveProvider((s) => {
+      // The first reading misses everywhere; on the second, 'recovers' is back.
+      if (!firstReading && s.keyword === 'recovers') return { urls: [...others(1, 5), 'https://plumbers.na/'] };
+      return { urls: others(s.startPage), end: true };
+    });
+    const tr = tracker(provider);
+    await tr.tick();
+    const today = async () => new Map((await checks()).filter((r) => r.day === '2026-10-20').map((r) => [r.keywordId, r]));
+    expect((await today()).get(ks.get('dropped')!.id)).toMatchObject({ status: 'retry', confirming: true, pagesRead: 0, resultsRead: 0, costMicros: 1500 });
+    expect((await today()).get(ks.get('never ranked')!.id)).toMatchObject({ status: 'done', confirming: false, position: null });
+
+    firstReading = false;
+    now = new Date(now.getTime() + 6 * 60_000);
+    await tr.tick();
+    expect((await today()).get(ks.get('dropped')!.id)).toMatchObject({ status: 'done', confirming: true, position: null, pagesRead: 1, costMicros: 3000 });
+    expect((await today()).get(ks.get('recovers')!.id)).toMatchObject({ status: 'done', confirming: true, position: 6 });
+    // Read once more each — never a third time.
+    await tr.tick();
+    expect(submitted.flat().filter((s) => s.keyword === 'dropped')).toHaveLength(2);
+    expect(submitted.flat().filter((s) => s.keyword === 'never ranked')).toHaveLength(1);
+  });
+
+  it('neither retries nor confirms past midnight UTC: the next day’s check is due by then', async () => {
+    await useLive();
+    const pid = await makeProject('late');
+    await addKeywords(pid, ['flaky', 'dropped']);
+    const ks = new Map((await repo.listKeywords(pid)).map((k) => [k.keyword, k]));
+    await checkedBefore(ks.get('dropped')!, '2026-10-19', 4);
+    now = new Date('2026-10-20T23:57:00Z');
+    const { provider } = liveProvider((s) => (s.keyword === 'flaky' ? { fail: 'Bright Data could not run the search', retry: true } : { urls: others(1), end: true }));
+    await tracker(provider).tick();
+    const today = new Map((await checks()).filter((r) => r.day === '2026-10-20').map((r) => [r.keywordId, r]));
+    expect(today.get(ks.get('flaky')!.id)).toMatchObject({ status: 'failed', attempts: 0 });
+    expect(today.get(ks.get('dropped')!.id)).toMatchObject({ status: 'done', position: null, confirming: false });
+  });
+
+  it('does not confirm a drop for a domain the project no longer tracks', async () => {
+    await useLive();
+    const pid = await makeProject('moved');
+    await addKeywords(pid, ['k']);
+    const [k] = await repo.listKeywords(pid);
+    await checkedBefore(k!, '2026-10-19', 2); // for plumbers.na
+    await repo.putProject(pid, { domain: 'new-plumbers.na', includeSubdomains: true, schedule: 'daily', depth: 100 });
+    const { provider, submitted } = liveProvider((s) => ({ urls: ['https://plumbers.na/'], end: s.startPage === 1 }));
+    await tracker(provider).tick();
+    expect((await checks()).find((r) => r.day === '2026-10-20')).toMatchObject({ status: 'done', position: null, confirming: false });
+    expect(submitted.flat()).toHaveLength(1);
+  });
+
+  it('confirms a drop with a provider that queues its searches too (read again once collected)', async () => {
+    const pid = await makeProject('queued-confirm');
+    await addKeywords(pid, ['k']);
+    const [k] = await repo.listKeywords(pid);
+    await checkedBefore(k!, '2026-10-19', 3);
+    const { provider, submitted, state } = scriptedProvider();
+    const tr = tracker(provider);
+    await tr.tick(); // sent, queued
+    const id = (await checks()).find((r) => r.day === '2026-10-20')!.id;
+    state.results.set(id, [{ position: 1, url: 'https://other.test/' }]);
+    state.ends.add(id);
+    await tr.tick(); // collected: not found → read again in five minutes
+    expect((await checks()).find((r) => r.id === id)).toMatchObject({ status: 'retry', confirming: true, pagesRead: 0 });
+    state.results.set(id, 'pending');
+    now = new Date(now.getTime() + 6 * 60_000);
+    await tr.tick(); // sent again
+    expect(submitted.flat().filter((x) => x.checkId === id)).toHaveLength(2);
+    state.results.set(id, [{ position: 1, url: 'https://other.test/' }, { position: 2, url: 'https://plumbers.na/' }]);
+    await tr.tick(); // the second reading is the one recorded
+    expect((await checks()).find((r) => r.id === id)).toMatchObject({ status: 'done', confirming: true, position: 2 });
+  });
+
+  it('a confirmation the budget never allows ends its day as "not found"', async () => {
+    await useLive();
+    const pid = await makeProject('confirm-budget');
+    await addKeywords(pid, ['k']);
+    const [k] = await repo.listKeywords(pid);
+    await checkedBefore(k!, '2026-10-19', 3);
+    const { provider } = liveProvider((s) => ({ urls: others(s.startPage), end: true }));
+    const tr = tracker(provider);
+    await tr.tick();
+    await repo.putConfig({ monthlyBudgetMicros: await repo.spentMicrosInMonth(now) }); // no room for the second reading
+    now = new Date('2026-10-21T08:00:00Z');
+    await tr.tick();
+    expect((await checks()).find((r) => r.day === '2026-10-20')).toMatchObject({ status: 'done', position: null, resultsRead: null, confirming: true });
+  });
+
+  it('the admin sees each day’s checks per provider: found, not found, failed, running, retried, confirmed, pages, cost', async () => {
+    await useLive();
+    const pid = await makeProject('stats');
+    await addKeywords(pid, ['found', 'missing', 'broken']);
+    const { provider } = liveProvider((s) =>
+      s.keyword === 'broken' ? { fail: 'Bright Data refused the request (HTTP 400): check the zone name' } : s.keyword === 'found' ? { urls: ['https://plumbers.na/'] } : { urls: others(1), end: true },
+    );
+    await tracker(provider).tick();
+    expect(await repo.dailyStats('2026-10-14')).toEqual([
+      { day: '2026-10-20', provider: 'brightdata', checks: 3, found: 1, notFound: 1, failed: 1, running: 0, retried: 0, confirmed: 0, pages: 2, costUsd: 0.003 },
+    ]);
   });
 });
 

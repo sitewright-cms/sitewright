@@ -95,9 +95,9 @@ server {
 }
 ```
 
-**Behind a web application firewall:** a WAF running the OWASP Core Rule Set with its defaults refuses the
-editor's saves, agents' writes and uploads, the statistics beacon and local apps' sign-in. Load the exclusion
-file in [waf.md](waf.md), which keeps everything anonymous fully inspected.
+**Behind a web application firewall:** not recommended. A WAF running the OWASP Core Rule Set with its
+defaults refuses the editor's saves, agents' writes and uploads, the statistics beacon and local apps'
+sign-in. If one stays in front of Sitewright, exclude the paths listed in [waf.md](waf.md).
 
 **Hosting client sites on subdomains (optional):** set `SW_SITES_DOMAIN=sites.example.com` and give the proxy
 a wildcard cert + `*.sites.example.com` route to the same container; each published site is then served at

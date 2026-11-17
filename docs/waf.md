@@ -9,25 +9,25 @@ Short version:
   - large imports and settings saves, and every upload over 12.5 MB;
   - the statistics beacon;
   - sign-in from the Sitewright CLI and from MCP clients on the user's machine.
-- **Tuning individual rules does not fix it.** The editor and agents send site source code (HTML, CSS,
-  JavaScript, `{{ }}` templates) on purpose, in fields of any name. That is exactly what the injection
-  rules look for.
-- **Recommended: keep the WAF and load [Sitewright's exclusion file](waf/sitewright-before.conf).**
-  - **What it exempts:** writes to the authoring API that carry a credential in Sitewright's exact
-    format, plus five narrow spots (the statistics beacon, agents' upload links, local apps' OAuth sign-in,
-    passwords, payment webhooks).
-  - **What stays inspected:** every request without such a credential (site pages, forms, bookings,
-    checkout, webhooks, sign-in, OAuth, scanners) and every read.
-  - **What it costs:** the WAF checks the credential's *format*, not whether it is valid. A stranger who
-    sends a well-formed fake gets past the body inspection, as far as Sitewright's own sign-in check. Such
-    a request is still refused for scanner, protocol and header anomalies.
-  - **How it was verified:** with the file loaded in blocking mode, both end-to-end suites, an agent
-    session and public traffic pass, and every attack probe is refused.
-- **Route uploads around the WAF** (see [Uploads](#uploads)). Their limit should not be raised inside
-  ModSecurity: an anonymous 150 MB upload made the WAF use 1.2 GB of memory.
-- **If your WAF can only exclude rules by path,** without a condition on a header or cookie, the authoring
-  API has to be excluded outright: see [Path-only exclusions](#if-your-waf-can-only-exclude-by-path). The
-  WAF then still protects the public surface, but nothing on the authoring paths.
+- **A WAF in front of Sitewright is not recommended.** The editor and agents send site source code (HTML,
+  CSS, JavaScript, `{{ }}` templates) on purpose, in fields of any name. That is exactly what the injection
+  rules look for, so no rule set can tell authoring from an attack without being
+  [complex and fragile](#why-a-waf-is-not-recommended). On the editor's and agents' API a WAF also adds
+  nothing: Sitewright checks the session or access key there before it parses a request body, and checks
+  every write itself.
+- **If a WAF stays in front of Sitewright, exclude these paths** (the [table](#if-you-keep-a-waf-what-to-exclude),
+  or [the ready-made file](waf/sitewright-before.conf) for a CRS-based WAF):
+  - the editor's and agents' API, entirely: `/projects`, `/admin`, `/account`, `/invites`, `/mcp`,
+    `/media-upload`;
+  - one rule each on the statistics beacon, local apps' OAuth sign-in, the password field at sign-in, and
+    payment webhooks.
+
+  The WAF then still protects the public surface (site pages, forms, bookings, checkout, sign-in) and
+  blocks scanners. On the excluded paths it does nothing, for anyone.
+- **With nginx and ModSecurity, route those paths around ModSecurity** rather than excluding them by rule,
+  and allow at most 1 MB where ModSecurity stays on (see [Large bodies](#large-bodies-and-memory)).
+  ModSecurity holds a whole request body in memory before it decides, even one it then refuses: one
+  anonymous 150 MB upload took the WAF from 157 MiB to 493 MiB.
 - **Stay at paranoia level 1.** Level 2 refuses ordinary contact messages and webhooks, and signs editors
   out at random.
 
@@ -61,7 +61,7 @@ What breaks, and why:
 | Writing pages, templates, snippets, CSS and custom code; previews of unsaved changes; agent tool calls | `PUT /projects/…/content/…`, `POST /projects/…/preview`, `POST /projects/…/import`, `POST /mcp` | 941100, 941110, 941130, 941160, 941180, 942140, 942151, 942550, 932130, 932230, 932235, 932250, 933135, 934100, 934200 and more | Authored HTML and templates match injection patterns: `<img src=…>`, `<script>`, `{{#each (helper …)}}`, `id="{{page.slug}}"`, `${TXN:reference}` in a payment gateway definition. |
 | Large writes: a project import, a multilingual site's settings (about 90 KB, 1,070 values) | `POST /projects/…/import`, `PUT /projects/…/content/settings/settings` | 200002, 200007 | The engine refuses a body without files over 128 KB, or one with more than 1,000 values. |
 | Agents' file uploads | `PUT /media-upload/<ticket>` | 911100, 920340, 920420, 920450, 920640 | Raw file bytes, sent as `application/octet-stream`, as an image type, or with no type at all (`curl -T`). Over 1 MB, curl also sends `Expect: 100-continue`, a header the default policy refuses. |
-| Every upload over 12.5 MB, from the editor or an agent | see [Uploads](#uploads) | (engine limit) | ModSecurity's total body limit. Uploads go up to 200 MB. |
+| Every upload over 12.5 MB, from the editor or an agent | see [Large bodies](#large-bodies-and-memory) | (engine limit) | ModSecurity's total body limit. Uploads go up to 200 MB. |
 | Statistics | `POST /a/<project>` | 920420 | The beacon is `text/plain`, which the default content-type list omits. |
 | Sign-in from the Sitewright CLI and desktop MCP clients | `/oauth/register`, `/oauth/authorize`, `/oauth/token` | 931100, 934110 | Their redirect URI is a loopback address (`http://127.0.0.1:8976/callback`, `http://localhost:53127/callback`). |
 | Sign-in for some users | `POST /auth/login` | 941100, 941110, 941160, 932235 | A generated password containing `<script`, or a command in backticks. |
@@ -78,142 +78,124 @@ These were **not** affected:
   directly;
 - responses, since no outbound rule fired on any page Sitewright served.
 
-## Why tuning individual rules does not work
+## Why a WAF is not recommended
 
-Writing code is what the authoring API is for. A page's `source`, a snippet, custom head code, critical CSS
-and a payment-gateway definition all carry markup, scripts or template expressions. So do dataset fields
-and page-data keys, whose **names the author chooses**, so no list of fields to exempt can be complete. An
-agent's write arrives wrapped in a JSON-RPC envelope, and a whole page is sent at once. Which rules fire on
-`/mcp` changes with every page's content.
+**Tuning individual rules does not work.** Writing code is what the authoring API is for. A page's `source`,
+a snippet, custom head code, critical CSS and a payment-gateway definition all carry markup, scripts or
+template expressions. So do dataset fields and page-data keys, whose **names the author chooses**, so no
+list of fields to exempt can be complete. An agent's write arrives wrapped in a JSON-RPC envelope, and a
+whole page is sent at once. Which rules fire on `/mcp` changes with every page's content.
 
-What the WAF cannot know is whether the sender may write code. Sitewright decides that: on the authoring
-API only a valid session or access key can write anything. What the WAF *can* check is whether a request
-carries a credential in Sitewright's exact format, and the exclusion file builds on exactly that.
+**Telling authors from attackers at the WAF is too fragile.** What the WAF cannot know is whether the sender
+may write code; Sitewright decides that. A WAF that can condition a rule on a header or a cookie could
+exempt only requests carrying a credential in Sitewright's format. That configuration was built and
+measured (it shipped with 0.82.0), and it works, but:
 
-## Recommended: the exclusion file
+- it depends on the exact shape of Sitewright's credentials (the bearer prefixes, the session cookie's name
+  and signature length), so a change to either silently breaks the editor behind the WAF;
+- it depends on one engine's internals: on ModSecurity v3, skipping the body inspection also skips the
+  rule that blocks, so blocking has to be moved earlier, which then needs exceptions of its own;
+- it still needs five further exceptions on public paths;
+- and it checks only the credential's *format*: a well-formed fake passes it anyway.
 
-[`waf/sitewright-before.conf`](waf/sitewright-before.conf) is a CRS 4 plugin "before" file.
+**What protects the editor's and agents' API instead** is Sitewright itself:
 
-- **The `owasp/modsecurity-crs` images:** put it in `/opt/owasp-crs/plugins/`.
-- **Other ModSecurity setups:** `Include` it after `crs-setup.conf` and before the CRS `rules/*.conf`.
-- **Coraza:** it supports the same directives (`ctl:requestBodyAccess`, `ctl:ruleRemoveTargetById`), but
-  the file was only tested with ModSecurity v3.
+- a write there needs a valid session or access key, and Sitewright checks it first: without one, the
+  request is refused (401) before its body is buffered or parsed;
+- agents' upload links are single-use tickets, checked the same way before the upload is stored;
+- every write is validated against its schema, and templates against a safety check (an inline `onclick`
+  in a template is refused, for instance);
+- database queries are parameterized;
+- published pages run under a content security policy, isolated from the editor's origin;
+- rate limits apply per user, per access key and per address.
 
-It uses rule ids 10100–10199. What it does:
+## If you keep a WAF: what to exclude
 
-| Section | Applies to | Effect |
+| Path | Methods | Exclude | Why |
+|---|---|---|---|
+| `/projects/…`, `/admin/…`, `/account/…`, `/invites/…`, `/mcp`, `/media-upload/…` | all | Everything: the WAF does not inspect these paths. With nginx, route them around ModSecurity (see [Large bodies](#large-bodies-and-memory)). | Site source code, `PUT`/`PATCH`/`DELETE`, bodies up to 4 MB (60 MB for a message to the on-page agent) and uploads up to 200 MB. Every write needs a credential, checked before the body. |
+| `/a/<project>` | `POST` | The content-type check (920420) | The statistics beacon is `text/plain`. |
+| `/oauth/authorize`, `/oauth/token`, `/oauth/register` | `GET POST` | 931100, 931130 and 934110 for the `redirect_uri` parameter (`redirect_uris` on `/oauth/register`), or for the path if the WAF cannot exclude a parameter | Local apps sign in with a loopback redirect URI. |
+| `/auth/login`, `/auth/register` | `POST` | Every rule for the `password` field, or for the path if the WAF cannot exclude a field | A generated password is a random string of symbols. |
+| `/pay/<project>/webhook/<gateway>` | `POST` | 943120 | A provider's event can carry a `session_id` field. |
+| Optional: `/f/<project>/<form>` | `POST` | The XSS, file-access and command-injection groups | Only for sites whose visitors write code in contact messages. |
+
+How to apply it depends on the WAF:
+
+- **nginx with ModSecurity** (including the `owasp/modsecurity-crs` images): route the first row around
+  ModSecurity with its own `location` (see [Large bodies](#large-bodies-and-memory)), and load
+  [`waf/sitewright-before.conf`](waf/sitewright-before.conf) for the other rows.
+- **Another WAF that takes CRS rules** (ModSecurity elsewhere, Coraza, products built on them): load
+  [`waf/sitewright-before.conf`](waf/sitewright-before.conf), which does all of the table. It is a CRS 4 plugin
+  "before" file with rule ids 10100–10199. In the `owasp/modsecurity-crs` images it goes in
+  `/opt/owasp-crs/plugins/`; elsewhere, `Include` it after `crs-setup.conf` and before the CRS
+  `rules/*.conf`. Coraza supports the same directives, but the file was only tested with ModSecurity v3.
+- **A WAF with only an "exclude this rule on this path" control:** enter the table. Where it cannot switch
+  inspection off for a path, exclude every rule the log shows there.
+
+To say it plainly: **this exempts the editor's and agents' API from the WAF.** The WAF still protects the
+public surface (site pages, forms, bookings, checkout, sign-in), which is where anonymous attackers are, and
+it still blocks scanners. On the excluded paths it no longer blocks anything, for anyone. If your WAF cannot
+be configured even this far, do not put the platform behind it: route the platform's own host around the
+WAF and keep it in front of the sites' hosts (`*.<SW_SITES_DOMAIN>` and custom domains), which carry only
+public traffic. The exceptions for the public paths above still apply there.
+
+Measured in blocking mode, Sitewright 0.82.0 behind CRS 4.30 (libmodsecurity 3.0.17), with the file loaded,
+and then with the `location` below added as well:
+
+| Traffic | File only | File and `location` |
 |---|---|---|
-| 1. Authoring writes | `POST PUT PATCH DELETE` to `/projects`, `/admin`, `/account`, `/global`, `/mcp`, `/invites`, `/me`, `/api-key`, `/ai`, carrying `Authorization: Bearer swk_…`/`swm_…` (64 hex) or the `sw_session` / `__Host-sw_session` cookie in its exact signed format | Allows `PUT PATCH DELETE`. Skips body inspection, and with it the 128 KB and 1,000-value limits. Switches on early blocking for the request. |
-| 2. Statistics beacon | `POST /a/<project>` | Skips the content-type check (920420) |
-| 2. Agent upload links | `PUT /media-upload/<ticket>` | Allows `PUT` and a missing or non-form content type and `Expect` (920340, 920420, 920450, 920640). Skips body inspection (raw file bytes). Switches on early blocking for the request. |
-| 3. OAuth loopback sign-in | `redirect_uri` on `/oauth/authorize` and `/oauth/token`, `redirect_uris[0–4]` on `/oauth/register` | Exempts that one parameter from 931100, 931130 and 934110 |
-| 4. Passwords | `password` on `/auth/login` and `/auth/register` | Exempts that one field from every rule (a password is only ever hashed) |
-| 5. Payment webhooks | `POST /pay/<project>/webhook/<gateway>` | Removes 943120 (session fixation) |
-| Optional, commented out | `POST /f/…` (forms) | Stops checking submissions for XSS, file-access and command patterns, for sites whose visitors write code |
+| API E2E suite | 60 of 61 pass. The one failure expects `/.htaccess` to answer 404; the WAF answers 403. | The same |
+| Editor E2E suite | 201 of 201 pass | Not re-run: the `location` only takes inspection off the editor's paths |
+| Agent session (MCP) | 257 of 257 tool calls succeed, including uploads and the 90 KB settings save | The same |
+| Uploads | Up to 12.5 MB pass; larger ones are refused by the WAF | A 150 MB upload passes |
+| Public traffic | The WAF refuses only the contact message that quotes `<script>` and `/etc/os-release` (see the optional rule) | The same |
+| Attack probes | Refused: `/.env`, `/.git/config`, prototype pollution and Log4Shell on `/`, XSS and path traversal on site pages and media, SQL injection and XSS in forms, checkout, sign-in and OAuth registration. On the excluded paths Sitewright answers itself: 401 for a script write to a page or an MCP tool call without a valid credential, 404 for an unknown upload link. | The same |
 
-What that means in security terms:
-
-- **The WAF checks a credential's format, not whether it is valid.** Anyone can send a well-formed fake
-  `Authorization` header or cookie on a write to the authoring API. Two things follow for such a request:
-  - **Its body and query string are not inspected for attacks.** On ModSecurity v3, skipping body
-    inspection skips the whole request-body phase, query string included.
-  - **It is still refused for anomalies in the request line, headers and user agent:** scanner detection,
-    protocol enforcement, restricted headers. These checks run in the first phase, and early blocking
-    evaluates them there.
-
-  What the request then meets is Sitewright itself. The route's handler refuses an invalid credential (401)
-  before it acts on anything in the request. The body has been read and parsed as JSON by then (within the
-  route's size limit), but not used. A genuine author could send anything there anyway, because writing
-  JavaScript into a page is a feature. Sitewright's own checks do that work:
-  - schema validation of every write;
-  - the template safety check (an inline `onclick` in a template is refused, for instance);
-  - parameterized database queries;
-  - the content security policy and origin isolation of published pages.
-- **Reads stay fully inspected,** with or without a credential. Only `GET`, `HEAD` and `OPTIONS` count as
-  reads; an agent's read is a `POST` to `/mcp` and is treated as a write.
-- **Everything without a credential is inspected as before:**
-  - every request to the authoring API without a well-formed credential;
-  - site pages and assets, forms, bookings, checkout, webhooks, sign-in, OAuth and the statistics beacon,
-    except for the one check each section names.
-- **Audit logs hold secrets.** A logged transaction includes request headers (bearer keys, session cookies)
-  and the matched data, which at sign-in can be a password. Restrict who can read the WAF's audit log.
-
-To verify credentials at the WAF instead of only their format, the proxy has to ask Sitewright: for
-example nginx `auth_request` against `GET /me`, with the exemption keyed on the result rather than on the
-header. Sitewright does not ship that configuration.
-
-Verified in blocking mode with the file loaded:
-
-| Traffic | Result |
-|---|---|
-| API E2E suite | 60 of 61 pass. The one failure expects `/.htaccess` to answer 404; the WAF answers 403. |
-| Editor E2E suite | 201 of 201 pass (one mobile layout check passed on a re-run); the WAF refused none of the suite's requests |
-| Agent session (MCP) | 257 of 257 tool calls succeed; both uploads and the 90 KB settings save from the editor and from an agent go through |
-| Agent uploads | `curl -T` without a content type, at 300 KB and at 5 MB (with `Expect`), and an `image/jpeg` upload all go through |
-| Public traffic | All pass, except the contact message that quotes `<script>` and `/etc/os-release` (see the optional section) |
-| Attack probes | All refused: `/.env`, `/.git/config`, prototype pollution and Log4Shell on `/`, XSS and path traversal on site pages, SQL injection and XSS in forms, checkout, sign-in and OAuth registration, XSS writes to the API and `/mcp` without a credential or with a malformed one, SQL injection in a credentialed read, a well-formed fake credential sent with a scanner's user agent or a restricted header, a scanner on an upload link. A well-formed fake credential on an otherwise clean write passes the WAF and gets a 401 from Sitewright. |
-
-## Uploads
+## Large bodies and memory
 
 Uploads go up to 200 MB: media from the editor, agents' upload links, and a website-import archive (up to
-50 MB). A project restore (`POST /projects/import/zip`) can be larger than any of these. ModSecurity's total
-body limit (`SecRequestBodyLimit`, 12.5 MB by default) refuses anything bigger, **even where the exclusion
-file turns body inspection off.**
+50 MB). A project restore (`POST /projects/import/zip`) can be larger. A message to the on-page agent with
+attachments can reach 60 MB. ModSecurity's total body limit (`SecRequestBodyLimit`, 12.5 MB by default)
+refuses anything bigger, also on the paths the exclusion file leaves alone. The file keeps the engine on so
+that it does.
 
-Do not simply raise that limit. Its nginx connector holds the whole body in memory, and inspecting it costs
-more:
+The limit does not protect the WAF's memory, though. ModSecurity's nginx connector holds the whole body in
+memory before it decides, so a body it refuses still costs what it weighs. The `owasp/modsecurity-crs` nginx
+image sets no `client_max_body_size` at all.
 
-| Request | WAF memory, idle → peak |
+| Request | WAF memory |
 |---|---|
-| Anonymous 150 MB multipart upload, limit raised to 210 MB (refused) | 57 MiB → 1.18 GiB |
-| Credentialed 150 MB editor upload, limit raised, body inspection off | 56 MiB → 443 MiB |
-| Anonymous 150 MB upload through the location below (Sitewright answers 401) | → 63 MiB |
-| Credentialed 150 MB editor upload through the location below | → 67 MiB |
+| Anonymous 150 MB upload, default limit (refused by the WAF) | 157 MiB → 493 MiB |
+| Anonymous 150 MB upload, limit raised to 210 MB (refused by the WAF) | 57 MiB → 1.18 GiB |
+| Anonymous 150 MB upload to a path excluded with `ctl:ruleEngine=Off` (the WAF lets it through) | 170 MiB → 506 MiB |
+| Anonymous 150 MB upload to an excluded path, through the `location` below (Sitewright answers 401) | 72 MiB → 75 MiB |
+| Anonymous 150 MB post to a public form, through the `location` below (nginx answers 413) | 72 MiB → 75 MiB |
+| Signed-in 150 MB upload, through the `location` below | 72 MiB → 83 MiB |
 
-With the limit raised for everything, a few anonymous uploads in parallel can exhaust the WAF, and the WAF
-is the front door of every site. Instead, give the upload routes their own proxy location without
-ModSecurity, and keep the default limit everywhere else. In nginx:
+So with nginx, give the excluded paths their own `location` without ModSecurity, and allow at most 1 MB
+where ModSecurity stays on. No public request to Sitewright is larger: a form submission is at most 96 KB, a
+payment webhook 256 KB.
 
 ```nginx
-# Before the general `location /`. File bytes are not something a WAF can inspect anyway.
-# The pattern must be quoted: nginx reads an unquoted `{36}` as the start of a block.
-location ~ "^/(?:projects/[^/]+/media|projects/[^/]+/media/[^/]+/content|media-upload/[0-9a-f-]{36}|projects/import/zip|projects/[^/]+/import/upload/stream)$" {
+# Before the general `location /`. Quote the pattern: nginx reads `{` and `;` in an unquoted one as syntax.
+location ~ "^/(?:projects|admin|account|invites|mcp|media-upload)(?:/|$)" {
     modsecurity off;
-    client_max_body_size 210m;   # a larger project restore needs more
+    client_max_body_size 210m;   # uploads; a larger project restore needs more
     proxy_request_buffering off;
     proxy_pass http://127.0.0.1:8080;
-    # … the same proxy_set_header lines as the main location …
+    # … the same proxy settings as the main location (headers, timeouts) …
+}
+
+location / {
+    client_max_body_size 1m;     # ModSecurity reads the whole body; nothing public is larger
+    # … ModSecurity and the proxy settings, as before …
 }
 ```
 
-Each of these routes checks the session, access key or upload link before it reads the upload. The one
-exception is an agent's upload link: it stages the bytes before it looks the link up, and then deletes them.
-Measured in the CRS image with this location added (and the exclusion file loaded): both 150 MB uploads
-above, while `/.env` and an anonymous script write to a page are still refused.
-
-## If your WAF can only exclude by path
-
-Some WAFs have only an "exclude this rule on this path" control and cannot condition on a header or a
-cookie. Managed WAFs and appliances often work this way. Then the authoring API cannot be told apart from
-an attack, and these exclusions are needed:
-
-| Path | Methods | Exclude |
-|---|---|---|
-| `/projects/*`, `/admin/*`, `/account/*`, `/global/*`, `/invites/*`, `/mcp` | `POST PUT PATCH DELETE` | The method policy (911100), request-body inspection (or the attack rule groups 930–944 for the body), and the body size and argument-count limits |
-| The upload routes in [Uploads](#uploads) | `POST PUT` | Everything: route them around the WAF |
-| `/a/*` | `POST` | The content-type check (920420) |
-| `/oauth/authorize`, `/oauth/token`, `/oauth/register` | `GET POST` | 931100 and 934110 (and 931130 at level 2) |
-| `/auth/login`, `/auth/register` | `POST` | Every rule, for the `password` field if the WAF can exclude a field, otherwise for the path |
-| `/pay/*/webhook/*` | `POST` | 943120 |
-
-To say it plainly: **this exempts the authoring API from the WAF.** It still protects the public surface
-(site pages, forms, bookings, checkout, sign-in), which is where anonymous attackers are, and it still
-blocks scanners. On the authoring paths it no longer blocks anything, for anyone. Sitewright refuses every
-request there without a valid credential before acting on it, so the loss is small. But no WAF rule could
-make the authoring API safer than Sitewright's own authorization already does; it can only break it. If
-your WAF cannot be configured even this far, do not put the authoring API behind it. Route the platform's
-own host around the WAF, and keep it in front of the sites' hosts (`*.<SW_SITES_DOMAIN>` and custom
-domains), which carry only public traffic.
+Each excluded route checks the session, access key or upload link before it parses the body. The
+`ctl:ruleEngine=Off` row is why the exclusion file does not switch the engine off for those paths. With the
+engine off, ModSecurity stops enforcing its body limit, but the connector still reads the whole body.
 
 ## Settings besides the rules
 
@@ -225,32 +207,35 @@ domains), which carry only public traffic.
   - the editor's own session cookie: its signature is random base64url, and when it happens to contain
     `--`, rule 942440 matches, so a level-2 WAF signs random editors out.
 - **Body size.** A content write can be up to 4 MB, and the uploads above up to 200 MB. The proxy must allow
-  that (`client_max_body_size` in nginx, see [Deployment](deployment.md#reverse-proxy-tls)); ModSecurity
-  does not have to, once the uploads take their own route (see [Uploads](#uploads)).
+  that on the excluded paths (`client_max_body_size` in nginx, see
+  [Deployment](deployment.md#reverse-proxy-tls)), and at most 1 MB where ModSecurity inspects (see
+  [Large bodies](#large-bodies-and-memory)).
 - **Long-lived responses.** The editor's live updates and deploy progress are server-sent event streams
   that stay open. Give the proxy a long read timeout and do not buffer `text/event-stream` (the CRS nginx
   image does both by default).
 - **The real client IP.** Set `TRUST_PROXY` on Sitewright so rate limits and the sign-in throttle see the
   visitor rather than the WAF (see [Deployment](deployment.md#quick-start-docker-run)).
+- **Audit logs hold secrets.** A logged transaction includes request headers (bearer keys, session cookies)
+  and the matched data, which at sign-in can be a password. Restrict who can read the WAF's audit log.
 
 ## Reading your WAF's log
 
 | You see | It is |
 |---|---|
-| 911100 on a `PUT`, `PATCH` or `DELETE` to `/projects/…`, `/admin/…`, `/account/…` | The editor or an agent saving. Section 1. |
-| 941xxx, 942xxx, 932xxx, 933xxx, 934xxx on `/projects/…` or `/mcp` | Authored code being saved. Section 1. |
-| 200002 or 200007 | A large save or import. Section 1. |
-| 920420 on `/a/<id>` | Visitors' pageviews. Section 2. |
-| 911100, 920340, 920420, 920450 or 920640 on `/media-upload/…` | An agent uploading a file. Section 2. |
-| A request over 12.5 MB refused | An upload. See [Uploads](#uploads). |
-| 931100 or 934110 on `/oauth/…` | A local app signing in. Section 3. |
-| Any rule on `json.password` at `/auth/login` | A user's password. Section 4. |
-| 943120 on `/pay/…/webhook/…` | A payment provider's event. Section 5. |
+| 911100 on a `PUT`, `PATCH` or `DELETE` to `/projects/…`, `/admin/…`, `/account/…` | The editor or an agent saving. Exclude the path. |
+| 941xxx, 942xxx, 932xxx, 933xxx, 934xxx on `/projects/…` or `/mcp` | Authored code being saved. Exclude the path. |
+| 200002 or 200007 | A large save or import. Exclude the path. |
+| 920420 on `/a/<id>` | Visitors' pageviews. The beacon exception. |
+| 911100, 920340, 920420, 920450 or 920640 on `/media-upload/…` | An agent uploading a file. Exclude the path. |
+| A request over 12.5 MB refused | An upload. See [Large bodies](#large-bodies-and-memory). |
+| 931100 or 934110 on `/oauth/…` | A local app signing in. The OAuth exception. |
+| Any rule on `json.password` at `/auth/login` | A user's password. The password exception. |
+| 943120 on `/pay/…/webhook/…` | A payment provider's event. The webhook exception. |
 | 930130 on `/.env`, `/.git/config`; mixed 93x/94x payloads on `/` | Scanners. Leave them blocked. |
 
 ## Reproducing the measurements
 
 `scripts/waf/run.sh` starts a Sitewright image behind the CRS image on a Docker host, drives the traffic
 above through it and summarises the WAF's log per route. Run it in detection mode to see what a
-configuration would refuse, or in blocking mode with `--exclusions` to check this file. See
+configuration would refuse, or in blocking mode with `--exclusions` to check the exclusion file. See
 [`scripts/README.md`](../scripts/README.md#wafrunsh--what-a-waf-blocks). Run it again when routes change.

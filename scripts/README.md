@@ -112,13 +112,13 @@ see whether `docs/waf/sitewright-before.conf` still covers them.
 |----------|---------------------------|
 | `mcp`    | an agent session over `/mcp` on the seeded example project: every page read and written back, entries, CSS, custom head code, uploads (inline and `PUT` to an upload link), an import, a deploy, a full settings save from the editor and from an agent |
 | `public` | site pages + assets with campaign query strings, the statistics beacon, form / booking / checkout posts shaped like the page runtimes', Stripe / PayPal / Mollie webhooks, the OAuth flows of local and hosted MCP clients, sign-in with generated-looking passwords |
-| `probes` | attacks the WAF must still refuse: scanners, injection on public endpoints, writes to the API and `/mcp` without a credential or with a malformed one |
+| `probes` | attacks the WAF must still refuse: scanners and injection on public endpoints; and, on the paths the exclusion file leaves alone (the API, `/mcp`, upload links), what Sitewright itself answers a stranger |
 | `api`, `editor` | the Playwright E2E suites (slow; `editor` needs the SPA in the image) |
 
 ```bash
 # What a stock rule set would refuse (log only, everything reaches Sitewright):
 scripts/waf/run.sh --image ghcr.io/sitewright-cms/sitewright:0.81.0
-# The recommended configuration, actually blocking:
+# With the exclusions to load if a WAF stays in front of Sitewright (docs/waf/sitewright-before.conf), blocking:
 scripts/waf/run.sh --image ghcr.io/sitewright-cms/sitewright:0.81.0 --mode block --exclusions --suites mcp,public,probes,api
 # → summary.txt: per route, the requests, how many matched a rule, how many a level-1 WAF would refuse,
 #   and which rules with a sample of what they matched; probes.txt: one status per attack (403 = refused).

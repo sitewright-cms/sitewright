@@ -68,6 +68,7 @@ The running version of an instance is reported at `GET /version` (baked into the
   with no fixed release, blocked every merge. Such an acceptance is honoured only while a production-only
   audit does not report the package: the moment it reaches the server's dependencies, the advisory blocks
   again. Critical advisories are never accepted, and an acceptance that no longer matches still fails the gate.
+  GitHub has since withdrawn the picomatch advisory, so its acceptance was removed.
 - **The editor's and agents' API checks who is calling before it reads a request body.** Each route used to
   check the session or access key only after the body had been read and parsed, up to 4 MB for a save and
   60 MB for a message to the on-page agent, so anyone could make the server do that work on every request.

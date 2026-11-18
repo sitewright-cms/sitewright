@@ -67,15 +67,7 @@ const ACCEPTED = {
  * report it: the moment the package reaches the production tree, the advisory gates again. Critical is never
  * waivable, and a stale entry fails like one in ACCEPTED.
  */
-const DEV_ONLY_ACCEPTED = {
-  'GHSA-fc5q-39xc-vjpf': {
-    module: 'picomatch',
-    reason:
-      'picomatch <=4.0.7: ReDoS through a crafted glob PATTERN with repeated single-branch extglobs. No fixed release ' +
-      'exists (4.0.7 is the latest; the advisory names none). It reaches only the build and test toolchain — fdir and ' +
-      "tinyglobby under vite, vitest and typescript-eslint — never the production tree, and every pattern it is given is the repo's own config glob: no user input is a pattern.",
-  },
-};
+const DEV_ONLY_ACCEPTED = {};
 
 const SEVERITY_RANK = { info: 0, low: 1, moderate: 2, high: 3, critical: 4 };
 const FLOOR = SEVERITY_RANK.moderate;

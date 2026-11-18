@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.83.0] — 2026-11-18
+
 ### Added
 
 - **Bright Data as a rank-tracking provider, and the one to choose for a small market.** System Settings →
@@ -29,7 +31,6 @@ The running version of an instance is reported at `GET /version` (baked into the
   places, so new keywords are tracked by country; keywords already tracked for a city keep it. Google's own "Map"
   link, which Apify lists as the first result of a local search, is not counted. See
   [docs/rank-tracking.md](docs/rank-tracking.md).
-
 - **Rank tracking for thousands of keywords.**
   - **Time-limited passes:** each pass sends for at most three minutes. Anything left goes out on a pass 30 seconds
     later, and "Check now" goes ahead of a scheduled pass instead of waiting for it.
@@ -45,6 +46,23 @@ The running version of an instance is reported at `GET /version` (baked into the
   - **Load test:** in a simulated run of 5,000 keywords across 100 projects, every keyword was checked once, every
     position read right, and the charges matched what the checks cost. See
     [docs/rank-tracking.md](docs/rank-tracking.md#many-keywords).
+
+### Changed
+
+- **A rank check reads further results pages only while the site has not turned up.** It reads page 1, then 2,
+  then 3–5, then 6–10, and stops at the page where the site appears or where Google stops. A site on the first page
+  now costs one page instead of ten. The depth (now Top 10, 20, 50 or 100) sets how far a check goes when the site is
+  not found, and the setup form says how many pages that is at most. Each stage is booked against the budget before
+  it is sent. A check the budget stops partway is recorded with what it read: "Not in the 20 results read".
+  Projects set to Top 30, which is no longer offered, were moved to Top 50.
+- **A web application firewall in front of Sitewright is no longer recommended.** [docs/waf.md](docs/waf.md)
+  now says so, and why. `docs/waf/sitewright-before.conf` is now the list of exceptions for a WAF that stays
+  anyway: it leaves the editor's and agents' paths alone entirely, plus one rule each on the statistics
+  beacon, local apps' sign-in, passwords and payment webhooks. With nginx, the guide routes those paths
+  around ModSecurity instead and limits bodies to 1 MB where it stays on, because ModSecurity holds a
+  whole body in memory before it refuses it (measured: 150 MB took the WAF from 157 to 493 MiB). The 0.82.0
+  file instead exempted requests by the format of their credential, which was too complex and too fragile
+  to recommend.
 
 ### Fixed
 
@@ -77,23 +95,6 @@ The running version of an instance is reported at `GET /version` (baked into the
   a signed-in session now gets 401 instead of 403.
 - **Agents' upload links check the link before they store the upload.** An unknown, expired or used link
   was refused (404) only after the upload had been written to disk.
-
-### Changed
-
-- **A rank check reads further results pages only while the site has not turned up.** It reads page 1, then 2,
-  then 3–5, then 6–10, and stops at the page where the site appears or where Google stops. A site on the first page
-  now costs one page instead of ten. The depth (now Top 10, 20, 50 or 100) sets how far a check goes when the site is
-  not found, and the setup form says how many pages that is at most. Each stage is booked against the budget before
-  it is sent. A check the budget stops partway is recorded with what it read: "Not in the 20 results read".
-  Projects set to Top 30, which is no longer offered, were moved to Top 50.
-- **A web application firewall in front of Sitewright is no longer recommended.** [docs/waf.md](docs/waf.md)
-  now says so, and why. `docs/waf/sitewright-before.conf` is now the list of exceptions for a WAF that stays
-  anyway: it leaves the editor's and agents' paths alone entirely, plus one rule each on the statistics
-  beacon, local apps' sign-in, passwords and payment webhooks. With nginx, the guide routes those paths
-  around ModSecurity instead and limits bodies to 1 MB where it stays on, because ModSecurity holds a
-  whole body in memory before it refuses it (measured: 150 MB took the WAF from 157 to 493 MiB). The 0.82.0
-  file instead exempted requests by the format of their credential, which was too complex and too fragile
-  to recommend.
 
 ## [0.82.0] — 2026-11-17
 
@@ -6757,7 +6758,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.82.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.83.0...HEAD
+[0.83.0]: https://github.com/sitewright-cms/sitewright/compare/v0.82.0...v0.83.0
 [0.82.0]: https://github.com/sitewright-cms/sitewright/compare/v0.81.0...v0.82.0
 [0.81.0]: https://github.com/sitewright-cms/sitewright/compare/v0.80.0...v0.81.0
 [0.80.0]: https://github.com/sitewright-cms/sitewright/compare/v0.79.0...v0.80.0

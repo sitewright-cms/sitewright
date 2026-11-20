@@ -1506,7 +1506,9 @@ describe('the page behind Google’s redirect', () => {
     expect(await t.tick()).toMatchObject({ sent: 5 });
     const rows = await checks();
     expect(rows.every((r) => r.status === 'done' && r.position === 3 && r.url === 'https://plumbers.na/')).toBe(true);
-    expect(g.asked).toHaveLength(3);
+    // Two at a time (a batch of two): the third refusal pauses asking, the lookup beside it still finishes, and the
+    // fifth check is not asked about.
+    expect(g.asked).toHaveLength(4);
 
     // Past the pause, the next day's checks ask again.
     now = new Date('2026-10-21T08:00:00Z');
@@ -1515,7 +1517,41 @@ describe('the page behind Google’s redirect', () => {
     expect(await t.tick()).toMatchObject({ sent: 5 });
     const today = (await checks()).filter((r) => r.day === '2026-10-21');
     expect(today.map((r) => r.url).sort()).toEqual(['a1', 'a2', 'a3', 'a4', 'a5'].map(pageFor));
-    expect(g.asked).toHaveLength(8);
+    expect(g.asked).toHaveLength(9);
+  });
+
+  it('asks a few at a time, and records the rest with the site once a batch’s lookups run out of time', async () => {
+    const pid = await makeProject('slow');
+    const keywords = Array.from({ length: 30 }, (_, i) => `slow ${i}`);
+    await addKeywords(pid, keywords);
+    await useLive();
+    let clock = 0;
+    let open = 0;
+    let most = 0;
+    const g = google();
+    // Each lookup takes six seconds of the tracker's clock; those started together end together.
+    const fetch: Fetch = async (url, init) => {
+      const started = clock;
+      most = Math.max(most, ++open);
+      await new Promise((r) => setTimeout(r, 5));
+      clock = Math.max(clock, started + 6_000);
+      open--;
+      return g.fetch(url, init);
+    };
+    const live = wrappedLive();
+    const providers = { dataforseo: idle('dataforseo'), apify: idleApify, brightdata: { ...live, maxBatch: 30 } };
+    await new RankTracker({ repo, providers, io: { fetch }, now: () => now, log, clock: () => clock }).tick();
+
+    const rows = await checks();
+    expect(rows).toHaveLength(30);
+    expect(rows.every((r) => r.status === 'done' && r.position === 3)).toBe(true);
+    expect(most).toBe(10);
+    // Ten at once, six seconds each: a second ten start within the batch's ten seconds, a third does not.
+    expect(g.asked).toHaveLength(20);
+    const resolved = rows.map((r) => r.url).filter((u) => u !== 'https://plumbers.na/');
+    expect(new Set(resolved).size).toBe(20);
+    expect(resolved.every((u) => keywords.map(pageFor).includes(u!))).toBe(true);
+    expect(g.asked.map((u) => pageFor(decodeURIComponent(new URL(u).searchParams.get('url')!.slice('CAES-'.length)))).sort()).toEqual([...resolved].sort());
   });
 
   it('asks nothing when the site’s result names its page, or the site is not found', async () => {

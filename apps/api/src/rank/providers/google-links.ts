@@ -10,7 +10,8 @@
  */
 
 const GOOGLE_HOST_RE = /^(www\.|maps\.)?google(\.[a-z]{2,3}){1,2}$/i;
-const GOOGLE_SEARCH_HOST_RE = /^(?:www\.)?google\.[a-z]{2,3}(?:\.[a-z]{2,3})?$/i;
+/** The hosts searches are sent to (`www.google.com`): a redirect on any other is not asked. */
+const GOOGLE_SEARCH_HOSTS = new Set(['www.google.com', 'google.com']);
 const WEB_URL_RE = /^https?:\/\//i;
 
 function parse(url: string): URL | null {
@@ -71,5 +72,6 @@ export function resultUrl(link: string, displayed?: string): string | null {
  */
 export function opaqueRedirect(link: string): string | undefined {
   const u = parse(link);
-  return u && u.protocol === 'https:' && GOOGLE_SEARCH_HOST_RE.test(u.hostname) && u.pathname === '/goto' ? link : undefined;
+  if (!u || u.protocol !== 'https:' || u.port || u.username || u.password) return undefined;
+  return GOOGLE_SEARCH_HOSTS.has(u.hostname.toLowerCase()) && u.pathname === '/goto' ? link : undefined;
 }

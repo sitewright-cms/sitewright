@@ -53,9 +53,24 @@ describe('resultUrl', () => {
 });
 
 describe('opaqueRedirect', () => {
-  it('is Google’s `/goto` link on a Google Search host, over https', () => {
+  it('is Google’s `/goto` link on the host searches are sent to, over https', () => {
     expect(opaqueRedirect(GOTO)).toBe(GOTO);
-    expect(opaqueRedirect('https://google.com.na/goto?url=CAES')).toBe('https://google.com.na/goto?url=CAES');
+    expect(opaqueRedirect('https://google.com/goto?url=CAES')).toBe('https://google.com/goto?url=CAES');
+    expect(opaqueRedirect('https://WWW.Google.com/goto?url=CAES')).toBe('https://WWW.Google.com/goto?url=CAES');
+  });
+
+  it('asks no other host, however Google-like, nor a port or a user part', () => {
+    for (const link of [
+      'https://google.com.na/goto?url=CAES',
+      'https://www.google.xyz/goto?url=CAES',
+      'https://google.co.xx/goto?url=CAES',
+      'https://www.google.com:8443/goto?url=CAES',
+      'https://user@www.google.com/goto?url=CAES',
+      'https://user:pw@www.google.com/goto?url=CAES',
+      'https://www.google.com./goto?url=CAES',
+    ]) {
+      expect(opaqueRedirect(link), link).toBeUndefined();
+    }
   });
 
   it('is nothing else: a `/url?q=` redirect names its page, and no other host or scheme is asked', () => {

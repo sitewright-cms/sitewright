@@ -1,5 +1,5 @@
 import { rankNextStage, type RankPassReport, type RankProviderId, type RankStatus } from '@sitewright/schema';
-import { readPage, readStage, type PageReading } from './match.js';
+import { findRank, readPage, readStage, type PageReading } from './match.js';
 import { RankProviderError, type RankCredentials, type RankProvider, type RankProviderIo, type RankSearch, type SerpPage } from './providers/index.js';
 import { utcDay, type CheckProgress, type ContinuingCheck, type DueKeyword, type RankRepository } from './repo.js';
 import { resolveRedirect } from './resolve-link.js';
@@ -57,6 +57,9 @@ const CONFIRM_AFTER_MS = 5 * 60_000;
 /** After this many redirects in a row Google did not resolve, none is asked for this long (the site's address stays). */
 const REDIRECT_FAILURES_TO_PAUSE = 3;
 const REDIRECT_PAUSE_MS = 15 * 60_000;
+/** Google's redirects looked up at once, and how long a batch's lookups may go on before the rest keep the site. */
+const REDIRECT_LOOKUPS_AT_ONCE = 10;
+const REDIRECT_BATCH_BUDGET_MS = 10_000;
 
 export interface RankTrackerDeps {
   repo: RankRepository;
@@ -131,7 +134,7 @@ export class RankTracker {
   private continuation: ReturnType<typeof setTimeout> | null = null;
   /** Shut down: no further pass is set (one under way may still finish). */
   private closed = false;
-  /** Redirects in a row Google did not resolve, and until when none is asked (see {@link pageOf}). */
+  /** Redirects in a row Google did not resolve, and until when none is asked (see {@link lookUpPages}). */
   private redirectFailures = 0;
   private redirectsPausedUntil = 0;
 
@@ -302,11 +305,12 @@ export class RankTracker {
         }
         throw err;
       }
+      const pages = await this.lookUpPages(outcomes.flatMap((o) => (o.state === 'done' && byId.has(o.checkId) ? [{ check: byId.get(o.checkId)!, page: o.page }] : [])));
       for (const o of outcomes) {
         const check = byId.get(o.checkId);
         if (!check) continue;
         if (o.state === 'done') {
-          if ((await this.record(check, o.page, o.costUsd)) === 'done') done++;
+          if ((await this.record(check, o.page, o.costUsd, pages.get(check.id))) === 'done') done++;
           else continued++;
         } else if (o.state === 'failed') {
           // Final for the day — a search the provider ran and failed is not bought again until the next one — unless the
@@ -333,7 +337,7 @@ export class RankTracker {
    * more to CONFIRM it — results vary from one request to the next, and a lone miss is often one of those — and that
    * second reading is what is recorded.
    */
-  private async record(check: CheckProgress, page: SerpPage, costUsd: number | undefined): Promise<'done' | 'next' | 'confirm'> {
+  private async record(check: CheckProgress, page: SerpPage, costUsd: number | undefined, found?: string): Promise<'done' | 'next' | 'confirm'> {
     const { repo } = this.deps;
     // A check sent for its whole depth before stages: its one result is all it asked for.
     const { reading, final } = check.fullDepth ? { reading: readPage(page, check), final: true } : readStage(page, check, check, check.depth);
@@ -351,31 +355,48 @@ export class RankTracker {
         return 'confirm';
       }
     }
-    await repo.markDone(check.id, await this.pageOf(reading, check), page.checkedAt, costUsd, check.settledMicros);
+    await repo.markDone(check.id, this.pageOf(reading, found), page.checkedAt, costUsd, check.settledMicros);
     return 'done';
   }
 
-  /**
-   * A reading whose hit is only the site, its page hidden behind Google's redirect, with the page Google says it leads
-   * to — asked for the site's own result alone, once per finished check. When Google does not answer, the hit keeps
-   * the site; after a few such answers in a row, none is asked for a while, so a pass never waits on Google.
-   */
-  private async pageOf(reading: PageReading, check: CheckProgress): Promise<PageReading> {
+  /** A reading whose hit is only the site, its page hidden behind Google's redirect: with the page, when it was found. */
+  private pageOf(reading: PageReading, page: string | undefined): PageReading {
     const hit = reading.hit;
     if (!hit?.via) return reading;
-    const kept = { position: hit.position, absolutePosition: hit.absolutePosition, url: hit.url, featured: hit.featured };
-    if (this.clock() < this.redirectsPausedUntil) return { ...reading, hit: kept };
-    const url = await resolveRedirect(hit.via, check, this.deps.io);
-    if (url) {
-      this.redirectFailures = 0;
-      return { ...reading, hit: { ...kept, url } };
-    }
-    if (++this.redirectFailures >= REDIRECT_FAILURES_TO_PAUSE) {
-      this.redirectFailures = 0;
-      this.redirectsPausedUntil = this.clock() + REDIRECT_PAUSE_MS;
-      this.deps.log.warn({ provider: check.provider }, 'rank tracking: Google did not resolve its result redirects; the site is kept as the address for a while');
-    }
-    return { ...reading, hit: kept };
+    return { ...reading, hit: { position: hit.position, absolutePosition: hit.absolutePosition, url: page ?? hit.url, featured: hit.featured } };
+  }
+
+  /**
+   * The pages behind Google's redirects, for the finished hits among a batch's results, by check: asked of Google before
+   * the batch is recorded — for the site's own result alone, a few at a time and within a few seconds a batch, so a pass
+   * never waits long on Google. A redirect Google does not answer leaves the site; after a few such answers in a row,
+   * none is asked for a while.
+   */
+  private async lookUpPages(found: ReadonlyArray<{ check: CheckProgress; page: SerpPage }>): Promise<Map<string, string>> {
+    const pages = new Map<string, string>();
+    const asks = found.flatMap(({ check, page }) => {
+      const via = findRank(page.entries, check)?.via;
+      return via ? [{ check, via }] : [];
+    });
+    if (asks.length === 0) return pages;
+    const deadline = this.clock() + REDIRECT_BATCH_BUDGET_MS;
+    let next = 0;
+    const lookUp = async (): Promise<void> => {
+      while (next < asks.length && this.clock() < deadline && this.clock() >= this.redirectsPausedUntil) {
+        const { check, via } = asks[next++]!;
+        const url = await resolveRedirect(via, check, this.deps.io);
+        if (url) {
+          pages.set(check.id, url);
+          this.redirectFailures = 0;
+        } else if (++this.redirectFailures >= REDIRECT_FAILURES_TO_PAUSE) {
+          this.redirectFailures = 0;
+          this.redirectsPausedUntil = this.clock() + REDIRECT_PAUSE_MS;
+          this.deps.log.warn({ provider: check.provider }, 'rank tracking: Google did not resolve its result redirects; the site is kept as the address for a while');
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(REDIRECT_LOOKUPS_AT_ONCE, asks.length) }, lookUp));
+    return pages;
   }
 
   /** Puts a check the provider could not run back for later today, unless it has had its tries. True when it will be tried again. */
@@ -607,6 +628,7 @@ export class RankTracker {
           break; // the rest stay in `unsent` and are given back below
         }
         let notSent: string | undefined;
+        const pages = await this.lookUpPages(outcomes.flatMap((o) => (o.state === 'done' && byId.has(o.checkId) ? [{ check: byId.get(o.checkId)!, page: o.page }] : [])));
         for (const o of outcomes) {
           const check = byId.get(o.checkId);
           if (!check) continue;
@@ -615,7 +637,7 @@ export class RankTracker {
             sent++;
           } else if (o.state === 'done') {
             // A result for a keyword that went away meanwhile still records what the page held (and its cost).
-            if ((await this.record(check, o.page, o.costUsd)) === 'next') continued++;
+            if ((await this.record(check, o.page, o.costUsd, pages.get(check.id))) === 'next') continued++;
             else sent++;
           } else if (o.state === 'unsent') {
             // Never sent, never charged: given back, and tried again on a later pass.

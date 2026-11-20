@@ -200,6 +200,14 @@ describe.skipIf(!hasOpenssl)('one request over real TLS', () => {
     const r = (await sendToAddress(LOCAL, at(), INIT, limits())) as Exclude<Awaited<ReturnType<typeof sendToAddress>>, typeof NOT_CONNECTED>;
     expect({ ok: r.ok, status: r.status }).toEqual({ ok: false, status: 307 });
     expect(received.map((x) => x.url)).toEqual(['/v1/sessions?expand=1']);
+    // Where it points is reported, for a caller that only reads it (rank tracking and Google's redirects).
+    expect(r.location).toBe(`https://${PINNED_NAME}:${port}/internal/admin`);
+  });
+
+  it('reports a location only on a redirect', async () => {
+    handler = (_req, res) => res.writeHead(201, { location: '/v1/sessions/1' }).end('{}');
+    const r = (await sendToAddress(LOCAL, at(), INIT, limits())) as Exclude<Awaited<ReturnType<typeof sendToAddress>>, typeof NOT_CONNECTED>;
+    expect(r).not.toHaveProperty('location');
   });
 
   it('returns an error status with its body, for the executor to judge', async () => {

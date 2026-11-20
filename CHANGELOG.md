@@ -9,6 +9,15 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **A keyword's ranking page read as the site's home page for most results from Bright Data.** Google wraps many
+  results in its own redirect, `google.com/goto?url=…`, which names the page nowhere. The address Google shows under
+  them names only the site, and its breadcrumb holds the site's own labels, not the path. For the site's own result,
+  Sitewright now asks Google where the redirect leads, without following it, and records that page when it is on
+  the tracked site. On 20 November 2026, 6 of the 9 keywords found for one site read as its home page. Apify results
+  get the same treatment. Checks recorded before this fix keep the home page.
+
 ## [0.83.0] — 2026-11-18
 
 ### Added

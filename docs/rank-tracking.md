@@ -118,8 +118,14 @@ key may read it.
   them Bright Data bills failed requests too, and leave asynchronous requests off. The zone field in System Settings
   says the same.
 - **Google's redirect links:** Google wraps some results in its own redirect, `google.com/goto?url=…`, and on some
-  pages every result. Sitewright reads such a result by the address Google shows under it. When that address is cut
-  short by a breadcrumb ("site.na › services › …"), the ranking page is recorded as the site's home page.
+  pages every result. Sitewright reads such a result by the address Google shows under it. That address names the
+  site, but its breadcrumb ("site.na › ... › E-Learning") holds the site's own labels, not the page's path. So for
+  the site's own result, Sitewright asks Google where the redirect leads: one request to Google, without
+  credentials, whose answer is read and never followed. The page is recorded when Google's answer leads to the
+  tracked site. Only redirects on `www.google.com`, where searches are sent, are asked. The lookups run ten at a
+  time, within 10 seconds for each batch of results, so a pass never waits long on Google. When Google does not
+  answer, or the time is up, the site's home page is recorded; after three unanswered in a row, no page is asked
+  for 15 minutes. Apify results get the same treatment.
 - **Searches at once:** **Searches at once** sets how many searches are read at the same time: 10 unless set, at
   most 20. A page takes about three seconds, so 10 at once read about 200 pages a minute, far under the 1,000
   requests a minute Bright Data allows. Bright Data refuses the same query sent twice at once. Identical searches

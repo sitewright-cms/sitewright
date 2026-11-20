@@ -138,7 +138,16 @@ describe('Bright Data submit', () => {
       goto(3),
       'https://www.phoenix-tech.net/',
     ]);
-    expect(readPage(page, { domain: 'phoenix-tech.net', includeSubdomains: true }).hit).toMatchObject({ position: 5, url: 'https://www.phoenix-tech.net/' });
+    // The redirect is kept where it hides the page, for the tracker to ask Google; not where the link is the page, nor
+    // where the result names no site (its link is already the redirect).
+    expect(page.entries.map((e) => e.via)).toEqual([undefined, goto(1), goto(2), undefined, goto(4)]);
+    expect(readPage(page, { domain: 'phoenix-tech.net', includeSubdomains: true }).hit).toEqual({
+      position: 5,
+      absolutePosition: 5,
+      url: 'https://www.phoenix-tech.net/',
+      featured: false,
+      via: goto(4),
+    });
   });
 
   it('counts a featured snippet first and the ordinary results by Google’s order, its page not twice', async () => {

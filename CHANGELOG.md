@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.83.1] — 2026-11-20
+
 ### Fixed
 
 - **A keyword's ranking page read as the site's home page for most results from Bright Data.** Google wraps many
@@ -6767,7 +6769,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.83.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.83.1...HEAD
+[0.83.1]: https://github.com/sitewright-cms/sitewright/compare/v0.83.0...v0.83.1
 [0.83.0]: https://github.com/sitewright-cms/sitewright/compare/v0.82.0...v0.83.0
 [0.82.0]: https://github.com/sitewright-cms/sitewright/compare/v0.81.0...v0.82.0
 [0.81.0]: https://github.com/sitewright-cms/sitewright/compare/v0.80.0...v0.81.0

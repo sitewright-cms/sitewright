@@ -1,6 +1,6 @@
 import { parse as secureJsonParse } from 'secure-json-parse';
 import { countryOnlyLocations } from './country-locations.js';
-import { isGoogleSearchLink, resultUrl } from './google-links.js';
+import { isGoogleSearchLink, opaqueRedirect, resultUrl } from './google-links.js';
 import {
   RankProviderError,
   type RankCredentials,
@@ -193,13 +193,21 @@ function resultsOf(answer: unknown): Json | null {
 }
 
 /**
- * A result's address: its link, or — when Google wrapped it in a redirect — the site it names. A wrapped result that
- * names no site keeps its link: it still holds its place among the results, it is just no one's to find.
+ * A result's address: its link, or — when Google wrapped it in a redirect — the site it names, and the redirect as
+ * `via` when it hides the page. A wrapped result that names no site keeps its link: it still holds its place among the
+ * results, it is just no one's to find.
  */
-function addressOf(r: Json): string | undefined {
+function addressOf(r: Json): Address | undefined {
   const link = str(r.link);
   if (!link || !WEB_URL_RE.test(link)) return undefined;
-  return resultUrl(link, str(r.display_link)) ?? link;
+  const url = resultUrl(link, str(r.display_link)) ?? link;
+  const via = url !== link ? opaqueRedirect(link) : undefined;
+  return via ? { url, via } : { url };
+}
+
+interface Address {
+  url: string;
+  via?: string;
 }
 
 /**
@@ -207,21 +215,21 @@ function addressOf(r: Json): string | undefined {
  * Duplicates are told by the link as Google gave it: two wrapped results of one site both read as its home page, and
  * are still two results.
  */
-function linksOf(results: Json): Array<{ kind: SerpEntry['kind']; url: string }> {
-  const out: Array<{ kind: SerpEntry['kind']; url: string }> = [];
+function linksOf(results: Json): Array<Address & { kind: SerpEntry['kind'] }> {
+  const out: Array<Address & { kind: SerpEntry['kind'] }> = [];
   const snippetLinks = new Set<string>();
   for (const f of records(results.featured_snippets)) {
-    const url = addressOf(f);
-    if (!url) continue;
+    const address = addressOf(f);
+    if (!address) continue;
     snippetLinks.add(str(f.link)!);
-    out.push({ kind: 'featured_snippet', url });
+    out.push({ kind: 'featured_snippet', ...address });
   }
   const organic = records(results.organic).sort((a, b) => (num(a.global_rank) ?? 0) - (num(b.global_rank) ?? 0));
   for (const r of organic) {
     const link = str(r.link);
     if (!link || isGoogleSearchLink(link) || snippetLinks.has(link)) continue;
-    const url = addressOf(r);
-    if (url) out.push({ kind: 'organic', url });
+    const address = addressOf(r);
+    if (address) out.push({ kind: 'organic', ...address });
   }
   return out;
 }
@@ -313,7 +321,7 @@ async function readSearch(creds: RankCredentials, s: RankSearch, io: RankProvide
     const links = linksOf(results);
     for (const l of links) {
       const position = l.kind === 'organic' ? ++organic : ++snippets;
-      entries.push({ kind: l.kind, position, absolutePosition: ++order, url: l.url.slice(0, 2048), domain: '' });
+      entries.push({ kind: l.kind, position, absolutePosition: ++order, url: l.url.slice(0, 2048), domain: '', ...(l.via ? { via: l.via.slice(0, 2048) } : {}) });
     }
     if (links.length === 0 || !hasNextPage(results)) end = true;
   }

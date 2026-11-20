@@ -48,6 +48,11 @@ export interface SerpEntry {
   url: string;
   /** The result's host as the provider reports it (may include `www.`). */
   domain: string;
+  /**
+   * Google's own redirect the result's link came wrapped in, when `url` is only the site it names (`/goto`, see
+   * `google-links.ts`): the tracker asks it for the page when the result is the site's.
+   */
+  via?: string;
 }
 
 export interface SerpPage {

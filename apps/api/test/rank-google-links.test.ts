@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isGoogleSearchLink, resultUrl } from '../src/rank/providers/google-links.js';
+import { isGoogleSearchLink, opaqueRedirect, resultUrl } from '../src/rank/providers/google-links.js';
 
 /**
  * Google's own links among results: what is no site's result, and the site a wrapped result names. The `/goto` links
@@ -49,5 +49,22 @@ describe('resultUrl', () => {
     expect(resultUrl(GOTO, 'https://www.some-very-long-domain-na…')).toBeNull();
     // An address with a user part is no displayed site.
     expect(resultUrl(GOTO, 'https://phoenix-tech.net@evil.test')).toBeNull();
+  });
+});
+
+describe('opaqueRedirect', () => {
+  it('is Google’s `/goto` link on a Google Search host, over https', () => {
+    expect(opaqueRedirect(GOTO)).toBe(GOTO);
+    expect(opaqueRedirect('https://google.com.na/goto?url=CAES')).toBe('https://google.com.na/goto?url=CAES');
+  });
+
+  it('is nothing else: a `/url?q=` redirect names its page, and no other host or scheme is asked', () => {
+    expect(opaqueRedirect('https://www.google.com/url?q=https://www.phoenix-tech.net/')).toBeUndefined();
+    expect(opaqueRedirect('http://www.google.com/goto?url=CAES')).toBeUndefined();
+    expect(opaqueRedirect('https://maps.google.com/goto?url=CAES')).toBeUndefined();
+    expect(opaqueRedirect('https://www.google.com.evil.test/goto?url=CAES')).toBeUndefined();
+    expect(opaqueRedirect('https://www.phoenix-tech.net/goto?url=CAES')).toBeUndefined();
+    expect(opaqueRedirect('https://www.google.com/goto/x')).toBeUndefined();
+    expect(opaqueRedirect('not a url')).toBeUndefined();
   });
 });

@@ -436,6 +436,8 @@ describe('Apify collect', () => {
     const [out] = await apify.collect(CREDS, [{ checkId: 'c', ref: `${RUN_A}:1:k` }], { fetch });
     const page = (out as Extract<typeof out, { state: 'done' }>).page;
     expect(readPage(page, { domain: 'plumbers.na', includeSubdomains: true }).hit).toMatchObject({ position: 2, url: 'https://www.plumbers.na/' });
+    // The redirect is kept for the tracker to ask Google for the page; a plain link has none.
+    expect(page.entries.map((e) => e.via)).toEqual([undefined, 'https://www.google.com/goto?url=CAESabc&gsessionid=x']);
   });
 
   it('says Google had nothing more when the last page says so, or came back empty', async () => {

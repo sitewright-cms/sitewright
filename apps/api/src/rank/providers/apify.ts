@@ -10,7 +10,7 @@ import {
   type SubmitOutcome,
 } from './types.js';
 import { countryOnlyLocations } from './country-locations.js';
-import { isGoogleSearchLink, resultUrl } from './google-links.js';
+import { isGoogleSearchLink, opaqueRedirect, resultUrl } from './google-links.js';
 
 /**
  * Apify's official Google Search Results Scraper (`apify/google-search-scraper`), as an alternative to DataForSEO.
@@ -290,10 +290,10 @@ function entriesOf(pages: readonly Json[]): SerpEntry[] {
   let organic = 0;
   let snippets = 0;
   let order = 0;
-  const push = (kind: SerpEntry['kind'], url: string): void => {
+  const push = (kind: SerpEntry['kind'], url: string, via?: string): void => {
     if (!WEB_URL_RE.test(url)) return;
     const position = kind === 'organic' ? ++organic : ++snippets;
-    entries.push({ kind, position, absolutePosition: ++order, url: url.slice(0, 2048), domain: '' });
+    entries.push({ kind, position, absolutePosition: ++order, url: url.slice(0, 2048), domain: '', ...(via ? { via: via.slice(0, 2048) } : {}) });
   };
   for (const page of pages) {
     const snippets = snippetUrls(page);
@@ -305,8 +305,10 @@ function entriesOf(pages: readonly Json[]): SerpEntry[] {
       // Google does not repeat a snippet's page among the ordinary results; should the actor list it twice, counting
       // both would push every result after it one place down. Told by the link as given (see Bright Data's `linksOf`).
       if (!snippet && snippets.includes(link)) continue;
-      // A result Google wrapped in its own redirect is read by the site it names (see google-links.ts).
-      push(snippet ? 'featured_snippet' : 'organic', resultUrl(link, str(r.displayedUrl)) ?? link);
+      // A result Google wrapped in its own redirect is read by the site it names, and the redirect kept to ask for its
+      // page (see google-links.ts).
+      const url = resultUrl(link, str(r.displayedUrl)) ?? link;
+      push(snippet ? 'featured_snippet' : 'organic', url, url !== link ? opaqueRedirect(link) : undefined);
     }
   }
   return entries;

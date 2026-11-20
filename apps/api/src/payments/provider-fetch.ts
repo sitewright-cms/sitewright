@@ -18,7 +18,7 @@ import type { FetchLike } from './executor.js';
  *   for SNI and the certificate check.
  * - A redirect is NEVER followed: a payment API does not redirect a server-to-server call, and following
  *   one carries the request, keys in its headers, to wherever the answer pointed. A 3xx is returned as a
- *   non-OK status like any other.
+ *   non-OK status like any other, with its `Location` as `location`.
  * - The next address is tried only when the connection never came up. Once a request may have been sent,
  *   sending it again elsewhere could open a second session or issue a second refund.
  */
@@ -192,10 +192,12 @@ export function sendToAddress(
             }
             chunks.push(c);
           });
+          // A redirect's target, reported and never followed (rank tracking reads where Google's own redirect leads).
+          const location = status >= 300 && status < 400 && typeof res.headers.location === 'string' ? res.headers.location : undefined;
           res.on('end', () => {
             // TextDecoder, as `fetch`'s text() does: it drops a leading BOM that JSON.parse would choke on.
             const text = new TextDecoder().decode(Buffer.concat(chunks));
-            settle(() => resolve({ ok: status >= 200 && status < 300, status, text: () => Promise.resolve(text) }));
+            settle(() => resolve({ ok: status >= 200 && status < 300, status, ...(location !== undefined ? { location } : {}), text: () => Promise.resolve(text) }));
           });
           res.on('error', () => lost('NetworkError'));
           res.on('close', () => lost('NetworkError')); // a body cut short; a no-op after 'end'

@@ -1434,3 +1434,103 @@ describe('what readers see', () => {
     expect(kw!.latest).not.toHaveProperty('resultsRead');
   });
 });
+
+describe('the page behind Google’s redirect', () => {
+  const goto = (keyword: string): string => `https://www.google.com/goto?url=CAES-${encodeURIComponent(keyword)}`;
+  const pageFor = (keyword: string): string => `https://plumbers.na/${keyword.replace(/\s+/g, '-')}/`;
+
+  /** Bright Data answering every search with the site third, its page hidden behind Google's redirect (`via`). */
+  function wrappedLive(): RankProvider {
+    const live = liveProvider(() => ({ urls: [...others(1, 2), 'https://plumbers.na/'], end: true }));
+    return {
+      ...live.provider,
+      async submit(creds, searches, io) {
+        const outs = await live.provider.submit(creds, searches, io);
+        return outs.map((o) => {
+          if (o.state !== 'done') return o;
+          const keyword = searches.find((s) => s.checkId === o.checkId)!.keyword;
+          const entries = o.page.entries.map((e) => (e.url === 'https://plumbers.na/' ? { ...e, via: goto(keyword) } : e));
+          return { ...o, page: { ...o.page, entries } };
+        });
+      },
+    };
+  }
+
+  type Fetch = RankTrackerDepsIo['fetch'];
+  type RankTrackerDepsIo = ConstructorParameters<typeof RankTracker>[0]['io'];
+
+  function withFetch(fetch: Fetch, clock?: () => number): RankTracker {
+    const providers = { dataforseo: idle('dataforseo'), apify: idleApify, brightdata: wrappedLive() };
+    return new RankTracker({ repo, providers, io: { fetch }, now: () => now, log, ...(clock ? { clock } : {}) });
+  }
+
+  /** Google answering every `/goto` with a redirect to the keyword's page. */
+  const google = (): { fetch: Fetch; asked: string[] } => {
+    const asked: string[] = [];
+    const fetch: Fetch = async (url) => {
+      asked.push(url);
+      const keyword = decodeURIComponent(new URL(url).searchParams.get('url')!.slice('CAES-'.length));
+      return { ok: false, status: 302, location: pageFor(keyword), text: async () => '' };
+    };
+    return { fetch, asked };
+  };
+
+  it('records the page Google’s redirect leads to, asking once per check and for the site’s result alone', async () => {
+    const pid = await makeProject('wrapped');
+    await addKeywords(pid, ['plumber windhoek', 'geyser repair']);
+    await useLive();
+    const g = google();
+    expect(await withFetch(g.fetch).tick()).toMatchObject({ status: 'ok', sent: 2 });
+
+    const rows = await checks();
+    expect(rows.map((r) => [r.status, r.position, r.url]).sort()).toEqual([
+      ['done', 3, pageFor('geyser repair')],
+      ['done', 3, pageFor('plumber windhoek')],
+    ]);
+    expect(g.asked.sort()).toEqual([goto('geyser repair'), goto('plumber windhoek')]);
+  });
+
+  it('keeps the site when Google does not say; after three such answers in a row it asks none for a while', async () => {
+    const pid = await makeProject('unresolved');
+    await addKeywords(pid, ['a1', 'a2', 'a3', 'a4', 'a5']);
+    await useLive();
+    let clock = 0;
+    let refuse = true;
+    const g = google();
+    const fetch: Fetch = async (url, init) => {
+      if (!refuse) return g.fetch(url, init);
+      g.asked.push(url);
+      return { ok: false, status: 429, text: async () => '' };
+    };
+    const t = withFetch(fetch, () => clock);
+    expect(await t.tick()).toMatchObject({ sent: 5 });
+    const rows = await checks();
+    expect(rows.every((r) => r.status === 'done' && r.position === 3 && r.url === 'https://plumbers.na/')).toBe(true);
+    expect(g.asked).toHaveLength(3);
+
+    // Past the pause, the next day's checks ask again.
+    now = new Date('2026-10-21T08:00:00Z');
+    clock += 15 * 60_000;
+    refuse = false;
+    expect(await t.tick()).toMatchObject({ sent: 5 });
+    const today = (await checks()).filter((r) => r.day === '2026-10-21');
+    expect(today.map((r) => r.url).sort()).toEqual(['a1', 'a2', 'a3', 'a4', 'a5'].map(pageFor));
+    expect(g.asked).toHaveLength(8);
+  });
+
+  it('asks nothing when the site’s result names its page, or the site is not found', async () => {
+    const pid = await makeProject('plain');
+    await addKeywords(pid, ['plain link']);
+    await useLive();
+    const asked: string[] = [];
+    const fetch: Fetch = async (url) => {
+      asked.push(url);
+      return { ok: false, status: 302, location: 'https://plumbers.na/x/', text: async () => '' };
+    };
+    const live = liveProvider(() => ({ urls: [...others(1, 2), 'https://plumbers.na/drains/', goto('elsewhere')], end: true }));
+    const providers = { dataforseo: idle('dataforseo'), apify: idleApify, brightdata: live.provider };
+    await new RankTracker({ repo, providers, io: { fetch }, now: () => now, log }).tick();
+    expect((await checks()).map((r) => r.url)).toEqual(['https://plumbers.na/drains/']);
+    expect(asked).toEqual([]);
+  });
+});

@@ -14,6 +14,8 @@ export interface RankHit {
   url: string;
   /** The hit is the site's featured snippet. */
   featured: boolean;
+  /** Google's redirect that hides the page, when `url` is only the site (see {@link SerpEntry.via}). */
+  via?: string;
 }
 
 /** What one results page says about one site. */
@@ -62,7 +64,13 @@ export function findRank(entries: readonly SerpEntry[], target: RankTarget): Ran
     if (!host || !isOwnHost(host, target)) continue;
     const position = googlePosition(entry, entries);
     if (!best || position < best.position) {
-      best = { position, absolutePosition: entry.absolutePosition, url: entry.url, featured: entry.kind === 'featured_snippet' };
+      best = {
+        position,
+        absolutePosition: entry.absolutePosition,
+        url: entry.url,
+        featured: entry.kind === 'featured_snippet',
+        ...(entry.via ? { via: entry.via } : {}),
+      };
     }
   }
   return best;

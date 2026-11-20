@@ -14,11 +14,14 @@ import { ProviderFetchError } from './provider-fetch.js';
  * The record contributes only SHAPE — which path, which headers, which field holds the id.
  */
 
-/** Minimal fetch surface, injected so tests feed canned responses (the StockProvider precedent). */
+/**
+ * Minimal fetch surface, injected so tests feed canned responses (the StockProvider precedent). `location` is a
+ * redirect's `Location` header, as sent: the transport never follows one.
+ */
 export type FetchLike = (
   url: string,
   init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal },
-) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+) => Promise<{ ok: boolean; status: number; location?: string; text(): Promise<string> }>;
 
 export interface ExecutorIo {
   fetch: FetchLike;

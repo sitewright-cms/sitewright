@@ -164,7 +164,7 @@ async function useLive(): Promise<void> {
 /** A finished check of the keyword on an earlier day, at `position`. */
 async function checkedBefore(k: RankKeywordRow, day: string, position: number | null): Promise<void> {
   const id = (await repo.claim(due(k), day, 'brightdata', 0.0015, new Date(`${day}T06:00:00Z`)))!;
-  await repo.markDone(id, { hit: position === null ? null : { position, absolutePosition: position, url: 'https://plumbers.na/', featured: false }, resultsRead: 50, pagesRead: 5 }, new Date(`${day}T06:00:00Z`));
+  await repo.markDone(id, { hit: position === null ? null : { position, absolutePosition: position, url: 'https://plumbers.na/', featured: false }, resultsRead: 50, pagesRead: 5, listEnded: false }, new Date(`${day}T06:00:00Z`));
 }
 
 async function addKeywords(projectId: string, keywords: string[], schedule: 'daily' | 'weekly' = 'daily', depth: 10 | 100 = 100): Promise<void> {
@@ -491,7 +491,7 @@ describe('money outlives the checks', () => {
     await addKeywords(pid, ['a']);
     const [k] = await repo.listKeywords(pid);
     const id = await repo.claim(due(k!), '2026-10-31', 'dataforseo', 0.006, new Date('2026-10-31T23:59:00Z'));
-    await repo.markDone(id!, { hit: null, resultsRead: 100, pagesRead: 10 }, new Date('2026-11-01T00:05:00Z'), 0.007);
+    await repo.markDone(id!, { hit: null, resultsRead: 100, pagesRead: 10, listEnded: false }, new Date('2026-11-01T00:05:00Z'), 0.007);
     expect(await repo.spentMicrosInMonth(new Date('2026-10-15T00:00:00Z'))).toBe(7000);
     expect(await repo.spentMicrosInMonth(new Date('2026-11-15T00:00:00Z'))).toBe(0);
   });
@@ -728,8 +728,8 @@ describe('stages: a check reads further pages only while the site has not turned
     await t.tick(); // 'two pages' goes on to page 2 — the last of its top 20
     await t.tick(); // …which misses too: done, both pages read
     const done = new Map((await checks()).map((r) => [r.id, r]));
-    expect(done.get(id('ends'))).toMatchObject({ status: 'done', position: null, pagesRead: 1 });
-    expect(done.get(id('empty'))).toMatchObject({ status: 'done', position: null, pagesRead: 1 });
+    expect(done.get(id('ends'))).toMatchObject({ status: 'done', position: null, pagesRead: 1, listEnded: true });
+    expect(done.get(id('empty'))).toMatchObject({ status: 'done', position: null, pagesRead: 1, listEnded: true });
     expect(done.get(id('two pages'))).toMatchObject({ status: 'done', position: null, pagesRead: 2, depth: 20 });
     expect(sentStages(submitted).sort()).toEqual([
       [1, 1],
@@ -737,6 +737,16 @@ describe('stages: a check reads further pages only while the site has not turned
       [1, 1],
       [2, 1],
     ]);
+    // Readers see that Google's answers ended there, not that the check stopped short.
+    const view = await projectRankings(repo, pid, { from: '2026-10-20', to: '2026-10-20' });
+    const ends = view.keywords.find((k) => k.keyword === 'ends')!;
+    expect(ends.series).toEqual([{ day: '2026-10-20', position: null, resultsRead: 1, listEnded: true }]);
+    expect(ends.latest).toMatchObject({ position: null, depth: 100, resultsRead: 1, listEnded: true });
+    // A check read before this was recorded makes neither claim: "not in those results".
+    await db.update(rankChecks).set({ listEnded: null }).where(eq(rankChecks.id, id('ends')));
+    const before = (await projectRankings(repo, pid, { from: '2026-10-20', to: '2026-10-20' })).keywords.find((k) => k.keyword === 'ends')!;
+    expect(before.series).toEqual([{ day: '2026-10-20', position: null, resultsRead: 1 }]);
+    expect(before.latest).not.toHaveProperty('listEnded');
   });
 
   it('a provider that answers at once reads every stage in one pass: 1, 2, 3–5', async () => {
@@ -786,11 +796,11 @@ describe('stages: a check reads further pages only while the site has not turned
 
     now = new Date('2026-10-21T08:00:00Z'); // its day is over
     await t.tick();
-    expect((await checks()).find((r) => r.id === row!.id)).toMatchObject({ status: 'done', position: null, resultsRead: 2, pagesRead: 1 });
+    expect((await checks()).find((r) => r.id === row!.id)).toMatchObject({ status: 'done', position: null, resultsRead: 2, pagesRead: 1, listEnded: false });
     expect(sentStages(submitted)).toEqual([[1, 1]]);
-    // Readers see how much was read: "not in the 2 results read", not "not in the top 100".
+    // Readers see how much was read, and that the check stopped short of Google's list: not "not in the top 100".
     const view = await projectRankings(repo, pid, { from: '2026-10-20', to: '2026-10-20' });
-    expect(view.keywords[0]!.series).toEqual([{ day: '2026-10-20', position: null, resultsRead: 2 }]);
+    expect(view.keywords[0]!.series).toEqual([{ day: '2026-10-20', position: null, resultsRead: 2, listEnded: false }]);
   });
 
   it('a later stage refused as a whole gives back that stage only: what the pages before cost stays booked', async () => {
@@ -1414,17 +1424,17 @@ describe('what readers see', () => {
       const id = await repo.claim(due(k!), day, 'dataforseo', 0.006, at(day));
       await repo.markDone(id!, reading, at(day));
     };
-    await done('2026-10-16', { hit: { position: 1, absolutePosition: 1, url: 'https://plumbers.na/', featured: true }, resultsRead: 98, pagesRead: 10 });
-    await done('2026-10-17', { hit: null, resultsRead: 29, pagesRead: 3 }); // Google stopped after three pages
-    await done('2026-10-18', { hit: null, resultsRead: 97, pagesRead: 10 }); // a real miss
-    await done('2026-10-19', { hit: { position: 12, absolutePosition: 14, url: 'https://plumbers.na/', featured: false }, resultsRead: 30, pagesRead: 3 });
-    await done('2026-10-20', { hit: null, resultsRead: 30, pagesRead: null }); // the provider did not say: no claim either way
+    await done('2026-10-16', { hit: { position: 1, absolutePosition: 1, url: 'https://plumbers.na/', featured: true }, resultsRead: 98, pagesRead: 10, listEnded: false });
+    await done('2026-10-17', { hit: null, resultsRead: 29, pagesRead: 3, listEnded: true }); // Google stopped after three pages
+    await done('2026-10-18', { hit: null, resultsRead: 97, pagesRead: 10, listEnded: false }); // a real miss
+    await done('2026-10-19', { hit: { position: 12, absolutePosition: 14, url: 'https://plumbers.na/', featured: false }, resultsRead: 30, pagesRead: 3, listEnded: false });
+    await done('2026-10-20', { hit: null, resultsRead: 30, pagesRead: null, listEnded: false }); // the provider did not say: no claim either way
 
     const view = await projectRankings(repo, pid, { from: '2026-10-01', to: '2026-10-20' });
     const [kw] = view.keywords;
     expect(kw!.series).toEqual([
       { day: '2026-10-16', position: 1, featured: true },
-      { day: '2026-10-17', position: null, resultsRead: 29 },
+      { day: '2026-10-17', position: null, resultsRead: 29, listEnded: true },
       { day: '2026-10-18', position: null },
       { day: '2026-10-19', position: 12 },
       { day: '2026-10-20', position: null },

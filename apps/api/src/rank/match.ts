@@ -25,6 +25,8 @@ export interface PageReading {
   resultsRead: number;
   /** Results pages the provider fetched, when it says. */
   pagesRead: number | null;
+  /** Google's list ended with these results: it served no more. False: a check that stops here stopped short of it. */
+  listEnded: boolean;
 }
 
 /** The host a result belongs to: its URL's, else the provider's `domain`, normalized like the target. */
@@ -78,7 +80,7 @@ export function findRank(entries: readonly SerpEntry[], target: RankTarget): Ran
 
 /** Everything a check keeps from a results page: where the site is, and how much of the results the page held. */
 export function readPage(page: SerpPage, target: RankTarget): PageReading {
-  return { hit: findRank(page.entries, target), resultsRead: page.entries.length, pagesRead: page.pagesRead ?? null };
+  return { hit: findRank(page.entries, target), resultsRead: page.entries.length, pagesRead: page.pagesRead ?? null, listEnded: page.end === true };
 }
 
 /** What the stages before this one read: their results number this stage's. Zero for a check's first stage. */
@@ -103,8 +105,8 @@ export function readStage(page: SerpPage, target: RankTarget, prior: StagePrior,
   const hit = own.hit
     ? { ...own.hit, position: own.hit.position + prior.resultsRead, absolutePosition: own.hit.absolutePosition + prior.resultsRead }
     : null;
-  const reading: PageReading = { hit, resultsRead: prior.resultsRead + own.resultsRead, pagesRead };
   // Fewer pages than asked mean Google stopped — unless the provider says it cut the stage short itself.
   const googleStopped = page.end === true || own.resultsRead === 0 || (page.cut !== true && asked !== null && pages < asked.pages);
+  const reading: PageReading = { hit, resultsRead: prior.resultsRead + own.resultsRead, pagesRead, listEnded: googleStopped };
   return { reading, final: hit !== null || googleStopped || rankNextStage(depth, pagesRead) === null };
 }

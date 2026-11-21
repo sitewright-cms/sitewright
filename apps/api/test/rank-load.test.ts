@@ -113,7 +113,7 @@ describe('rank tracking at volume', () => {
         for (const k of await repo.listKeywords(project.id)) {
           if (planted.get(`${project.id} ${k.keyword}`) !== null || random() >= 0.2) continue;
           const id = (await repo.claim({ ...k, depth: 100, domain: project.domain, includeSubdomains: true }, '2026-10-19', 'brightdata', 0, new Date('2026-10-19T08:00:00Z')))!;
-          await repo.markDone(id, { hit: { position: 7, absolutePosition: 7, url: `https://${project.domain}/`, featured: false }, resultsRead: 50, pagesRead: 5 }, new Date('2026-10-19T08:00:00Z'));
+          await repo.markDone(id, { hit: { position: 7, absolutePosition: 7, url: `https://${project.domain}/`, featured: false }, resultsRead: 50, pagesRead: 5, listEnded: false }, new Date('2026-10-19T08:00:00Z'));
           drops++;
           dropped.add(k.id);
         }

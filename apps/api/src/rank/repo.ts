@@ -118,6 +118,8 @@ export interface DoneCheck {
   /** Null for a check finished before these were recorded (and not re-read since). */
   resultsRead: number | null;
   pagesRead: number | null;
+  /** Google's list ended where the check stopped (false: the check stopped short of it); null before this was recorded. */
+  listEnded: boolean | null;
 }
 
 /** A finished check whose stored result can still be fetched again, to fill in what it did not keep. */
@@ -156,6 +158,7 @@ const readingColumns = (r: PageReading) => ({
   featured: r.hit?.featured ?? false,
   resultsRead: r.resultsRead,
   pagesRead: r.pagesRead,
+  listEnded: r.listEnded,
 });
 
 /** Retention deletes this many rows per statement, and at most this many statements per table a day. */
@@ -777,6 +780,7 @@ export class RankRepository {
         error: sql`CASE WHEN ${confirming} OR ${readSome} THEN NULL ELSE ${rankChecks.error} END`,
         resultsRead: sql`CASE WHEN ${confirming} THEN NULL ELSE ${rankChecks.resultsRead} END`,
         pagesRead: sql`CASE WHEN ${confirming} THEN NULL ELSE ${rankChecks.pagesRead} END`,
+        listEnded: sql`CASE WHEN ${confirming} THEN NULL ELSE ${rankChecks.listEnded} END`,
       })
       .where(and(eq(rankChecks.status, 'retry'), over))
       .returning({ id: rankChecks.id });
@@ -839,6 +843,7 @@ export class RankRepository {
         featured: rankChecks.featured,
         resultsRead: rankChecks.resultsRead,
         pagesRead: rankChecks.pagesRead,
+        listEnded: rankChecks.listEnded,
       })
       .from(rankChecks)
       .where(
@@ -858,7 +863,7 @@ export class RankRepository {
   async latestTwo(projectId: string, domain: string): Promise<Map<string, DoneCheck[]>> {
     const rows = (await this.db.all(sql`
       SELECT keyword_id AS keywordId, day, position, url, depth, checked_at AS checkedAt, featured,
-        results_read AS resultsRead, pages_read AS pagesRead FROM (
+        results_read AS resultsRead, pages_read AS pagesRead, list_ended AS listEnded FROM (
         SELECT c.*, ROW_NUMBER() OVER (PARTITION BY c.keyword_id ORDER BY c.day DESC) AS rn
         FROM ${rankChecks} c WHERE c.project_id = ${projectId} AND c.domain = ${domain} AND c.status = 'done'
       ) WHERE rn <= 2 ORDER BY keyword_id, day DESC
@@ -872,6 +877,7 @@ export class RankRepository {
       featured: number | null;
       resultsRead: number | null;
       pagesRead: number | null;
+      listEnded: number | null;
     }>;
     const out = new Map<string, DoneCheck[]>();
     for (const r of rows) {
@@ -886,6 +892,7 @@ export class RankRepository {
         featured: r.featured === 1,
         resultsRead: r.resultsRead,
         pagesRead: r.pagesRead,
+        listEnded: r.listEnded === null ? null : r.listEnded === 1,
       });
       out.set(r.keywordId, list);
     }

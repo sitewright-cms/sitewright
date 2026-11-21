@@ -72,14 +72,15 @@ const daysBetween = (from: string, to: string): number => (Date.parse(`${to}T00:
 
 /**
  * What a check adds to its position: whether it is the site's featured snippet, and — for a MISS in a check that got
- * back fewer results pages than its depth asks for — how many results it did read, so it reads "not in those N".
+ * back fewer results pages than its depth asks for — how many results it did read, and whether Google's answers ended
+ * there or the check stopped short of them. Either way the site may be just below them.
  */
-function detail(c: DoneCheck): { featured?: true; resultsRead?: number } {
+function detail(c: DoneCheck): { featured?: true; resultsRead?: number; listEnded?: boolean } {
   if (c.position !== null) return c.featured ? { featured: true } : {};
-  const { pagesRead, resultsRead } = c;
+  const { pagesRead, resultsRead, listEnded } = c;
   // A check that got nothing at all says nothing about where the site is: no claim either way.
   const short = pagesRead !== null && resultsRead !== null && resultsRead > 0 && pagesRead < Math.ceil(c.depth / 10);
-  return short ? { resultsRead } : {};
+  return short ? { resultsRead, ...(listEnded !== null ? { listEnded } : {}) } : {};
 }
 
 /** The last point of each 7-day bucket counted from `from` — the shape of a long range, not every day of it. */

@@ -28,6 +28,8 @@ import {
  * - A city goes in as its canonical name ("the value of column Canonical Name … can be used as a raw string").
  * - A stage stopped partway keeps the pages it read (`cut`), and the check reads on from them on a later pass; a
  *   search never started for an account-wide refusal is `unsent`, its claim given back.
+ * - Each page is a search of its own, and Google answers some from a shorter list than others: a page that ends the
+ *   list is asked again before the check believes it ({@link END_RECHECKS}).
  * - Positions are counted here, page by page, as for Apify: featured snippets first (Google puts them above the
  *   results, and does not repeat the snippet's page among them), then the organic results — Google's own links
  *   (Search, Maps) left out, and a result Google wrapped in its own redirect read by the site it names
@@ -118,6 +120,17 @@ class EmptyAnswer extends RankProviderError {
  */
 const PAGE_TRIES = 3;
 const RETRY_WAIT_MS = 16_000;
+/**
+ * A page that ends the list (no next page, or no results) is asked again up to this many times before the check believes
+ * it, whatever its page but the first. Each request is a search of its own, and Google answers some from a shorter list
+ * than others. Measured 2026-11-21: page 8 of "photographic safaris namibia", asked six times, came back four times past
+ * the end of a 66-result list and twice with nine results and a next page (Google's estimate: 66 results, then 137).
+ * One more ask found the longer list a third of the time; three find it about seven times in ten. A list that really
+ * ends costs three more requests. The asks are {@link REASK_WAIT_MS} apart, as measured: Bright Data refuses a query
+ * sent again too soon.
+ */
+const END_RECHECKS = 3;
+const REASK_WAIT_MS = 4_000;
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -256,6 +269,61 @@ type SearchResult =
   /** Never started: an account-wide refusal stopped the rest. */
   | { state: 'unsent' };
 
+/** The page goes on: it has results, and Google lists a page after it. */
+const goesOn = (results: Json): boolean => linksOf(results).length > 0 && hasNextPage(results);
+
+/**
+ * Asks again for a page that ended the list ({@link END_RECHECKS} times at most). The first answer that goes on comes
+ * back to replace it; failing that, the answer with the most results, when it has more than the page's own `held` (the
+ * true last page, say, where the first answer was past the end of a shorter list); else null. `billed` counts every ask
+ * that may have been billed — an answer is, whether or not it is used. An ask Bright Data could not run is followed by
+ * its wait, as a retry is; a request refused for itself, or a refusal of the whole account, ends the asks.
+ */
+async function askAgain(
+  creds: RankCredentials,
+  s: RankSearch,
+  page: number,
+  held: number,
+  io: RankProviderIo,
+  stop: { error?: RankProviderError },
+): Promise<{ results: Json | null; billed: number }> {
+  const sleep = io.sleep ?? wait;
+  let billed = 0;
+  let fullest: { results: Json; links: number } | null = null;
+  let pause = REASK_WAIT_MS;
+  for (let ask = 1; ask <= END_RECHECKS; ask++) {
+    await sleep(pause);
+    if (stop.error) break;
+    pause = REASK_WAIT_MS;
+    let answer: unknown;
+    try {
+      answer = await call(creds, 'POST', '/request', io, { zone: creds.zone, url: searchUrlFor(s, page), format: 'raw', country: s.location.countryCode.toLowerCase() });
+    } catch (err) {
+      if (!(err instanceof RankProviderError)) throw err;
+      if (err instanceof PossiblyBilled) billed++;
+      if (accountWide(err)) {
+        stop.error ??= err;
+        break;
+      }
+      // Refused for itself (HTTP 400): asked again, it would be refused again.
+      if (err.kind === 'invalid') break;
+      pause = RETRY_WAIT_MS;
+      continue;
+    }
+    // Taken (2xx): possibly billed, with or without a list of results in it.
+    billed++;
+    const results = resultsOf(answer);
+    if (!results) {
+      pause = RETRY_WAIT_MS;
+      continue;
+    }
+    if (goesOn(results)) return { results, billed };
+    const links = linksOf(results).length;
+    if (links > (fullest?.links ?? held)) fullest = { results, links };
+  }
+  return { results: fullest?.results ?? null, billed };
+}
+
 /** Reads one search's pages, one request each, stopping where Google serves no more. */
 async function readSearch(creds: RankCredentials, s: RankSearch, io: RankProviderIo, stop: { error?: RankProviderError }): Promise<SearchResult> {
   const entries: SerpEntry[] = [];
@@ -272,7 +340,10 @@ async function readSearch(creds: RankCredentials, s: RankSearch, io: RankProvide
     page: { checkedAt: checkedAt ?? new Date(), entries, pagesRead: read, cut: true },
   });
   const sleep = io.sleep ?? wait;
-  /** Answers that came back (so may have been billed) but held no results, and were tried again. */
+  /**
+   * Answers that came back (so may have been billed) and are not the results kept: ones that held no results and were
+   * tried again, and, for a page that ended the list, all but one of its answers ({@link askAgain}).
+   */
   let unread = 0;
   for (let i = 0; i < s.pages && !end; i++) {
     if (stop.error) return pages + unread === 0 ? { state: 'unsent' } : partway(pages + unread);
@@ -318,6 +389,12 @@ async function readSearch(creds: RankCredentials, s: RankSearch, io: RankProvide
       const at = Date.parse(str(general.timestamp) ?? '');
       return Number.isFinite(at) ? new Date(at) : new Date();
     })();
+    // A page that ends the list is asked again before the check believes it: another answer may go on.
+    if (s.startPage + i > 1 && !goesOn(results)) {
+      const longer = await askAgain(creds, s, s.startPage + i, linksOf(results).length, io, stop);
+      unread += longer.billed;
+      if (longer.results) results = longer.results;
+    }
     const links = linksOf(results);
     for (const l of links) {
       const position = l.kind === 'organic' ? ++organic : ++snippets;

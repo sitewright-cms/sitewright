@@ -75,12 +75,12 @@ function Position({ k }: { k: RankKeywordView }) {
   if (!k.latest) return <span className="text-sm text-slate-500 dark:text-slate-400">{k.pending ? 'Checking…' : 'Not checked yet'}</span>;
   if (k.latest.position === null) {
     const { resultsRead: read, listEnded, depth } = k.latest;
-    // Fewer results than the depth: Google's list ended there (a miss all the same), or the check stopped short of it.
+    // Fewer results than the depth: Google's answers ended there, or the check stopped short of them.
     const [text, note] =
       read === undefined
         ? [`Not in top ${depth}`]
         : listEnded === true
-          ? [`Not in top ${depth}`, `Google listed only ${read} results`]
+          ? [`Not in the ${read} results Google returned`]
           : listEnded === false
             ? [`Not in the first ${read} results`, 'The check stopped there']
             : [`Not in the ${read} results read`];

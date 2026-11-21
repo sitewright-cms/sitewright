@@ -72,8 +72,8 @@ const daysBetween = (from: string, to: string): number => (Date.parse(`${to}T00:
 
 /**
  * What a check adds to its position: whether it is the site's featured snippet, and — for a MISS in a check that got
- * back fewer results pages than its depth asks for — how many results it did read, and whether Google's list ended
- * there (the site is in none of Google's results) or the check stopped short of it (the site may be just below).
+ * back fewer results pages than its depth asks for — how many results it did read, and whether Google's answers ended
+ * there or the check stopped short of them. Either way the site may be just below them.
  */
 function detail(c: DoneCheck): { featured?: true; resultsRead?: number; listEnded?: boolean } {
   if (c.position !== null) return c.featured ? { featured: true } : {};

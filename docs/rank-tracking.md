@@ -72,12 +72,13 @@ and `SW_RANK_LOAD_TIME_SCALE`) for a measured run; see the file.
   "featured snippet". The ordinary results after someone else's snippet start at 2.
 - **"Not in the top 100"** means Google returned all the results the check asked for, and the site was not among
   them.
-- **"Not in top 100" noted "Google listed only 74 results"** means Google's list for the search ended before the
-  depth: since September 2025 it returns results ten at a time, and its list for many searches is shorter than 100.
-  The site is in none of its results, so it is not in the top 100 either; the chart shows a miss on the bottom line.
-- **"Not in the first 30 results" noted "The check stopped there"** means the check stopped before Google's list
-  ended: the budget ran out before it could read further that day. The site may be just below them; the chart shows
-  such a check as a dashed mark below the results that were read, not as a fall to the bottom.
+- **"Not in the 74 results Google returned"** means Google's answers ended before the depth. Since September 2025
+  Google returns results ten at a time, each page a search of its own, and it answers some searches from a shorter
+  list than others: a page that ends the list is asked again before the check believes it, but four short answers in
+  a row still happen. Someone searching by hand may see more pages. The site may be just below the results read.
+- **"Not in the first 30 results" noted "The check stopped there"** means the check stopped before Google's answers
+  ended: the budget ran out before it could read further that day. The site may be just below them.
+- The chart shows both as a dashed mark below the results that were read, not as a fall to the bottom.
 - **"Not in the 30 results read"** is a check recorded before Sitewright noted which of the two it was.
 - **Positions move.** Each check is one search from one place at one moment, not what every searcher sees. A site
   that Google has only recently started showing, and keywords that few people search for, move by many places from
@@ -134,7 +135,9 @@ key may read it.
   66 results read" when Google had about 140. So a page that ends the list (no next page, or no results), other than
   the first, is asked up to three more times, 4 seconds apart. The first answer that goes on replaces it and the
   check reads on. Failing that, the answer with the most results stands in, and the end stands. A list that really
-  ends costs three more requests.
+  ends costs three more requests. Measured with real searches the same day: "photographic safaris namibia" had
+  stopped at 66 results on every read; with the asks, one of two reads reached 95 results, and the other still
+  ended at 67.
 - **Searches at once:** **Searches at once** sets how many searches are read at the same time: 10 unless set, at
   most 20. A page takes about three seconds, so 10 at once read about 200 pages a minute, far under the 1,000
   requests a minute Bright Data allows. Bright Data refuses the same query sent twice at once. Identical searches

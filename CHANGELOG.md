@@ -16,12 +16,13 @@ The running version of an instance is reported at `GET /version` (baked into the
   page 8 of one search, asked six times, came back four times past the end of a 66-result list and twice with nine
   results and a next page. A check read on such an answer ended at 66 results when Google had about 140. A page that
   ends the list, other than the first, is now asked up to three more times, and the check reads on from the first
-  answer that goes on. A list that really ends costs three more requests.
+  answer that goes on. A list that really ends costs three more requests. In a real test the same day, one of two
+  reads of that search reached 95 results, where every read before had stopped at 66; the other still ended at 67.
 - **"Not in the N results read" said the same thing for two different cases.** A check now records why it read fewer
-  results than its depth. When Google's list ended, it reads "Not in top 100", noted "Google listed only 74 results",
-  and the chart shows a miss. When the check stopped short (the budget ran out that day), it reads "Not in the first
-  20 results", noted "The check stopped there". Checks recorded before this keep "Not in the N results read". The
-  rankings API and the `get_rankings` tool carry the reason as `listEnded`.
+  results than its depth. When Google's answers ended, it reads "Not in the 74 results Google returned". When the
+  check stopped short (the budget ran out that day), it reads "Not in the first 20 results", noted "The check stopped
+  there". Checks recorded before this keep "Not in the N results read". The rankings API and the `get_rankings` tool
+  carry the reason as `listEnded`.
 
 ## [0.83.1] — 2026-11-20
 

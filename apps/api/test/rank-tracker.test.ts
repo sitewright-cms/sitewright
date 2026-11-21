@@ -737,7 +737,7 @@ describe('stages: a check reads further pages only while the site has not turned
       [1, 1],
       [2, 1],
     ]);
-    // Readers see that Google's list ended there: not in any of its results, so not in the top 100 either.
+    // Readers see that Google's answers ended there, not that the check stopped short.
     const view = await projectRankings(repo, pid, { from: '2026-10-20', to: '2026-10-20' });
     const ends = view.keywords.find((k) => k.keyword === 'ends')!;
     expect(ends.series).toEqual([{ day: '2026-10-20', position: null, resultsRead: 1, listEnded: true }]);

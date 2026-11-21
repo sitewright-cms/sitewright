@@ -242,14 +242,17 @@ export type RankingsQuery = z.infer<typeof RankingsQuerySchema>;
  * start at 2. A position that IS the site's featured snippet carries `featured`.
  *
  * `resultsRead` is present only on a MISS in a check that got back FEWER results than it asked for — Google serves
- * results ten at a time and often stops after a few pages. The null position then means "not in those N", not "not
- * in the top depth": the site may be just below them.
+ * results ten at a time, and its list for a search often ends before the depth. `listEnded` says why the check read
+ * no more: `true` = Google's list ended there, so the site is in none of its results (not in the top depth either);
+ * `false` = the check stopped short of it (its day ended waiting for a stage the budget never allowed), so the site
+ * may be just below them. Absent for checks made before this was recorded: "not in those N".
  */
 export interface RankPoint {
   day: string;
   position: number | null;
   featured?: true;
   resultsRead?: number;
+  listEnded?: boolean;
 }
 
 export interface RankKeywordView {
@@ -273,6 +276,8 @@ export interface RankKeywordView {
     featured?: true;
     /** A miss in a check that got back fewer results than `depth`: how many it read (see {@link RankPoint}). */
     resultsRead?: number;
+    /** With `resultsRead`: Google's list ended there (true), or the check stopped short of it (false). */
+    listEnded?: boolean;
   } | null;
   /** Positions gained since the check before the latest (positive = moved up). Null when either is missing. */
   change: number | null;

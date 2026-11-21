@@ -6,10 +6,11 @@ import { longDay } from './format';
 /**
  * A keyword's POSITION over time. Up is better: position 1 is the top of the chart, the depth read is the bottom.
  * A check where the site was not in the results read is a hollow mark on the bottom line, and the line breaks
- * there rather than pretending the site was at the last position. A miss in a check that got back FEWER results
- * than it asked for (Google often stops after a few pages) is a dashed hollow mark just below those results: the
- * site is somewhere under them, not necessarily out of the top 100. The site's featured snippet is ringed.
- * Hovering a check shows its day and position.
+ * there rather than pretending the site was at the last position — so is one where Google's list ended before the
+ * depth: the site is in none of its results. A miss in a check that stopped SHORT of Google's list (or read before
+ * the reason was recorded) is a dashed hollow mark just below the results it read: the site is somewhere under
+ * them, not necessarily out of the top 100. The site's featured snippet is ringed. Hovering a check shows its day
+ * and position.
  */
 
 const W = 640;
@@ -32,22 +33,31 @@ function ticks(bottom: number): number[] {
  * so a move from 18 to 3 reads as one — unless a check was outside the results, which needs the full depth.
  */
 export function axisBottom(series: readonly RankPoint[], depth: number): number {
-  const worst = Math.max(0, ...series.map((p) => p.position ?? (p.resultsRead !== undefined ? belowShort(p.resultsRead) : 0)));
+  const worst = Math.max(0, ...series.map((p) => p.position ?? belowShort(p) ?? 0));
   const nice = worst <= 10 ? 10 : worst <= 20 ? 20 : worst <= 30 ? 30 : worst <= 50 ? 50 : 100;
   // A check outside the results needs the depth read — or more, when an older check read deeper and ranked lower.
-  return series.some((p) => p.position === null && p.resultsRead === undefined) ? Math.max(depth, nice) : nice;
+  return series.some((p) => p.position === null && belowShort(p) === undefined) ? Math.max(depth, nice) : nice;
 }
 
-/** Where a miss in a short list is drawn: the place just below the results that came back. */
-const belowShort = (resultsRead: number): number => resultsRead + 1;
+/**
+ * Where a miss short of Google's list is drawn: the place just below the results that came back. Undefined for any
+ * other check — a position, a full read, or a list Google ended (a real miss).
+ */
+const belowShort = (p: RankPoint): number | undefined =>
+  p.position === null && p.resultsRead !== undefined && p.listEnded !== true ? p.resultsRead + 1 : undefined;
 
 /**
- * "Position 4", "Position 1 (featured snippet)", "Not in the 29 results read" for a miss in a short list, or "Not
- * in the top 100" (without a depth: "Not in the results read").
+ * "Position 4", "Position 1 (featured snippet)", "Not in the top 100" (without a depth: "Not in the results read").
+ * A miss in fewer results than the depth: "Not in the top 100 (Google listed only 29 results)" when Google's list
+ * ended there, "Not in the first 29 results (the check stopped there)" when the check stopped short of it, and "Not in
+ * the 29 results read" for a check made before the reason was recorded.
  */
-export function positionText(position: number | null, depth?: number, detail: Pick<RankPoint, 'featured' | 'resultsRead'> = {}): string {
+export function positionText(position: number | null, depth?: number, detail: Pick<RankPoint, 'featured' | 'resultsRead' | 'listEnded'> = {}): string {
   if (position !== null) return detail.featured ? `Position ${position} (featured snippet)` : `Position ${position}`;
-  if (detail.resultsRead !== undefined) return `Not in the ${detail.resultsRead} results read`;
+  const read = detail.resultsRead;
+  if (read !== undefined && detail.listEnded === true) return depth ? `Not in the top ${depth} (Google listed only ${read} results)` : `Not in the ${read} results Google listed`;
+  if (read !== undefined && detail.listEnded === false) return `Not in the first ${read} results (the check stopped there)`;
+  if (read !== undefined) return `Not in the ${read} results read`;
   return depth ? `Not in the top ${depth}` : 'Not in the results read';
 }
 
@@ -116,9 +126,9 @@ export function RankChart({
         ))}
         {series.map((p) => {
           const cx = x(p.day);
-          const shortBy = p.position === null ? p.resultsRead : undefined;
-          const short = shortBy !== undefined;
-          const cy = p.position !== null ? y(p.position) : shortBy !== undefined ? y(belowShort(shortBy)) : bottom;
+          const below = belowShort(p);
+          const short = below !== undefined;
+          const cy = p.position !== null ? y(p.position) : below !== undefined ? y(below) : bottom;
           // A past check may have read a different depth than today's setup, so a plain miss is not given a number.
           const lines = [longDay(p.day), positionText(p.position, undefined, p)];
           return (
@@ -159,9 +169,9 @@ export function RankSparkline({ series, depth }: { series: readonly RankPoint[];
   const h = 24;
   const ranked = series.filter((p) => p.position !== null).map((p) => p.position as number);
   if (series.length < 2 || ranked.length === 0) return <span className="text-xs text-slate-400 dark:text-slate-500" aria-hidden>—</span>;
-  // Where each check sits: its position; a miss in a short list just below the results that came back (as on the
-  // chart); a real miss at the depth read.
-  const level = (p: RankPoint): number | null => p.position ?? (p.resultsRead !== undefined ? belowShort(p.resultsRead) : null);
+  // Where each check sits: its position; a miss short of Google's list just below the results that came back (as on
+  // the chart); a real miss at the depth read.
+  const level = (p: RankPoint): number | null => p.position ?? belowShort(p) ?? null;
   const top = Math.min(...ranked);
   const levels = series.map(level);
   const bottom = levels.includes(null) ? depth : Math.max(...levels.filter((l): l is number => l !== null));

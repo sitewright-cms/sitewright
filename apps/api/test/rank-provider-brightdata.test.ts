@@ -172,8 +172,9 @@ describe('Bright Data submit', () => {
       return { body: serp(['https://never.test/']) };
     });
     const [out] = await brightData.submit(CREDS, [search('c1', { startPage: 3, pages: 3 })], { fetch, sleep: noSleep });
-    expect(calls.map((c) => startOf(new URL(c.body!.url!)))).toEqual([20, 30]); // page 5 never asked for
-    expect(out).toMatchObject({ state: 'done', costUsd: expect.closeTo(0.003, 6) }); // two pages
+    // Page 4 ends the list in every answer: asked three times more, then believed. Page 5 is never asked for.
+    expect(calls.map((c) => startOf(new URL(c.body!.url!)))).toEqual([20, 30, 30, 30, 30]);
+    expect(out).toMatchObject({ state: 'done', costUsd: expect.closeTo(0.0075, 6) }); // five answers
     const page = (out as Extract<typeof out, { state: 'done' }>).page;
     expect(page).toMatchObject({ pagesRead: 2, end: true });
     expect(page.entries.map((e) => [e.position, e.url])).toEqual([
@@ -198,8 +199,107 @@ describe('Bright Data submit', () => {
   it('an empty page is the end; Bright Data’s `{ body }` wrapper is read too', async () => {
     const { fetch } = fakeFetch((_c, google) => (startOf(google) === 0 ? { body: { status_code: 200, body: JSON.stringify(serp(['https://a.test/'])) } } : { body: serp([]) }));
     const [out] = await brightData.submit(CREDS, [search('c1', { pages: 2 })], { fetch, sleep: noSleep });
-    expect(out).toMatchObject({ state: 'done', page: { pagesRead: 2, end: true }, costUsd: expect.closeTo(0.003, 6) });
+    // Page 2 asked four times in all, empty every time.
+    expect(out).toMatchObject({ state: 'done', page: { pagesRead: 2, end: true }, costUsd: expect.closeTo(0.0075, 6) });
     expect((out as Extract<typeof out, { state: 'done' }>).page.entries).toHaveLength(1);
+  });
+
+  describe('a page that ends the list is asked again before the check believes it', () => {
+    const ten = (page: number) => Array.from({ length: 10 }, (_, i) => `https://p${page}-${i}.test/`);
+    const asked = (calls: Call[]) => calls.map((c) => startOf(new URL(c.body!.url!)));
+
+    it('an answer that goes on replaces it, and the stage reads on — as Bright Data answered on 2026-11-21', async () => {
+      // Measured: page 8 of "photographic safaris namibia", asked six times, came back four times past the end of a
+      // 66-result list and twice with nine results and a next page (Google's estimate: 66 results, then 137).
+      let page2 = 0;
+      const { fetch, calls } = fakeFetch((_c, google) => {
+        const start = startOf(google);
+        if (start === 10) return { body: ++page2 === 1 ? serp(['https://short.test/'], { last: true }) : serp([...ten(2).slice(0, 4), 'https://plumbers.na/', ...ten(2).slice(5)]) };
+        return { body: serp(ten(start / 10 + 1)) };
+      });
+      const [out] = await brightData.submit(CREDS, [search('c1', { pages: 3 })], { fetch, sleep: noSleep });
+      expect(asked(calls)).toEqual([0, 10, 10, 20]);
+      expect(out).toMatchObject({ state: 'done', costUsd: expect.closeTo(0.006, 6) }); // four answers, each billed
+      const page = (out as Extract<typeof out, { state: 'done' }>).page;
+      expect(page.pagesRead).toBe(3);
+      expect(page.end).toBeUndefined();
+      // The short answer's result is gone; the site is the 5th of the page that replaced it.
+      expect(page.entries.map((e) => e.url)).not.toContain('https://short.test/');
+      expect(page.entries).toHaveLength(30);
+      expect(readPage(page, { domain: 'plumbers.na', includeSubdomains: true }).hit?.position).toBe(15);
+    });
+
+    it('an end every answer agrees on stands: asked three more times, then read as the first answer said', async () => {
+      let n = 0;
+      const { fetch, calls } = fakeFetch((_c, google) => (startOf(google) === 0 ? { body: serp(ten(1)) } : { body: serp([`https://last-${++n}.test/`], { last: true }) }));
+      const [out] = await brightData.submit(CREDS, [search('c1', { pages: 3 })], { fetch, sleep: noSleep });
+      expect(asked(calls)).toEqual([0, 10, 10, 10, 10]); // page 3 never asked for
+      expect(out).toMatchObject({ state: 'done', page: { pagesRead: 2, end: true }, costUsd: expect.closeTo(0.0075, 6) });
+      expect((out as Extract<typeof out, { state: 'done' }>).page.entries.map((e) => e.url).slice(10)).toEqual(['https://last-1.test/']);
+    });
+
+    it('never asks again for a list that ends on its first page', async () => {
+      const { fetch, calls } = fakeFetch(() => ({ body: serp(['https://a.test/'], { last: true }) }));
+      const [out] = await brightData.submit(CREDS, [search('c1', { pages: 2 })], { fetch, sleep: noSleep });
+      expect(calls).toHaveLength(1);
+      expect(out).toMatchObject({ state: 'done', page: { pagesRead: 1, end: true }, costUsd: expect.closeTo(0.0015, 6) });
+    });
+
+    it('an ask Bright Data could not run costs nothing and waits before the next; an account refusal ends the asks', async () => {
+      waits.length = 0;
+      let page2 = 0;
+      const { fetch, calls } = fakeFetch((_c, google) => {
+        if (startOf(google) === 0) return { body: serp(ten(1)) };
+        page2++;
+        if (page2 === 1) return { body: serp(['https://short.test/'], { last: true }) };
+        if (page2 === 2) return { body: '' }; // Google challenged the exit: not billed
+        return { body: serp(ten(2)) };
+      });
+      const [out] = await brightData.submit(CREDS, [search('c1', { pages: 2 })], { fetch, sleep: noSleep });
+      expect(asked(calls)).toEqual([0, 10, 10, 10]);
+      expect(waits).toEqual([4_000, 16_000]); // asked again 4 s on, and after the empty answer Bright Data's wait
+      expect(out).toMatchObject({ state: 'done', page: { pagesRead: 2 }, costUsd: expect.closeTo(0.0045, 6) }); // the empty answer free
+      expect((out as Extract<typeof out, { state: 'done' }>).page.entries).toHaveLength(20);
+
+      // The account runs out of funds during the asks: no more are sent, and the end the page gave stands.
+      let n = 0;
+      const refused = fakeFetch((_c, google) => (startOf(google) === 0 ? { body: serp(ten(1)) } : ++n === 1 ? { body: serp(['https://a.test/'], { last: true }) } : { status: 402, body: '' }));
+      const [r] = await brightData.submit(CREDS, [search('c1', { pages: 2 })], { fetch: refused.fetch, sleep: noSleep });
+      expect(refused.calls).toHaveLength(3);
+      expect(r).toMatchObject({ state: 'done', page: { pagesRead: 2, end: true }, costUsd: expect.closeTo(0.003, 6) });
+    });
+
+    it('when no answer goes on, the one with the most results stands in: the true last page after one past a shorter list', async () => {
+      // Google's list ends on page 2 with six results; the first answer was past the end of a shorter list.
+      const answers = [serp([]), serp(ten(2).slice(0, 6), { last: true }), serp(['https://one.test/'], { last: true }), serp([], { last: true })];
+      let page2 = 0;
+      const { fetch, calls } = fakeFetch((_c, google) => (startOf(google) === 0 ? { body: serp(ten(1)) } : { body: answers[page2++] }));
+      const [out] = await brightData.submit(CREDS, [search('c1', { pages: 3 })], { fetch, sleep: noSleep });
+      expect(asked(calls)).toEqual([0, 10, 10, 10, 10]);
+      expect(out).toMatchObject({ state: 'done', page: { pagesRead: 2, end: true }, costUsd: expect.closeTo(0.0075, 6) });
+      expect((out as Extract<typeof out, { state: 'done' }>).page.entries.map((e) => e.url).slice(10)).toEqual(ten(2).slice(0, 6));
+    });
+
+    it('waits only between asks, never after the last; a lost reply is booked; a request refused for itself ends the asks', async () => {
+      waits.length = 0;
+      let page2 = 0;
+      const lost = fakeFetch((_c, google) => {
+        if (startOf(google) === 0) return { body: serp(ten(1)) };
+        if (++page2 === 1) return { body: serp(['https://a.test/'], { last: true }) };
+        return page2 === 2 ? new Error('socket hang up') : { body: '' };
+      });
+      const [l] = await brightData.submit(CREDS, [search('c1', { pages: 2 })], { fetch: lost.fetch, sleep: noSleep });
+      expect(lost.calls).toHaveLength(5);
+      expect(waits).toEqual([4_000, 16_000, 16_000]);
+      // Two pages and the lost reply: the empty answers were not billed.
+      expect(l).toMatchObject({ state: 'done', page: { pagesRead: 2, end: true }, costUsd: expect.closeTo(0.0045, 6) });
+
+      let n = 0;
+      const invalid = fakeFetch((_c, google) => (startOf(google) === 0 ? { body: serp(ten(1)) } : ++n === 1 ? { body: serp(['https://a.test/'], { last: true }) } : { status: 400, body: '' }));
+      const [i] = await brightData.submit(CREDS, [search('c1', { pages: 2 })], { fetch: invalid.fetch, sleep: noSleep });
+      expect(invalid.calls).toHaveLength(3);
+      expect(i).toMatchObject({ state: 'done', page: { pagesRead: 2, end: true }, costUsd: expect.closeTo(0.003, 6) });
+    });
   });
 
   it.each([

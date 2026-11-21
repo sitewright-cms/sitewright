@@ -1,0 +1,1 @@
+ALTER TABLE `rank_checks` ADD `list_ended` integer;

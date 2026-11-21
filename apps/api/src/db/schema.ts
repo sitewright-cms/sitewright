@@ -1346,6 +1346,12 @@ export const rankChecks = sqliteTable(
      */
     pagesRead: integer('pages_read'),
     /**
+     * Why a check that read fewer pages than its depth stopped, once done: true = Google's list ended there (it served
+     * no more), false = the check stopped before it (its day ended waiting for a stage the budget never allowed, or the
+     * provider changed). NULL = read before this was recorded.
+     */
+    listEnded: integer('list_ended', { mode: 'boolean' }),
+    /**
      * When a stored result was fetched from the provider again to fill in the columns above for a check made before
      * they existed (DataForSEO keeps results 30 days, free to read). Set on every attempt, so each is tried once.
      */

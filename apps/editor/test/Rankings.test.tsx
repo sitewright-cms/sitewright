@@ -223,6 +223,27 @@ describe('what a client reads', () => {
     expect(rows[2]).toHaveTextContent('1featured snippet');
   });
 
+  it('says why a short list ended: Google listed no more, or the check stopped there', async () => {
+    const miss = (id: string, name: string, resultsRead: number, listEnded: boolean) =>
+      keyword({
+        id,
+        keyword: name,
+        latest: { day: '2026-10-20', checkedAt: '2026-10-20T06:00:00.000Z', position: null, url: null, depth: 100, resultsRead, listEnded },
+        change: null,
+        best: null,
+        series: [{ day: '2026-10-20', position: null, resultsRead, listEnded }],
+      });
+    api.getRankings.mockResolvedValue(rankings({ keywords: [miss('k3', 'boiler service', 74, true), miss('k4', 'tap repair', 20, false)] }));
+    render(<RankingsView project={project} />);
+    const rows = within(await screen.findByRole('table', { name: /Tracked keywords/ })).getAllByRole('row');
+    const row = (name: string) => rows.find((r) => r.textContent?.includes(name))!;
+    // Google's list ended at 74: the site is in none of its results, so not in the top 100 either.
+    expect(row('boiler service')).toHaveTextContent('Not in top 100Google listed only 74 results');
+    // The check stopped after 20: the site may be just below them.
+    expect(row('tap repair')).toHaveTextContent('Not in the first 20 resultsThe check stopped there');
+    expect(row('tap repair')).not.toHaveTextContent('Not in top 100');
+  });
+
   it('never links a ranking page whose address is not http(s): the provider’s text is shown, not run', async () => {
     const latest = { day: '2026-10-20', checkedAt: '2026-10-20T06:00:00.000Z', position: 3, url: 'javascript:alert(1)', depth: 100 };
     api.getRankings.mockResolvedValue(rankings({ keywords: [keyword({ latest })] }));
@@ -516,6 +537,26 @@ describe('RankChart: featured snippets and short result lists', () => {
     expect(screen.getByRole('img')).toHaveAccessibleName('k: 3 checks, best position 12, latest position 14');
   });
 
+  it('draws a miss in a list Google ended as a real miss, on the bottom line of the full depth', () => {
+    const { container } = render(
+      <RankChart
+        keyword="k"
+        from="2026-10-01"
+        to="2026-10-31"
+        depth={100}
+        series={[
+          { day: '2026-10-01', position: 12 },
+          { day: '2026-10-08', position: null, resultsRead: 74, listEnded: true },
+        ]}
+      />,
+    );
+    const miss = container.querySelector('circle[data-day="2026-10-08"]')!;
+    expect(miss.hasAttribute('data-short')).toBe(false);
+    expect(screen.getByText('100')).toBeInTheDocument();
+    expect(Number(miss.getAttribute('cy'))).toBe(180 - 22);
+    expect(screen.getByRole('img')).toHaveAccessibleName('k: 2 checks, best position 12, latest not in the 74 results google listed');
+  });
+
   it('the table’s trend line does not stretch to the full depth for a miss in a short list', () => {
     const ys = (series: Parameters<typeof RankSparkline>[0]['series']) => {
       const { container, unmount } = render(<RankSparkline series={series} depth={100} />);
@@ -525,18 +566,25 @@ describe('RankChart: featured snippets and short result lists', () => {
     };
     const short = ys([{ day: 'a', position: 12 }, { day: 'b', position: null, resultsRead: 29 }, { day: 'c', position: 14 }]);
     const full = ys([{ day: 'a', position: 12 }, { day: 'b', position: null }, { day: 'c', position: 14 }]);
+    const ended = ys([{ day: 'a', position: 12 }, { day: 'b', position: null, resultsRead: 29, listEnded: true }, { day: 'c', position: 14 }]);
     // Scaled 12…30, the move from 12 to 14 shows; scaled 12…100 for a real miss, it all but disappears.
     expect(short[2]! - short[0]!).toBeGreaterThan(2);
     expect(full[2]! - full[0]!).toBeLessThan(1);
     expect(short[1]).toBeCloseTo(22); // the short miss sits at the bottom of its own, shorter scale
+    expect(ended).toEqual(full); // Google's list ended: a real miss
   });
 
   it('says what a short list means, and keeps "not in the top N" for a full one', () => {
     expect(positionText(null, 100, { resultsRead: 29 })).toBe('Not in the 29 results read');
+    expect(positionText(null, 100, { resultsRead: 29, listEnded: true })).toBe('Not in the top 100 (Google listed only 29 results)');
+    expect(positionText(null, undefined, { resultsRead: 29, listEnded: true })).toBe('Not in the 29 results Google listed');
+    expect(positionText(null, 100, { resultsRead: 29, listEnded: false })).toBe('Not in the first 29 results (the check stopped there)');
     expect(positionText(null, 100)).toBe('Not in the top 100');
     expect(positionText(1, 100, { featured: true })).toBe('Position 1 (featured snippet)');
     expect(axisBottom([{ day: 'd', position: null, resultsRead: 29 }, { day: 'e', position: 4 }], 100)).toBe(30);
     expect(axisBottom([{ day: 'd', position: null }, { day: 'e', position: 4 }], 100)).toBe(100);
+    expect(axisBottom([{ day: 'd', position: null, resultsRead: 29, listEnded: true }, { day: 'e', position: 4 }], 100)).toBe(100);
+    expect(axisBottom([{ day: 'd', position: null, resultsRead: 29, listEnded: false }, { day: 'e', position: 4 }], 100)).toBe(30);
   });
 });
 

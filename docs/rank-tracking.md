@@ -26,7 +26,7 @@ before, so they read as they would in one long list.
 
 Each stage is booked against the monthly budget before it is sent, on top of what the stages before it cost. When
 the budget runs out partway, the check waits. Once its day is over and six hours have passed since its last stage, it
-is recorded with what it read: "Not in the 20 results read". A provider that answers at once (Bright Data) usually
+is recorded with what it read: "Not in the first 20 results", noted "The check stopped there". A provider that answers at once (Bright Data) usually
 reads every stage in one pass. A provider with a queue (DataForSEO, Apify) sends each next stage when it collects the
 one before, so a check of a deep keyword takes a few passes. After "Check now", Sitewright looks again 1, 3, 6, 10,
 15, 20, 30, 45 and 60 minutes later.
@@ -72,11 +72,13 @@ and `SW_RANK_LOAD_TIME_SCALE`) for a measured run; see the file.
   "featured snippet". The ordinary results after someone else's snippet start at 2.
 - **"Not in the top 100"** means Google returned all the results the check asked for, and the site was not among
   them.
-- **"Not in the 30 results read"** means the check read fewer results than its depth. Usually Google stopped
-  serving results early: since September 2025 it returns results ten at a time and often stops after a few pages, so
-  a check of the top 100 can end after 30. It also happens when the budget ran out before the check could read
-  further that day. The site may be just below them; the chart shows such a check as a dashed mark below the
-  results that were read, not as a fall to the bottom.
+- **"Not in top 100" noted "Google listed only 74 results"** means Google's list for the search ended before the
+  depth: since September 2025 it returns results ten at a time, and its list for many searches is shorter than 100.
+  The site is in none of its results, so it is not in the top 100 either; the chart shows a miss on the bottom line.
+- **"Not in the first 30 results" noted "The check stopped there"** means the check stopped before Google's list
+  ended: the budget ran out before it could read further that day. The site may be just below them; the chart shows
+  such a check as a dashed mark below the results that were read, not as a fall to the bottom.
+- **"Not in the 30 results read"** is a check recorded before Sitewright noted which of the two it was.
 - **Positions move.** Each check is one search from one place at one moment, not what every searcher sees. A site
   that Google has only recently started showing, and keywords that few people search for, move by many places from
   day to day. The trend over a few weeks says more than one day's change.
@@ -126,6 +128,13 @@ key may read it.
   time, within 10 seconds for each batch of results, so a pass never waits long on Google. When Google does not
   answer, or the time is up, the site's home page is recorded; after three unanswered in a row, no page is asked
   for 15 minutes. Apify results get the same treatment.
+- **A page that ends the list is asked again.** Each page is a search of its own, and Google answers some from a
+  shorter list than others. On 21 November 2026 one page asked six times came back four times past the end of a
+  66-result list, and twice with nine results and a next page. A list read on such an answer looked like "Not in the
+  66 results read" when Google had about 140. So a page that ends the list (no next page, or no results), other than
+  the first, is asked up to three more times, 4 seconds apart. The first answer that goes on replaces it and the
+  check reads on. Failing that, the answer with the most results stands in, and the end stands. A list that really
+  ends costs three more requests.
 - **Searches at once:** **Searches at once** sets how many searches are read at the same time: 10 unless set, at
   most 20. A page takes about three seconds, so 10 at once read about 200 pages a minute, far under the 1,000
   requests a minute Bright Data allows. Bright Data refuses the same query sent twice at once. Identical searches

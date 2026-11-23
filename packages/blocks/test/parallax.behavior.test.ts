@@ -43,7 +43,10 @@ function mount(): void {
 }
 
 const run = (): void => { (0, eval)(PARALLAX_JS); };
-const y = (): string => /translate3d\(0,\s*([-\d.]+)px/.exec(el.style.transform)?.[1] ?? '';
+// The Y offset as a NUMBER (NaN when there is none). The runtime writes `translate3d(0,100.00px,0)`;
+// jsdom 31 reads that back as `translate3d(0px, 100px, 0px)`, as browsers do, where earlier versions
+// kept it as written. The offset is what is under test, not the CSSOM's spelling of it.
+const y = (): number => Number(/translate3d\(0(?:px)?,\s*([-\d.]+)px/.exec(el.style.transform)?.[1] ?? NaN);
 
 describe('parallax runtime — an element that wakes up renders immediately', () => {
   beforeEach(() => { rect = { top: 2000, height: 100 }; mount(); });
@@ -52,7 +55,7 @@ describe('parallax runtime — an element that wakes up renders immediately', ()
   it('renders once at setup, at the element\'s current position', () => {
     run();
     // Far below the fold → cover-progress clamps to 0 → the channel sits at its `from` value.
-    expect(y()).toBe('100.00');
+    expect(y()).toBe(100);
   });
 
   it('re-renders when the observer reports the element has come INTO view', () => {
@@ -62,8 +65,8 @@ describe('parallax runtime — an element that wakes up renders immediately', ()
     fire([{ target: el, isIntersecting: true }]); // …and the observer says so
 
     // No scroll event was dispatched. Before the fix the transform stayed at 100.00.
-    expect(y()).not.toBe('100.00');
-    expect(Number(y())).toBeCloseTo(23.04, 1);
+    expect(y()).not.toBe(100);
+    expect(y()).toBeCloseTo(23.04, 1);
   });
 
   it('does not re-render when an element merely LEAVES view', () => {

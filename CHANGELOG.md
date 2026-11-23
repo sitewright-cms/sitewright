@@ -9,6 +9,30 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **Dependency refresh** (Dependabot #1289, #1290 and #1291). Each resolves to the version Dependabot proposed:
+  `daisyui` 5.7.50 → 5.8.1, `sanitize-html` 2.18.2, `nodemailer` 10.6.0, `openid-client` 6.9.0, `isomorphic-git`
+  1.44.14, `playwright-core` and `@playwright/test` 1.65.1 (and the image's headless Chromium with them, 158 → 159),
+  `motion` 14.14.0, `lucide-react` and `lucide-static` 1.73.0, `simple-icons` 16.38.0, `jsdom` 31.0.0, `vite`
+  8.3.8, `eslint` 10.15.0, `crawler-user-agents` 1.67.0 (one new monitoring bot), and patch releases of
+  `@fastify/static`, `@codemirror/lint`, `isbot`, `mmdb-lib`, `jose`, `turbo`, `typescript-eslint` and
+  `@testing-library/user-event`.
+  - daisyUI 5.8 changes a few components on a site's next publish. Each component was rendered with both versions
+    and compared pixel by pixel. Themes, the exclusions and the neutralised `aria-current` styling are unchanged.
+    - An alert with text and a trailing button but no icon puts the button at its end, not right after the text.
+    - A compact vertical timeline with `timeline-snap-icon` sits at the start edge, not in the middle.
+    - A daisyUI component placed directly in a `footer` keeps its own layout: a carousel scrolls sideways instead
+      of stacking. Menus, links and nav columns in a footer look the same.
+    - Joined inputs keep their focus and hover stacking. Lightning CSS used to drop those two rules as invalid.
+    - Pages with many components get smaller CSS; daisyUI no longer emits duplicate rules.
+  - lucide-static 1.73 adds 37 icons, removes none, and redraws the question-mark icons. It also moved the tags of
+    `square-arrow-out-up-right` to a new name, `square-arrow-up-right-exit`. Searching "external" or "link" then
+    stopped finding `arrow-square-out`. The new name is now an alias of `arrow-square-out`, so it is found again.
+  - jsdom 31 reads CSS values back the way browsers do (`translate3d(0px, 100px, 0px)`, `inset(100px 0px 300px)`,
+    `6px` for `0.375rem`). Five tests compared those spellings; they now compare the values, and pass on jsdom 30
+    and 31.
+
 ### Fixed
 
 - **Bright Data checks stopped early, before Google's list ended, and missed sites ranked further down.** Each
@@ -23,6 +47,12 @@ The running version of an instance is reported at `GET /version` (baked into the
   check stopped short (the budget ran out that day), it reads "Not in the first 20 results", noted "The check stopped
   there". Checks recorded before this keep "Not in the N results read". The rankings API and the `get_rankings` tool
   carry the reason as `listEnded`.
+
+### Security
+
+- **sanitize-html 2.18.2 fixes three advisories** (GHSA-2rjc-9xvg-45j7, GHSA-6wrv-5cp6-h3c5, GHSA-8g6g-w2rq-xcmc).
+  Rich text allows no `svg`, `math` or `style`, so only the first reaches it: a `<![CDATA[` section, which the
+  editor never writes, used to be dropped whole and is now sanitised like the rest of the text.
 
 ## [0.83.1] — 2026-11-20
 

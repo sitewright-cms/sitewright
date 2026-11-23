@@ -120,6 +120,7 @@ const ICON_ALIASES = new Map<string, string>([
   ["smartphone", "device-mobile"],
   ["sparkles", "sparkle"],
   ["square-arrow-out-up-right", "arrow-square-out"],
+  ["square-arrow-up-right-exit", "arrow-square-out"],
   ["square-check", "check-square"],
   ["square-minus", "minus-square"],
   ["square-pen", "pencil-simple-line"],

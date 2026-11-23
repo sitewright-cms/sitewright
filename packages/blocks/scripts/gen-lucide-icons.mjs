@@ -72,4 +72,4 @@ export function iconTags(name: string): string {
 const dir = dirname(fileURLToPath(import.meta.url));
 const target = join(dir, '..', 'src', 'icons.ts');
 writeFileSync(target, out);
-console.log(`wrote ${names.length} Lucide icons (${tagRows.split('\\n').length} with tags) to ${target}`);
+console.log(`wrote ${names.length} Lucide icons (${tagRows.split('\n').length} with tags) to ${target}`);

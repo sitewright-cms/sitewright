@@ -51,6 +51,8 @@ const CURATED = {
   'wand-2': 'magic-wand', wand: 'magic-wand', 'square-pen': 'pencil-simple-line',
   'circle-check': 'check-circle', 'circle-x': 'x-circle', 'circle-plus': 'plus-circle', 'circle-alert': 'warning-circle',
   'circle-help': 'question', 'circle-user': 'user-circle', 'square-arrow-out-up-right': 'arrow-square-out',
+  // lucide-static 1.73 renamed it and moved its tags ("external", "link", "outwards") to the new name.
+  'square-arrow-up-right-exit': 'arrow-square-out',
   clock: 'clock', 'map-pin': 'map-pin', phone: 'phone', 'phone-call': 'phone-call', headset: 'headset',
 };
 

@@ -87,7 +87,8 @@ describe('Cart sheet — order-form checkbox / radio / toggle keep their intrins
     const cs = getComputedStyle(byId('in-text'));
     expect(cs.width).toBe('100%');
     expect(cs.getPropertyValue('padding-left')).toBe('8px'); // .5rem
-    expect(cs.getPropertyValue('border-radius')).toBe('0.375rem'); // jsdom keeps the shorthand as written
+    // .375rem: jsdom 30 keeps the shorthand as written, jsdom 31 resolves it to px as a browser does.
+    expect(['0.375rem', '6px']).toContain(cs.getPropertyValue('border-radius'));
   });
 
   it.each([

@@ -13,16 +13,27 @@ function run(): void {
 
 const LAYER = '[data-sw-fixed-bg]';
 
+/** A 1–4 value list expanded to four, the way both the `inset()` offsets and its radii expand. */
+const fourSides = ([a = '', b = a, c = a, d = b]: string[]): string[] => [a, b, c, d];
+
 /**
- * The layer's clip-path with a ZERO `round` tail normalised away.
+ * The layer's clip-path in the long form the runtime writes: four offsets, then `round` and four radii
+ * only when there is a real radius.
  *
  * The runtime writes `inset(a b c d)` and omits `round` entirely when the host has no radius (see
- * `radiusOf`). jsdom 30 re-serializes that as `inset(a b c d round 0 0 0 0)`; jsdom 25 and real
- * browsers keep the short form. Both parse identically, and the string we SET is what ships — so
- * assert the authored value rather than whichever spelling the current CSSOM hands back. A non-zero
- * radius is left alone, which is what the border-radius case below pins.
+ * `radiusOf`). Each jsdom re-serializes that its own way: 30 adds `round 0 0 0 0`, 31 shortens it as
+ * browsers do (`inset(100px 0px 300px)`, `round 24px`). All of them parse to the same clip, and the
+ * string we SET is what ships — so expand whichever spelling the current CSSOM hands back before
+ * comparing. A non-zero radius is kept, which is what the border-radius case below pins.
  */
-const clipOf = (el: HTMLElement): string => el.style.clipPath.replace(/ round(?: 0(?:px)?)+\)$/, ')');
+const clipOf = (el: HTMLElement): string => {
+  const m = /^inset\(([^)]*?)(?: round ([^)]*))?\)$/.exec(el.style.clipPath);
+  if (!m) return el.style.clipPath;
+  const long = (list: string): string[] => fourSides(list.trim().split(/\s+/).map((t) => (t === '0' ? '0px' : t)));
+  const radii = m[2] ? long(m[2]) : [];
+  const round = radii.some((r) => r !== '0px') ? ` round ${radii.join(' ')}` : '';
+  return `inset(${long(m[1] ?? '').join(' ')}${round})`;
+};
 const fixedSection = (id: string): string =>
   `<section id="${id}" style="background-image:url('/t.png');background-attachment:fixed">x</section>`;
 
@@ -218,7 +229,7 @@ describe('fixed-background emulation (jsdom)', () => {
     run();
     const layer = host.querySelector(LAYER) as HTMLElement;
     // Without this a rounded section paints square background corners.
-    // A REAL radius is never stripped by the normaliser — this is the authored string verbatim.
+    // A REAL radius is never stripped by the normaliser — this is the authored string, in its long form.
     expect(clipOf(layer)).toBe('inset(100px 0px 300px 0px round 24px 24px 24px 24px)');
   });
 

@@ -25,7 +25,7 @@
     "@sitewright/schema": "workspace:*",
     "@tailwindcss/node": "^4.3.5",
     "@tailwindcss/oxide": "^4.3.5",
-    "daisyui": "~5.7",
+    "daisyui": "~5.8",
     "tailwindcss": "^4.3.5"
   },
   "devDependencies": {

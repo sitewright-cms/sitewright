@@ -1,5 +1,6 @@
 import { parse as secureJsonParse } from 'secure-json-parse';
 import type { RankLocationOption } from '@sitewright/schema';
+import { opaqueRedirect, resultUrl } from './google-links.js';
 import {
   RankProviderError,
   type CollectOutcome,
@@ -31,6 +32,11 @@ import {
  *   `uule` and `gl`). For a small market that is not always enough: on 2026-11-17 a Namibian company's exact name was
  *   its #1 result from Namibia (and on Apify) but absent from DataForSEO's 84 results, which showed om.linkedin.com.
  * - The sandbox host answers in the same format with dummy results, free, with the same credentials.
+ * - Google wraps many results in its own `google.com/goto` redirect (`google-links.ts`). From November 2026 DataForSEO
+ *   resolves those in Standard tasks to the page they lead to, and returns a link it could not resolve as it came. Such
+ *   a link is read by its breadcrumb, as on the other providers. A result stored before then is resolved only when it
+ *   is read with `resolve_goto_urls=true`, which "adds up to 40 seconds" (task_get docs): only a re-read asks for it,
+ *   and reads as usual when that does not answer in time.
  *
  * ★ Every answer is read defensively: a `null` in an array, a missing field or a body that is not JSON must
  * never throw halfway through reading an answer the account was already charged for.
@@ -47,6 +53,8 @@ type Environment = keyof typeof HOSTS;
 /** USD per page of ten results, Standard queue. */
 const PRICE_PER_PAGE_USD = 0.0006;
 const DEFAULT_TIMEOUT_MS = 30_000;
+/** A stored result read with its redirects resolved: a read takes about a second, and resolving adds up to 40. */
+const STORED_READ_TIMEOUT_MS = 60_000;
 /** The most tasks one POST may carry. */
 const MAX_BATCH = 100;
 /** Parallel result requests while collecting. */
@@ -162,9 +170,13 @@ function pageFrom(task: Json): SerpPage {
     const kind = item.type === 'organic' || item.type === 'featured_snippet' ? item.type : undefined;
     const position = num(item.rank_group);
     const absolutePosition = num(item.rank_absolute);
-    const url = str(item.url);
-    if (!kind || position === undefined || absolutePosition === undefined || !url || !WEB_URL_RE.test(url)) continue;
-    entries.push({ kind, position, absolutePosition, url: url.slice(0, 2048), domain: str(item.domain) ?? '' });
+    const link = str(item.url);
+    if (!kind || position === undefined || absolutePosition === undefined || !link || !WEB_URL_RE.test(link)) continue;
+    // A link still wrapped in Google's redirect: the site its breadcrumb names, else its domain (a featured snippet has
+    // no breadcrumb, and one cut short inside the host names no site).
+    const url = resultUrl(link, str(item.breadcrumb)) ?? resultUrl(link, str(item.domain)) ?? link;
+    const via = url !== link ? opaqueRedirect(link) : undefined;
+    entries.push({ kind, position, absolutePosition, url: url.slice(0, 2048), domain: str(item.domain) ?? '', ...(via ? { via: via.slice(0, 2048) } : {}) });
   }
   const pages = num(result?.pages_count);
   const pagesRead = pages !== undefined && pages >= 0 ? Math.floor(pages) : undefined;
@@ -324,7 +336,21 @@ export const dataForSeo: RankProvider = {
     }
   },
 
-  async collect(creds, queued, io) {
+  async collect(creds, queued, io, opts) {
+    const storedIo = { ...io, timeoutMs: Math.max(io.timeoutMs ?? DEFAULT_TIMEOUT_MS, STORED_READ_TIMEOUT_MS) };
+    /**
+     * A result stored before DataForSEO resolved Google's redirects, read with them resolved. When that does not answer
+     * in time, or is refused for anything but the account, it is read as usual: the breadcrumb still names the site, and
+     * a timeout is not taken for an outage that would end the re-read of every other check with it.
+     */
+    const readStored = async (path: string): Promise<Json> => {
+      try {
+        return await call(creds, 'GET', `${path}?resolve_goto_urls=true`, storedIo);
+      } catch (err) {
+        if (!(err instanceof RankProviderError) || err.kind === 'auth' || err.kind === 'funds' || err.kind === 'rate') throw err;
+        return call(creds, 'GET', path, io);
+      }
+    };
     const out: Array<CollectOutcome | undefined> = new Array(queued.length);
     let next = 0;
     let stop: RankProviderError | undefined;
@@ -337,7 +363,8 @@ export const dataForSeo: RankProvider = {
           continue;
         }
         try {
-          const env = await call(creds, 'GET', `/v3/serp/google/organic/task_get/regular/${q.ref}`, io);
+          const path = `/v3/serp/google/organic/task_get/regular/${q.ref}`;
+          const env = opts?.stored ? await readStored(path) : await call(creds, 'GET', path, io);
           const task = tasksOf(env)[0];
           const code = task ? num(task.status_code) : undefined;
           if (task && code === OK) out[i] = { checkId: q.checkId, state: 'done', page: pageFrom(task) };

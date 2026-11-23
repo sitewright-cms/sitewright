@@ -6,7 +6,7 @@ import { projects, rankCharges, rankChecks, rankProviderCredentials } from '../s
 import { RankRepository, type DueKeyword, type RankKeywordRow } from '../src/rank/repo.js';
 import { RankTracker } from '../src/rank/tracker.js';
 import { projectRankings } from '../src/rank/routes.js';
-import { RankProviderError, type CollectOutcome, type RankProvider, type RankSearch, type SubmitOutcome } from '../src/rank/providers/index.js';
+import { RankProviderError, type CollectOptions, type CollectOutcome, type RankProvider, type RankSearch, type SubmitOutcome } from '../src/rank/providers/index.js';
 import { ProjectRepository } from '../src/repo/projects.js';
 import { registerAccount } from '../src/repo/accounts.js';
 
@@ -35,11 +35,15 @@ function scriptedProvider() {
     ends: new Set<string>(),
     /** Every collect request, as the check ids asked about. */
     collected: [] as string[][],
+    /** Every collect request's options, in the same order. */
+    collectOptions: [] as Array<CollectOptions | undefined>,
     cost: 0.006,
     /** What the provider says it charged, when not the estimate. */
     charged: null as number | null,
     /** Runs while the request is with the provider (before any scripted error): what happens meanwhile. */
     duringSubmit: null as (() => Promise<void>) | null,
+    /** The same, for a collect request. */
+    duringCollect: null as ((opts?: CollectOptions) => Promise<void>) | null,
   };
   const provider: RankProvider = {
     id: 'dataforseo',
@@ -56,8 +60,10 @@ function scriptedProvider() {
       submitted.push([...searches]);
       return searches.map((s): SubmitOutcome => ({ checkId: s.checkId, state: 'queued', ref: `ref-${s.checkId}`, costUsd: (state.charged ?? state.cost) * s.pages }));
     },
-    async collect(_creds, queued) {
+    async collect(_creds, queued, _io, opts) {
       state.collected.push(queued.map((q) => q.checkId));
+      state.collectOptions.push(opts);
+      await state.duringCollect?.(opts);
       if (state.collectError) throw state.collectError;
       return queued.map((q): CollectOutcome => {
         const r = state.results.get(q.checkId) ?? 'pending';
@@ -1354,11 +1360,17 @@ describe('re-reading stored results of earlier checks (free at the provider)', (
     // What the provider still holds: the site was the featured snippet that day.
     state.results.set(id, [{ position: 1, url: 'https://plumbers.na/', snippet: true }, { position: 1, url: 'https://competitor.test/' }]);
     state.pages.set(id, 10);
+    // The usual collects that finished the check did not ask for a stored result (and there were some).
+    expect(state.collectOptions.length).toBeGreaterThan(0);
+    expect(state.collectOptions.every((o) => o === undefined)).toBe(true);
     state.collected.length = 0;
+    state.collectOptions.length = 0;
     await tracker(free).tick();
     expect((await checks())[0]).toMatchObject({ position: 1, featured: true, resultsRead: 2, pagesRead: 10, status: 'done' });
     expect((await checks())[0]!.rereadAt).toEqual(now);
     expect(state.collected).toEqual([[id]]);
+    // Asked as a STORED result: DataForSEO resolves its redirects then.
+    expect(state.collectOptions).toEqual([{ stored: true }]);
 
     // Never again.
     await tracker(free).tick();
@@ -1397,6 +1409,58 @@ describe('re-reading stored results of earlier checks (free at the provider)', (
     now = inside;
     await tracker(free).tick();
     expect(state.collected.flat()).toContain(id);
+  });
+
+  it('reads a few at a time, and a "check now" waiting goes before the rest, which the next pass reads', async () => {
+    const { provider, state } = scriptedProvider();
+    const free = { ...provider, freeRereadDays: 29 };
+    // Made without a free re-read, so making the next one does not re-read the ones before it.
+    const ids: string[] = [];
+    for (let i = 0; i < 6; i++) ids.push(await legacyCheck(provider, state, `yield ${i}`));
+    for (const id of ids) state.results.set(id, [{ position: 1, url: 'https://plumbers.na/' }]);
+    const pid = (await checks()).find((r) => r.id === ids[0])!.projectId;
+    const unread = async () => (await checks()).filter((r) => ids.includes(r.id) && r.rereadAt === null).length;
+    const storedReads = () => state.collectOptions.filter((o) => o?.stored).length;
+
+    const t = tracker(free);
+    let checking: Promise<unknown> | undefined;
+    // A "check now" comes in while the first stored results are with the provider.
+    state.duringCollect = async (opts) => {
+      if (opts?.stored && !checking) checking = t.checkNow(pid);
+    };
+    state.collectOptions.length = 0;
+    await t.tick();
+    await checking;
+    expect(checking).toBeDefined();
+    expect(storedReads()).toBe(1); // one request of four, then the check now
+    expect(await unread()).toBe(2);
+
+    state.duringCollect = null;
+    await t.tick();
+    expect(storedReads()).toBe(2);
+    expect(await unread()).toBe(0);
+  });
+
+  it('stops re-reading for the pass when a few at a time come back with nothing read', async () => {
+    const { provider, state } = scriptedProvider();
+    const free = { ...provider, freeRereadDays: 29 };
+    const ids: string[] = [];
+    for (let i = 0; i < 6; i++) ids.push(await legacyCheck(provider, state, `limited ${i}`));
+    const unread = async () => (await checks()).filter((r) => ids.includes(r.id) && r.rereadAt === null).length;
+    const storedReads = () => state.collectOptions.filter((o) => o?.stored).length;
+
+    // The provider is limiting requests: its answers say nothing is ready. One request, not one per four checks.
+    for (const id of ids) state.results.set(id, 'pending');
+    state.collectOptions.length = 0;
+    const t = tracker(free);
+    await t.tick();
+    expect(storedReads()).toBe(1);
+    expect(await unread()).toBe(2);
+
+    for (const id of ids) state.results.set(id, [{ position: 1, url: 'https://plumbers.na/' }]);
+    await t.tick();
+    expect(storedReads()).toBe(2);
+    expect(await unread()).toBe(0);
   });
 
   it('a stored result that is not ready yet is tried once too, so the same few never fill every batch', async () => {

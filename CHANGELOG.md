@@ -9,6 +9,18 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **DataForSEO: a result left behind Google's redirect read as Google's, so the site was not found.** DataForSEO now
+  resolves Google's `google.com/goto` redirect links in its results (its notice of November 2026), and returns a link
+  it could not resolve as it came. The tracker took such a link for a google.com result, so the site's own result
+  counted as a miss. It now reads the link by the address shown under the result and asks Google for the page, as it
+  already did for Bright Data and Apify (0.83.1). Re-reads of checks stored before 0.83.0 now ask DataForSEO for
+  resolved links (`resolve_goto_urls`), with up to a minute to answer. A re-read that DataForSEO does not answer in
+  that time, or will not resolve, is read the usual way. Re-reads go four at a time, so a "check now" waits for at
+  most one round, and they stop for the pass when a round reads nothing. Usual reads are unchanged. The tracker never
+  sent `stop_crawl_on_match`, which DataForSEO rejects from 30 November 2026, so nothing else needs changing.
+
 ## [0.84.0] — 2026-11-23
 
 ### Changed

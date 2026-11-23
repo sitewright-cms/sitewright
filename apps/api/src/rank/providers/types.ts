@@ -101,6 +101,15 @@ export type CollectOutcome =
   | { checkId: string; state: 'done'; page: SerpPage; costUsd?: number }
   | { checkId: string; state: 'failed'; error: string; costUsd?: number; retry?: boolean };
 
+/** How `collect` is asked. */
+export interface CollectOptions {
+  /**
+   * Results stored weeks ago, read again (see {@link RankProvider.freeRereadDays}). A provider may finish them as it
+   * reads them (DataForSEO resolves Google's redirect links then), so it is given longer to answer.
+   */
+  stored?: boolean;
+}
+
 /**
  * The provider refused, or could not be reached for, a whole request (not one search in it).
  *
@@ -155,6 +164,7 @@ export interface RankProvider {
     creds: RankCredentials,
     queued: ReadonlyArray<{ checkId: string; ref: string }>,
     io: RankProviderIo,
+    opts?: CollectOptions,
   ): Promise<CollectOutcome[]>;
   /** Proves the credentials work; the balance, when the provider reports one. */
   account(creds: RankCredentials, io: RankProviderIo): Promise<{ balanceUsd: number | null }>;

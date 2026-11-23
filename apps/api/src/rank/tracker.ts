@@ -35,6 +35,12 @@ const MAX_COLLECTS_PER_PASS = 500;
 /** Stored results fetched again per scheduled pass at most (free; see `reread`). */
 const MAX_REREADS_PER_PASS = 50;
 /**
+ * Stored results asked for in one request to the provider: a "check now" waits for one such request at most. Reading
+ * one with its redirects resolved takes DataForSEO up to a minute, and one that does not answer is read again as usual
+ * (up to 30 s more).
+ */
+const REREADS_AT_ONCE = 4;
+/**
  * After a "check now", when to look for its results (the queue usually answers within minutes) — and send the next
  * stage of a check whose earlier pages did not hold the site.
  */
@@ -413,13 +419,15 @@ export class RankTracker {
    * result was a featured snippet — so the recent history is read by the same rules as every check from now on.
    *
    * ★ Only for a provider that keeps results and charges nothing to fetch them again (`freeRereadDays`), and only
-   * within that window. Each check is tried ONCE (`markReread` records every attempt), a bounded number per pass, and
-   * never during a "check now". A failure is logged, never shown as the provider's last error: sending still works.
+   * within that window. Each check is tried ONCE (`markReread` records every attempt), a bounded number per pass, a few
+   * at a time, and never during a "check now": one waiting goes first. A failure is logged, never shown as the
+   * provider's last error: sending still works.
    */
   private async reread(): Promise<void> {
     const { repo, providers, log } = this.deps;
     const now = this.now();
     for (const provider of Object.values(providers)) {
+      if (this.yieldRequested) return;
       if (!provider.freeRereadDays || this.rereadDone.has(provider.id)) continue;
       try {
         const since = new Date(now.getTime() - provider.freeRereadDays * 86_400_000);
@@ -431,24 +439,31 @@ export class RankTracker {
         const creds = await this.credentials(provider.id);
         if (!creds) continue;
         const byId = new Map(checks.map((c) => [c.id, c]));
-        const outcomes = await provider.collect(creds, checks.map((c) => ({ checkId: c.id, ref: c.ref })), this.deps.io);
         let read = 0;
         let featured = 0;
         let short = 0;
-        for (const o of outcomes) {
-          const check = byId.get(o.checkId);
-          if (!check) continue;
-          // A stored result that is not ready, or not there: tried, and left as it was. Not asking again keeps the
-          // newest-first batch from filling up with the same few checks pass after pass.
-          if (o.state !== 'done') {
-            await repo.markReread(check.id, null, now);
-            continue;
+        for (let i = 0; i < checks.length; i += REREADS_AT_ONCE) {
+          // A "check now" waiting goes first: what is left stays unread, for the next pass.
+          if (this.yieldRequested) break;
+          const slice = checks.slice(i, i + REREADS_AT_ONCE);
+          const outcomes = await provider.collect(creds, slice.map((c) => ({ checkId: c.id, ref: c.ref })), this.deps.io, { stored: true });
+          for (const o of outcomes) {
+            const check = byId.get(o.checkId);
+            if (!check) continue;
+            // A stored result that is not ready, or not there: tried, and left as it was. Not asking again keeps the
+            // newest-first batch from filling up with the same few checks pass after pass.
+            if (o.state !== 'done') {
+              await repo.markReread(check.id, null, now);
+              continue;
+            }
+            const reading = readPage(o.page, check);
+            await repo.markReread(check.id, reading, now);
+            read++;
+            if (reading.hit?.featured) featured++;
+            if (reading.pagesRead !== null && reading.pagesRead < Math.ceil(check.depth / 10)) short++;
           }
-          const reading = readPage(o.page, check);
-          await repo.markReread(check.id, reading, now);
-          read++;
-          if (reading.hit?.featured) featured++;
-          if (reading.pagesRead !== null && reading.pagesRead < Math.ceil(check.depth / 10)) short++;
+          // Nothing read: the provider is limiting requests or not answering. The rest wait for the next pass.
+          if (!outcomes.some((o) => o.state === 'done')) break;
         }
         if (read > 0) log.info({ provider: provider.id, read, featured, short }, 'rank tracking: re-read stored results of earlier checks');
       } catch (err) {

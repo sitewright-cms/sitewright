@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearDataForSeoLocationCache, dataForSeo } from '../src/rank/providers/dataforseo.js';
 import { RankProviderError, type FetchLike, type RankSearch, type SerpEntry } from '../src/rank/providers/index.js';
 import { findRank } from '../src/rank/match.js';
@@ -196,6 +196,94 @@ describe('DataForSEO collect', () => {
         end: true,
       },
     });
+  });
+
+  it('reads a link DataForSEO could not resolve from Google’s redirect by the site its breadcrumb names', async () => {
+    const GOTO = 'https://www.google.com/goto?url=CAESABC123opaque';
+    const { fetch } = fakeFetch({
+      '/v3/serp/google/organic/task_get/regular/': () => ({
+        body: page([
+          // A featured snippet has no breadcrumb ("always equals null"): its domain names the site.
+          { type: 'featured_snippet', rank_group: 1, rank_absolute: 1, url: GOTO, domain: 'www.plumbers.na', breadcrumb: null },
+          { type: 'organic', rank_group: 1, rank_absolute: 2, url: 'https://other.test/', domain: 'other.test', breadcrumb: 'https://other.test' },
+          { type: 'organic', rank_group: 2, rank_absolute: 3, url: GOTO, domain: 'www.plumbers.na', breadcrumb: 'https://www.plumbers.na › services › geysers' },
+          { type: 'organic', rank_group: 3, rank_absolute: 4, url: 'https://www.google.com/url?q=https://wrapped.test/page', domain: 'wrapped.test' },
+          // Nothing names a site: the link stays as it came, holding its place, no one's to find.
+          { type: 'organic', rank_group: 4, rank_absolute: 5, url: GOTO, domain: 'www.google.com', breadcrumb: '' },
+          // A breadcrumb cut short inside the host names no site: the domain does.
+          { type: 'organic', rank_group: 5, rank_absolute: 6, url: GOTO, domain: 'www.geysers.na', breadcrumb: 'https://www.geysers-and-solar-…' },
+        ]),
+      }),
+    });
+    const [out] = await dataForSeo.collect(CREDS, [{ checkId: 'c1', ref: TASK_A }], { fetch });
+    const entries = (out as { page: { entries: SerpEntry[] } }).page.entries;
+    expect(entries).toEqual([
+      { kind: 'featured_snippet', position: 1, absolutePosition: 1, url: 'https://www.plumbers.na/', domain: 'www.plumbers.na', via: GOTO },
+      { kind: 'organic', position: 1, absolutePosition: 2, url: 'https://other.test/', domain: 'other.test' },
+      // The breadcrumb stands for a path cut into labels: the site alone, and the redirect to ask for the page.
+      { kind: 'organic', position: 2, absolutePosition: 3, url: 'https://www.plumbers.na/', domain: 'www.plumbers.na', via: GOTO },
+      { kind: 'organic', position: 3, absolutePosition: 4, url: 'https://wrapped.test/page', domain: 'wrapped.test' },
+      { kind: 'organic', position: 4, absolutePosition: 5, url: GOTO, domain: 'www.google.com' },
+      { kind: 'organic', position: 5, absolutePosition: 6, url: 'https://www.geysers.na/', domain: 'www.geysers.na', via: GOTO },
+    ]);
+    // Read as it came, the site's result was google.com's, and the site was not on the page at all.
+    expect(findRank(entries, { domain: 'plumbers.na', includeSubdomains: false })).toMatchObject({ position: 1, featured: true, via: GOTO });
+    expect(findRank(entries.slice(1), { domain: 'plumbers.na', includeSubdomains: false })).toMatchObject({ position: 2, via: GOTO });
+  });
+
+  it('asks for a stored result’s redirects resolved only on a re-read, waits longer, and reads as usual when that does not answer', async () => {
+    const BASE = `https://api.dataforseo.com/v3/serp/google/organic/task_get/regular/${TASK_A}`;
+    const answer = JSON.stringify(page([{ type: 'organic', rank_group: 1, rank_absolute: 1, url: 'https://www.plumbers.na/', domain: 'www.plumbers.na' }]));
+    vi.useFakeTimers();
+    try {
+      const asked: string[] = [];
+      // A usual read answers; a resolving one only fails, once aborted — so how long it is given is how long it waits.
+      const fetch: FetchLike = (url, init) => {
+        asked.push(url);
+        if (!url.includes('resolve_goto_urls')) return Promise.resolve({ ok: true, status: 200, text: async () => answer });
+        return new Promise((_resolve, reject) => init.signal?.addEventListener('abort', () => reject(new Error('aborted'))));
+      };
+      const read = (stored: boolean) => dataForSeo.collect(CREDS, [{ checkId: 'c1', ref: TASK_A }], { fetch, timeoutMs: 30_000 }, { stored });
+
+      await expect(read(false)).resolves.toMatchObject([{ checkId: 'c1', state: 'done' }]);
+      expect(asked).toEqual([BASE]);
+
+      asked.length = 0;
+      let settled = false;
+      const reread = read(true).finally(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(settled).toBe(false); // still waiting where a usual read gives up
+      expect(asked).toEqual([`${BASE}?resolve_goto_urls=true`]);
+      await vi.advanceTimersByTimeAsync(30_000);
+      // No answer in a minute: read as usual, not taken for an outage that would end every other re-read with it.
+      await expect(reread).resolves.toMatchObject([{ checkId: 'c1', state: 'done', page: { entries: [{ url: 'https://www.plumbers.na/' }] } }]);
+      expect(asked).toEqual([`${BASE}?resolve_goto_urls=true`, BASE]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('asks a re-read once when DataForSEO answers it, limits requests, or refuses the account', async () => {
+    const limited = fakeFetch({ '/v3/serp': () => ({ status: 429, body: '' }) });
+    await expect(dataForSeo.collect(CREDS, [{ checkId: 'c1', ref: TASK_A }], { fetch: limited.fetch }, { stored: true })).resolves.toEqual([{ checkId: 'c1', state: 'pending' }]);
+    expect(limited.calls).toHaveLength(1);
+
+    const answered = fakeFetch({ '/v3/serp/google/organic/task_get/regular/': () => ({ body: page([]) }) });
+    await expect(dataForSeo.collect(CREDS, [{ checkId: 'c1', ref: TASK_A }], { fetch: answered.fetch }, { stored: true })).resolves.toMatchObject([{ state: 'done' }]);
+    expect(answered.calls.map((c) => c.url)).toEqual([`https://api.dataforseo.com/v3/serp/google/organic/task_get/regular/${TASK_A}?resolve_goto_urls=true`]);
+
+    const refused = fakeFetch({ '/v3/serp': () => ({ status: 401, body: '' }) });
+    await expect(dataForSeo.collect(CREDS, [{ checkId: 'c1', ref: TASK_A }], { fetch: refused.fetch }, { stored: true })).rejects.toMatchObject({ kind: 'auth' });
+    expect(refused.calls).toHaveLength(1);
+  });
+
+  it('reads a re-read as usual when DataForSEO refuses to resolve it', async () => {
+    const { fetch, calls } = fakeFetch({
+      '/v3/serp/google/organic/task_get/regular/': (call) =>
+        call.url.includes('resolve_goto_urls') ? { body: { status_code: 40501, status_message: 'Invalid Field: resolve_goto_urls.' } } : { body: page([]) },
+    });
+    await expect(dataForSeo.collect(CREDS, [{ checkId: 'c1', ref: TASK_A }], { fetch }, { stored: true })).resolves.toMatchObject([{ state: 'done' }]);
+    expect(calls.map((c) => c.url.endsWith('?resolve_goto_urls=true'))).toEqual([true, false]);
   });
 
   it('says Google had nothing more only when it served fewer pages than the task asked for', async () => {

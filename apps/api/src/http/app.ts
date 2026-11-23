@@ -11855,9 +11855,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // ---- Keyword rank tracking (platform-admin managed; see rank/routes.ts) ----
   // The payments transport's guards (public addresses only, no redirects, a size cap). Most answers are small; only
-  // a country's location list runs to megabytes, and it is fetched one at a time (see dataforseo.ts).
+  // a country's location list runs to megabytes, and it is fetched one at a time (see dataforseo.ts). Each request
+  // sets its own deadline (`timeoutMs`); the transport's is the longest one, a stored DataForSEO result re-read.
   const rankIo = {
-    fetch: opts.rankFetch ?? makeProviderFetch({ maxBytes: 4 * 1024 * 1024, timeoutMs: 30_000 }),
+    fetch: opts.rankFetch ?? makeProviderFetch({ maxBytes: 4 * 1024 * 1024, timeoutMs: 60_000 }),
     largeFetch: opts.rankFetch ?? makeProviderFetch({ maxBytes: 32 * 1024 * 1024, timeoutMs: 30_000 }),
     timeoutMs: 30_000,
   };

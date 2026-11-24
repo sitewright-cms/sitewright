@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.84.1] — 2026-11-24
+
 ### Fixed
 
 - **DataForSEO: a result left behind Google's redirect read as Google's, so the site was not found.** DataForSEO now
@@ -6828,7 +6830,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.84.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.84.1...HEAD
+[0.84.1]: https://github.com/sitewright-cms/sitewright/compare/v0.84.0...v0.84.1
 [0.84.0]: https://github.com/sitewright-cms/sitewright/compare/v0.83.1...v0.84.0
 [0.83.1]: https://github.com/sitewright-cms/sitewright/compare/v0.83.0...v0.83.1
 [0.83.0]: https://github.com/sitewright-cms/sitewright/compare/v0.82.0...v0.83.0

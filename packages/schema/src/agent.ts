@@ -426,7 +426,7 @@ Quick rules vs the similar-looking DaisyUI classes:
   for day/month names automatically; give the input a name to submit it. DaisyUI has no date picker
   (it only styles the input box). Recipe to copy: datetimepicker-field.
 - ANIMATED BACKGROUND → data-sw-component="shader-bg" on a section/hero/full-page wrapper: a WebGL
-  background themed by the CI colors (30 presets via data-preset; plus data-speed/intensity/angle/
+  background themed by the CI colors (31 presets via data-preset; plus data-speed/intensity/angle/
   interactive/colors). Content renders above it; add a data-sw-part="overlay" scrim for legible text.
   Falls back to a CI gradient with no JS. Details + presets: the effects guide and get_components.
   Recipe to copy: shader-hero.

@@ -956,7 +956,7 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     demonstrates: ['shader-bg', 'data-preset', 'data-sw-part:overlay', 'data-sw-text'],
     // The runtime draws the chosen preset on a canvas BEHIND the content (never author a canvas). The
     // optional data-sw-part="overlay" is a scrim for text contrast. Falls back to a CI gradient with no
-    // JS, pauses offscreen, and is reduced-motion aware. 30 presets via data-preset.
+    // JS, pauses offscreen, and is reduced-motion aware. 31 presets via data-preset.
     source: `{{!-- WebGL animated hero. Swap data-preset (e.g. "silk-flow", "caustics", "plasma"). --}}
 <section data-sw-component="shader-bg" data-preset="mesh-gradient" data-speed="1" data-intensity="0.5" class="relative flex min-h-[70vh] items-center justify-center overflow-hidden rounded-3xl">
   <div data-sw-part="overlay" class="bg-black/30"></div>

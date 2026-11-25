@@ -456,7 +456,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
     type: 'ShaderBg',
     marker: 'shader-bg',
     summary:
-      'A first-party WebGL animated background, themed by the project CI colors. Put it on any section/hero/full-page wrapper; the runtime renders the chosen preset on a canvas BEHIND the content. 30 presets, optional pointer interactivity, a global angle, and speed/intensity knobs. CSP-clean, reduced-motion aware, pauses when offscreen.',
+      'A first-party WebGL animated background, themed by the project CI colors. Put it on any section/hero/full-page wrapper; the runtime renders the chosen preset on a canvas BEHIND the content. 31 presets, optional pointer interactivity, a global angle, and speed/intensity knobs. CSP-clean, reduced-motion aware, pauses when offscreen.',
     authoring: 'markup',
     parts: [
       {
@@ -472,7 +472,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
         name: 'data-preset',
         on: 'root',
         description:
-          'Which background to render (default "mesh-gradient"). One of: mesh-gradient, silk-flow, plasma, halftone-pulse, caustics, marble-ink, sun-rays, lava-lamp, corner-mesh, flow-field, interference, ribbons, brushed-streaks, voronoi-cells, pointer-ripples, liquid-metal, rising-smoke, edge-glow, waterfall, heat-haze, bokeh-drift, contours, starfield, sine-strands, vortex-swirl, ink-bloom, mist-layers, drifting-blobs, glow-orbits, gradient-flow.',
+          'Which background to render (default "mesh-gradient"). One of: mesh-gradient, silk-flow, plasma, halftone-pulse, caustics, marble-ink, sun-rays, lava-lamp, corner-mesh, flow-field, interference, ribbons, brushed-streaks, voronoi-cells, pointer-ripples, liquid-metal, rising-smoke, edge-glow, waterfall, heat-haze, bokeh-drift, contours, starfield, sine-strands, vortex-swirl, ink-bloom, mist-layers, drifting-blobs, glow-orbits, gradient-flow, neuro-noise.',
       },
       { name: 'data-speed', on: 'root', description: 'Animation speed multiplier 0–4 (default 1). "0" renders a single static frame.' },
       { name: 'data-intensity', on: 'root', description: 'Saturation/brightness 0–1 (default 0.5). Lower = more muted/subtle behind text.' },

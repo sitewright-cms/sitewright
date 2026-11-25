@@ -62,7 +62,7 @@ Put a TLS reverse proxy in front and you're live. Full guide → **[docs/deploym
 
 ### 🧩 Interactive components & motion
 - **First-party components** — carousel/slider (Embla), tabs, lightbox gallery, native `<dialog>` modals,
-  dismissible banners, forms, a date/time/range picker, and **WebGL shader backgrounds** (30 presets). All
+  dismissible banners, forms, a date/time/range picker, and **WebGL shader backgrounds** (31 presets). All
   accessible and degrade to usable HTML without JS.
 - **Mini shop** — a front-end cart (`{{sw-cart}}` / `{{sw-add-to-cart}}`) with freely definable buyer fields
   and order hand-off to a form; off site-wide until explicitly enabled, so the helpers render nothing by default.

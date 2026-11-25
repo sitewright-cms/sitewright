@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { SHADER_BG_CSS, SHADER_BG_JS } from '../src/shader-bg.js';
 import { SHADER_BG_PRESETS, SHADER_BG_PRESET_KEYS, DEFAULT_SHADER_PRESET, shaderPresetByKey, SHADER_AUTO_LIGHT, SHADER_AUTO_DARK } from '../src/shader-bg-presets.js';
 import { componentTypesInSource, componentAssets, COMPONENT_TYPES } from '../src/components.js';
 import { COMPONENT_CATALOG } from '@sitewright/schema';
 
 describe('shader-bg presets', () => {
-  it('has 30 presets with unique kebab-case keys', () => {
-    expect(SHADER_BG_PRESETS.length).toBe(30);
+  it('has 31 presets with unique kebab-case keys', () => {
+    expect(SHADER_BG_PRESETS.length).toBe(31);
     expect(new Set(SHADER_BG_PRESET_KEYS).size).toBe(SHADER_BG_PRESET_KEYS.length);
     for (const k of SHADER_BG_PRESET_KEYS) expect(k).toMatch(/^[a-z][a-z0-9-]*$/);
   });
@@ -16,6 +18,18 @@ describe('shader-bg presets', () => {
     expect(SHADER_BG_PRESET_KEYS).toContain(DEFAULT_SHADER_PRESET);
     expect(shaderPresetByKey('does-not-exist').key).toBe(DEFAULT_SHADER_PRESET);
     expect(shaderPresetByKey('plasma').key).toBe('plasma');
+  });
+
+  it('the preset ported from Paper Shaders keeps its source and license, in the GLSL it ships and in the repo', () => {
+    const preset = shaderPresetByKey('neuro-noise');
+    expect(preset.key).toBe('neuro-noise');
+    expect(preset.glsl).toContain('Paper Shaders (https://github.com/paper-design/shaders). Copyright 2026 Paper.');
+    expect(preset.glsl).toContain('Apache License 2.0');
+    expect(preset.glsl).toContain('Modified for Sitewright.');
+    expect(SHADER_BG_JS).toContain(JSON.stringify(preset.glsl).slice(1, -1));
+    const dir = fileURLToPath(new URL('../vendor-src/paper-shaders/', import.meta.url));
+    expect(readFileSync(`${dir}LICENSE`, 'utf8')).toContain('Apache License');
+    expect(readFileSync(`${dir}NOTICE`, 'utf8')).toContain('Copyright 2026 Paper');
   });
 });
 
@@ -32,7 +46,7 @@ describe('shader-bg runtime', () => {
 
   it('runtime is syntactically valid JS and embeds every preset', () => {
     expect(() => new Function(SHADER_BG_JS)).not.toThrow();
-    expect((SHADER_BG_JS.match(/vec3 render\(vec2 uv/g) || []).length).toBe(30);
+    expect((SHADER_BG_JS.match(/vec3 render\(vec2 uv/g) || []).length).toBe(31);
   });
 
   it('consumes every documented data-* knob', () => {

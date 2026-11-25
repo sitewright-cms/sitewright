@@ -129,7 +129,7 @@ function Knob({ label, value, min, max, step, onChange, fmt }: {
 }
 
 /**
- * The Background preset PICKER — a live WebGL gallery over the same 30 presets the site runtime ships
+ * The Background preset PICKER — a live WebGL gallery over the same 31 presets the site runtime ships
  * (one shared offscreen GL context). Left: a scrollable column of preset cards. Right: the live large
  * preview, a settings panel (speed / intensity / angle / pointer-interactive / legibility overlay + the
  * three color slots, each a CI token, a Custom color, or the theme-tracking AUTO token), and the

@@ -341,6 +341,26 @@ vec3 render(vec2 uv, vec2 st){
   col=mix(col,uC3,smoothstep(0.5,0.0,f)*0.6);
   return col;
 }` },
+  // Ported from Paper Shaders' Neuro Noise (Apache-2.0); see vendor-src/paper-shaders/README.md for what changed.
+  // Slots: 1 = the glow, 2 = the bright cores, 3 = the background.
+  { key: 'neuro-noise', name: 'Neuro Noise', glsl: `
+// Neuro Noise, from Paper Shaders (https://github.com/paper-design/shaders). Copyright 2026 Paper.
+// Licensed under the Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0). Modified for Sitewright.
+vec3 render(vec2 uv, vec2 st){
+  mat2 r=rot(-1.0); // Paper's rotate(v, 1.)
+  vec2 p=st*1.04, acc=vec2(0.0), res=vec2(0.0);
+  float t=uTime*0.5, sc=8.0;
+  for(int j=0;j<15;j++){
+    p=r*p; acc=r*acc;
+    vec2 layer=p*sc+float(j)+acc-t;
+    acc+=sin(layer);
+    res+=(0.5+0.5*cos(layer))/sc;
+    sc*=1.2;
+  }
+  float n=min(1.4, pow(1.05*(res.x+res.y)*(res.x+res.y), 2.5));
+  vec3 col=mix(uC1,uC2,smoothstep(0.7,1.4,n))*n + uC3*(1.0-min(n,1.0));
+  return col + (fract(sin(dot(0.014*gl_FragCoord.xy, vec2(12.9898,78.233)))*43758.5453123)-0.5)/256.0;
+}` },
 ] as const;
 
 /** Stable preset keys (the allowed `data-preset` values), in display order. */

@@ -9,6 +9,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Animated backgrounds: a Neuro Noise preset** (`data-preset="neuro-noise"`), ported from Paper Shaders (Apache 2.0)
+  to our own WebGL runtime. Glowing, slowly shifting filaments in three colours: slot 1 the glow, slot 2 the bright
+  cores, slot 3 the background. At the default intensity it renders like Paper's original to within 3/255 per colour
+  channel. It scales with the section rather than the screen, so its thumbnail in the picker looks like the section,
+  and it takes the usual speed, intensity, angle and `auto` colour settings; the pointer does not move it. Paper's
+  license and notice are in `packages/blocks/vendor-src/paper-shaders/`, and the shader that ships names its source
+  and license.
+
 ## [0.84.1] — 2026-11-24
 
 ### Fixed

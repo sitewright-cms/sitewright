@@ -11,3 +11,29 @@ drizzle.config.ts
 vitest.config.ts
 playwright.config.ts
 .turbo
+
+# Files in node_modules that nothing reads at runtime (~100 MB). The server does not run with source maps
+# enabled. Every package.json and license file stays, so image scanners and license notices see every
+# package; the CI snapshot job checks both (apps/api/scripts/check-pruned-image.sh). Docs are pruned BY NAME, not
+# as `*.md`: 38 licenses are .md files, and Playwright's CLI reads its own SKILL.md files.
+node_modules/**/*.d.ts
+node_modules/**/*.d.mts
+node_modules/**/*.d.cts
+node_modules/**/*.js.map
+node_modules/**/*.cjs.map
+node_modules/**/*.mjs.map
+node_modules/**/*.ts.map
+node_modules/**/*.mts.map
+node_modules/**/*.cts.map
+node_modules/**/*.css.map
+node_modules/**/[Rr][Ee][Aa][Dd][Mm][Ee]*.md
+node_modules/**/[Cc][Hh][Aa][Nn][Gg][Ee][Ll][Oo][Gg]*.md
+node_modules/**/[Hh][Ii][Ss][Tt][Oo][Rr][Yy]*.md
+node_modules/**/CONTRIBUTING.md
+node_modules/**/SECURITY.md
+node_modules/**/GOVERNANCE.md
+# Tailwind's WebAssembly fallback, for platforms without its native scanner; this image always has the
+# native one. The store entry and every link to it go together, so no link is left dangling. (`?` stands
+# in for the `+` in the store name, so the pattern does not depend on how a Docker version escapes it.)
+node_modules/.pnpm/@tailwindcss?oxide-wasm32-wasi@*
+node_modules/**/@tailwindcss/oxide-wasm32-wasi

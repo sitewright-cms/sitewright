@@ -19,6 +19,13 @@ The running version of an instance is reported at `GET /version` (baked into the
   license and notice are in `packages/blocks/vendor-src/paper-shaders/`, and the shader that ships names its source
   and license.
 
+### Changed
+
+- **The Docker image is about 100 MB smaller.** Its `node_modules` no longer carries files that nothing reads at
+  runtime: type declarations, source maps, READMEs and changelogs, and Tailwind's WebAssembly fallback (the image
+  uses Tailwind's native scanner). Every package's `package.json` and license file is kept, so image scanners and
+  license notices see the same packages as before. CI checks both on every build of the image.
+
 ## [0.84.1] — 2026-11-24
 
 ### Fixed

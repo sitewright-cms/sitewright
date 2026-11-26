@@ -21,6 +21,8 @@ WORKDIR /app
 # --- dependencies + Chromium FIRST, so this heavy layer is CACHED across code-only rebuilds ---
 # node_modules changes only when deps change; copying it before the Chromium install means a plain code
 # change (dist/) no longer re-downloads the ~300MB browser on every deploy.
+# `.dockerignore` keeps type declarations, source maps, READMEs/changelogs and Tailwind's unused WebAssembly
+# fallback out of this copy; every package.json and license file stays (checked in CI's snapshot job).
 COPY --chown=node:node node_modules ./node_modules
 # Headless Chromium for server-side preview screenshots (the MCP `preview_page` tool renders the page so
 # an agent can SEE it). We install ONLY `chromium-headless-shell` — the purpose-built headless build the

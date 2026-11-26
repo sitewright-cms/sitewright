@@ -122,6 +122,15 @@ jobs:
           docker run --rm --workdir /app -v "$PWD/apps/api/scripts:/smoke:ro" \
             --entrypoint node "$IMAGE:$VERSION" /smoke/snapshot-smoke.mjs
 
+      # apps/api/.dockerignore prunes files nothing reads from node_modules. Check the image that is about to
+      # be published, as CI's snapshot job does: the pruned files are gone, and every package.json and license
+      # file of the deploy output is still there. A failure aborts with NOTHING pushed.
+      - name: node_modules pruned, manifests and licenses kept
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          IMAGE: ${{ steps.meta.outputs.image }}
+        run: bash apps/api/scripts/check-pruned-image.sh /tmp/deploy "$IMAGE:$VERSION"
+
       # Only reached if the smoke passed — now publish.
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin

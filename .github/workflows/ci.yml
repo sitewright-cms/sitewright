@@ -111,6 +111,13 @@ jobs:
       - name: Build runtime image
         run: docker build --pull -t sw-snapshot -f apps/api/Dockerfile /tmp/deploy
 
+      # apps/api/.dockerignore prunes files nothing reads from node_modules (type declarations, source maps,
+      # READMEs). This proves they are gone AND that nothing else went: every package.json, which image
+      # scanners read, and every license file of the deploy output must still be in the image. The release
+      # workflow runs the same check before it publishes.
+      - name: node_modules pruned, manifests and licenses kept
+        run: bash apps/api/scripts/check-pruned-image.sh /tmp/deploy sw-snapshot
+
       # The image's Node must meet the same floor as a contributor's (scripts/node-version-gate.mjs). The
       # Dockerfile builds on the moving `node:22-slim` tag, so nothing else would notice an image built on
       # a Node with a known hole (CVE-2026-111497, reached through fetch()). `--pull` above fetches the

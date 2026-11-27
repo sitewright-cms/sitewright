@@ -78,9 +78,20 @@ const RUNTIME = `(function(){
   probe.setAttribute('aria-hidden','true');
   probe.style.cssText='position:absolute;left:-9999px;top:-9999px;width:0;height:0;pointer-events:none';
   (document.body||document.documentElement).appendChild(probe);
+  // getComputedStyle keeps a colour in the space it was written in: rgb() for hex, rgb() and named colours, but
+  // oklch(), lab() and color() stay as they are. The dark theme writes its lifted brand colours as oklch(), and
+  // reading those digits as r,g,b painted every shader black there. A 1x1 canvas turns any colour the browser
+  // computes into sRGB bytes; an rgb() value keeps the direct read it always had.
+  var cx=null;
+  try{ var cv=document.createElement('canvas'); cv.width=cv.height=1; cx=cv.getContext('2d',{willReadFrequently:true}); }catch(e){}
   function toRGB(c){
     probe.style.color=''; probe.style.color=c;
     var s=getComputedStyle(probe).color;
+    if(s.indexOf('rgb')!==0&&cx){
+      cx.clearRect(0,0,1,1); cx.fillStyle='#000'; cx.fillStyle=s; cx.fillRect(0,0,1,1);
+      var d=cx.getImageData(0,0,1,1).data;
+      return [d[0]/255,d[1]/255,d[2]/255];
+    }
     var n=s.replace(/[^0-9.,]/g,'').split(',');
     return [(+n[0]||0)/255,(+n[1]||0)/255,(+n[2]||0)/255];
   }

@@ -16,6 +16,11 @@ The running version of an instance is reported at `GET /version` (baked into the
   scripts and files) was missing and every page rendered unstyled. Git deploys now add an empty `.nojekyll` file
   at the site root, which turns that processing off. Other Git hosts ignore the file.
 
+- **Animated backgrounds keep their colours in dark mode.** The dark theme writes its brand colours as `oklch()`,
+  and the shader read those as black, so every animated background on a site with themes turned black when a
+  visitor switched to dark (or arrived with dark already chosen). Colours in any format the browser understands
+  are now converted to sRGB for the shader; `rgb()` and hex colours are read exactly as before.
+
 ## [0.85.0] — 2026-11-26
 
 ### Added

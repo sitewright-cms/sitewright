@@ -1,0 +1,295 @@
+{{!-- META {"path":"","data":{"crumb":"Home"},"title":"Sitewright — the open-source website platform for web developers","description":"Write pages in HTML, Handlebars and Tailwind. Give clients an in-place editor that can't break the layout. Let AI agents build through MCP. Publish plain static files anywhere, from one self-hosted container."} --}}
+{{!-- ═══ HERO — the Neuro Noise shader as it is, no scrim; the copy carries its own soft shadow. ═══ --}}
+<section class="relative isolate overflow-hidden bg-neutral text-white" data-sw-component="shader-bg" data-preset="neuro-noise" data-speed="0.6" data-intensity="0.55" data-colors="primary,accent,neutral" data-interactive="true">
+  <div class="ws-grid pointer-events-none absolute inset-0 opacity-70" aria-hidden="true"></div>
+  <div class="relative mx-auto max-w-7xl px-6 pt-20 sm:pt-28">
+    <div class="ws-hero-copy max-w-6xl">
+      <a class="inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/25 px-3 py-1 text-xs font-medium text-white/85 backdrop-blur hover:border-white/40" href="https://github.com/sitewright-cms/sitewright" target="_blank" rel="noopener" data-sw-animation="fade-up">
+        <span class="h-1.5 w-1.5 rounded-full bg-accent"></span>
+        <span data-sw-text="hero_badge">Open source · Apache 2.0 · Self-hosted</span>
+        {{sw-icon "arrow-right" "h-3.5 w-3.5"}}
+      </a>
+      <h1 class="ws-display mt-8 text-5xl font-bold sm:text-7xl xl:text-[5.5rem]" data-sw-animation="fade-up" data-sw-delay="80">
+        <span class="block" data-sw-text="hero_l1">Websites, built</span>
+        <span class="block" data-sw-text="hero_l2">like software.</span>
+        <span class="ws-gradient-text block" data-sw-text="hero_l3">Edited like documents.</span>
+      </h1>
+      <div class="mt-8 grid gap-8 lg:grid-cols-[1.3fr_1fr] lg:items-end">
+        <p class="max-w-2xl text-lg leading-relaxed text-white/85 sm:text-xl" data-sw-animation="fade-up" data-sw-delay="160" data-sw-text="hero_lead">The website platform for web developers. Write pages in HTML, Handlebars and Tailwind. Give clients an editor that can't break the layout. Let AI agents build through MCP. Publish plain static files anywhere.</p>
+        <div class="flex flex-wrap items-center gap-3 lg:justify-end" data-sw-animation="fade-up" data-sw-delay="240">
+          <a class="btn btn-primary btn-lg" href="{{sw-url '/docs/getting-started'}}">Get started {{sw-icon "arrow-right" "h-5 w-5"}}</a>
+          <a class="btn btn-lg border-white/25 bg-black/25 text-white backdrop-blur hover:border-white/50 hover:bg-black/40" href="{{sw-url '/showcase'}}">See it live</a>
+        </div>
+      </div>
+    </div>
+
+    {{!-- The product, tilted back in its window, with three facts floating at its edges. --}}
+    <div class="relative mt-16 pb-8 sm:mt-20" data-sw-animation="fade-up" data-sw-delay="320">
+      <div class="ws-glow" aria-hidden="true"></div>
+      <div class="ws-tilt relative mx-auto max-w-6xl">
+        <div class="ws-browser text-base-content">
+          <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">sitewright.example/projects/acme/pages/home</span></div>
+          {{> ws-media slot="hero_product" class="rounded-none"}}
+        </div>
+      </div>
+      <div class="pointer-events-none absolute inset-0 mx-auto hidden max-w-6xl lg:block" aria-hidden="true">
+        <span class="ws-chip ws-bob absolute -left-6 top-[18%]">{{sw-icon "cursor-text" "h-4 w-4 text-accent"}} Click to edit, in place</span>
+        <span class="ws-chip ws-bob-2 absolute -right-4 top-[38%]">{{sw-icon "robot" "h-4 w-4 text-accent"}} put_page · pricing</span>
+        <span class="ws-chip ws-bob absolute bottom-[14%] left-[12%]">{{sw-icon "lightning" "h-4 w-4 text-accent"}} Static HTML · no framework</span>
+      </div>
+    </div>
+  </div>
+
+  {{!-- Capability ticker. The list is doubled so the loop is seamless; the second half is hidden from assistive tech. --}}
+  <div class="relative border-t border-white/10 bg-black/20 py-4 backdrop-blur">
+    <div class="ws-marquee">
+      <div class="ws-marquee-track text-sm text-white/80">
+        {{#each (sw-split "Handlebars + Tailwind v4|In-place client editing|82 MCP tools|Typed datasets|Code-inheriting translations|AVIF + WebP srcsets|Forms with proof of work|Shop + markets|Booking + CalDAV|FTP · SFTP · Git deploys|Lighthouse in the editor|Cookieless statistics|Rank tracking|Passkeys + OIDC|White-label|Handlebars + Tailwind v4|In-place client editing|82 MCP tools|Typed datasets|Code-inheriting translations|AVIF + WebP srcsets|Forms with proof of work|Shop + markets|Booking + CalDAV|FTP · SFTP · Git deploys|Lighthouse in the editor|Cookieless statistics|Rank tracking|Passkeys + OIDC|White-label" "|")}}
+        <span class="inline-flex shrink-0 items-center gap-2 rounded-full border border-white/15 px-3.5 py-1.5"{{#if (sw-gte @index 15)}} aria-hidden="true"{{/if}}><span class="h-1 w-1 rounded-full bg-accent"></span>{{this}}</span>
+        {{/each}}
+      </div>
+    </div>
+  </div>
+</section>
+
+{{!-- ═══ THREE WAYS IN — numbered editorial rows, media alternating sides ═══ --}}
+<section class="mx-auto max-w-7xl px-6 py-24 sm:py-36">
+  <div class="grid gap-6 lg:grid-cols-[1fr_1.2fr] lg:items-end" data-sw-animation="fade-up">
+    <h2 class="ws-display text-4xl font-bold sm:text-6xl" data-sw-text="ways_title">One site.<br />Three ways in.</h2>
+    <p class="max-w-xl text-lg leading-relaxed text-base-content/70" data-sw-text="ways_lead">Most platforms make you choose between code and convenience. Sitewright gives each person the surface that fits them, on the same pages.</p>
+  </div>
+
+  <div class="mt-20 space-y-24 sm:space-y-32">
+    <div class="grid items-center gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
+      <div data-sw-animation="fade-up">
+        <div class="flex items-baseline gap-4"><span class="ws-numeral text-7xl sm:text-8xl">01</span><span class="ws-index ws-ink">Developers</span></div>
+        <h3 class="mt-6 font-heading text-3xl font-bold tracking-tight">You own the code.</h3>
+        <p class="mt-4 text-lg leading-relaxed text-base-content/70">Every page is Handlebars, HTML, Tailwind v4 and daisyUI 5. No block tree sits between you and the markup, so what you write is what ships.</p>
+        <ul class="mt-6 grid list-none gap-2 p-0 text-base-content/80 sm:grid-cols-2">
+          <li class="flex gap-2">{{sw-icon "check" "mt-1 h-4 w-4 shrink-0 text-accent"}} A code editor with live preview</li>
+          <li class="flex gap-2">{{sw-icon "check" "mt-1 h-4 w-4 shrink-0 text-accent"}} 57 template helpers</li>
+          <li class="flex gap-2">{{sw-icon "check" "mt-1 h-4 w-4 shrink-0 text-accent"}} Typed datasets, 18 field types</li>
+          <li class="flex gap-2">{{sw-icon "check" "mt-1 h-4 w-4 shrink-0 text-accent"}} Snippets, templates and slots</li>
+        </ul>
+      </div>
+      <div class="ws-browser" data-sw-parallax-translate="40,-40">
+        <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Code · pages/services</span></div>
+        {{> ws-media slot="way_developer" class="rounded-none"}}
+      </div>
+    </div>
+
+    <div class="grid items-center gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16">
+      <div class="ws-browser order-2 lg:order-1" data-sw-parallax-translate="40,-40">
+        <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Content · live preview</span></div>
+        {{> ws-media slot="way_client" class="rounded-none"}}
+      </div>
+      <div class="order-1 lg:order-2" data-sw-animation="fade-up">
+        <div class="flex items-baseline gap-4"><span class="ws-numeral text-7xl sm:text-8xl">02</span><span class="ws-index ws-ink">Clients</span></div>
+        <h3 class="mt-6 font-heading text-3xl font-bold tracking-tight">They edit the words, in place.</h3>
+        <p class="mt-4 text-lg leading-relaxed text-base-content/70">One attribute makes a heading, a link, an image or a background editable. Clients click it on the live preview and type. They never need to open the code, so the layout you built stays the layout you built.</p>
+        <div class="mt-6 rounded-xl border border-base-content/10 bg-base-200/60 p-4 font-code text-sm"><span class="text-base-content/50">&lt;h1</span> <span class="ws-ink">data-sw-text</span>=<span class="text-accent">"headline"</span><span class="text-base-content/50">&gt;</span>Websites that work<span class="text-base-content/50">&lt;/h1&gt;</span></div>
+      </div>
+    </div>
+
+    <div class="grid items-center gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
+      <div data-sw-animation="fade-up">
+        <div class="flex items-baseline gap-4"><span class="ws-numeral text-7xl sm:text-8xl">03</span><span class="ws-index ws-ink">AI agents</span></div>
+        <h3 class="mt-6 font-heading text-3xl font-bold tracking-tight">Agents build through MCP.</h3>
+        <p class="mt-4 text-lg leading-relaxed text-base-content/70">Every instance serves an MCP endpoint with 82 tools. Claude and other agents write pages, upload media, preview at five breakpoints, run PageSpeed and deploy, with the same permissions as a person.</p>
+        <a class="btn btn-ghost mt-6 px-0 hover:bg-transparent" href="{{sw-url '/features/ai-agents'}}">How agents work {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+      </div>
+      <div class="ws-browser" data-sw-parallax-translate="40,-40">
+        <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">claude · sitewright /mcp</span></div>
+        {{> ws-media slot="way_agent" class="rounded-none"}}
+      </div>
+    </div>
+  </div>
+</section>
+
+{{!-- ═══ BY THE NUMBERS ═══ --}}
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto grid max-w-7xl grid-cols-2 gap-y-12 px-6 py-20 sm:grid-cols-3 lg:grid-cols-5">
+    <div data-sw-animation="fade-up"><p class="ws-numeral text-6xl sm:text-7xl">82</p><p class="mt-3 text-sm text-base-content/70">MCP tools for agents</p></div>
+    <div data-sw-animation="fade-up" data-sw-delay="80"><p class="ws-numeral text-6xl sm:text-7xl">57</p><p class="mt-3 text-sm text-base-content/70">template helpers</p></div>
+    <div data-sw-animation="fade-up" data-sw-delay="160"><p class="ws-numeral text-6xl sm:text-7xl">31</p><p class="mt-3 text-sm text-base-content/70">animated backgrounds</p></div>
+    <div data-sw-animation="fade-up" data-sw-delay="240"><p class="ws-numeral text-6xl sm:text-7xl">10</p><p class="mt-3 text-sm text-base-content/70">accessible components</p></div>
+    <div data-sw-animation="fade-up" data-sw-delay="320"><p class="ws-numeral text-6xl sm:text-7xl">1</p><p class="mt-3 text-sm text-base-content/70">container to run it all</p></div>
+  </div>
+</section>
+
+{{!-- ═══ CODE → LIVE RESULT. The right side is REAL: it renders the home_services dataset, click-to-edit. ═══ --}}
+<section class="mx-auto max-w-7xl px-6 py-24 sm:py-36">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">Pages are code · content is data</p>
+    <h2 class="ws-display mt-4 text-4xl font-bold sm:text-6xl" data-sw-text="data_title">Write the loop once. Let anyone edit the rows.</h2>
+  </div>
+  <div class="mt-14 grid gap-6 lg:grid-cols-2">
+    <div class="ws-window overflow-hidden rounded-2xl" data-sw-animation="fade-up">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/home.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"grid gap-4 sm:grid-cols-3"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-hb">\{{#each dataset.home_services}}</span>
+  <span class="tk-tag">&lt;article</span> <span class="tk-attr">class</span>=<span class="tk-str">"rounded-xl bg-base-200 p-5"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-hb">\{{sw-icon icon "h-7 w-7 text-primary"}}</span>
+    <span class="tk-tag">&lt;h3&gt;</span><span class="tk-hb">\{{title}}</span><span class="tk-tag">&lt;/h3&gt;</span>
+    <span class="tk-tag">&lt;p&gt;</span><span class="tk-hb">\{{summary}}</span><span class="tk-tag">&lt;/p&gt;</span>
+  <span class="tk-tag">&lt;/article&gt;</span>
+  <span class="tk-hb">\{{/each}}</span>
+<span class="tk-tag">&lt;/div&gt;</span></code></pre>
+    </div>
+    <div class="sw-border-beam relative rounded-2xl border border-base-content/10 bg-base-100 p-5 [--sw-beam-width:2px]" data-sw-animation="fade-up" data-sw-delay="120">
+      <div class="flex items-center gap-2 text-xs text-base-content/60">{{sw-icon "eye" "h-4 w-4"}} The same code, rendered on this page <span class="ml-auto rounded-full bg-accent/15 px-2 py-0.5 font-medium text-accent">live</span></div>
+      <div class="mt-5 grid gap-4 sm:grid-cols-3">
+        {{#each dataset.home_services}}
+        <article class="rounded-xl bg-base-200 p-5" data-sw-animation="fade-up" data-sw-delay="{{sw-stagger @index 90}}">
+          {{sw-icon icon "h-7 w-7 ws-ink"}}
+          <h3 class="mt-4 font-heading text-lg font-bold">{{title}}</h3>
+          <p class="mt-1 text-sm leading-relaxed text-base-content/70">{{summary}}</p>
+        </article>
+        {{/each}}
+      </div>
+      <p class="mt-5 text-sm text-base-content/60">In the editor, each card opens its row for editing with a click.</p>
+    </div>
+  </div>
+</section>
+
+{{!-- ═══ BUILT IN — asymmetric grid: a beam-lit lead tile, live shaders, two screenshot tiles ═══ --}}
+<section class="bg-base-200/50 py-24 sm:py-36">
+  <div class="mx-auto max-w-7xl px-6">
+    <div class="flex flex-wrap items-end justify-between gap-6" data-sw-animation="fade-up">
+      <div class="max-w-2xl">
+        <p class="ws-index ws-ink">Built in, not bolted on</p>
+        <h2 class="ws-display mt-4 text-4xl font-bold sm:text-6xl" data-sw-text="built_title">Everything a client site needs.</h2>
+      </div>
+      <a class="btn btn-ghost" href="{{sw-url '/features'}}">All features {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+
+    <div class="mt-14 grid gap-4 lg:grid-cols-6">
+      <a class="ws-tile sw-border-beam relative overflow-hidden rounded-3xl border border-base-content/10 bg-base-100 p-8 lg:col-span-4 lg:row-span-2 [--sw-beam-width:2px]" href="{{sw-url '/showcase'}}" data-sw-animation="fade-up">
+        <p class="ws-index text-base-content/60">Components &amp; motion</p>
+        <h3 class="mt-3 max-w-lg font-heading text-3xl font-bold tracking-tight">Ten components and 31 animated backgrounds, switched on with attributes.</h3>
+        <p class="mt-3 max-w-xl leading-relaxed text-base-content/70">Carousels, lightboxes, tabs, modals, banners, date pickers, image maps and site search. Entrance and scroll animations, SVG drawing and parallax, each switched on with a data attribute.</p>
+        <div class="mt-8 grid grid-cols-3 gap-3" aria-hidden="true">
+          <div class="h-28 overflow-hidden rounded-2xl sm:h-36" data-sw-component="shader-bg" data-preset="mesh-gradient" data-colors="primary,secondary,accent"></div>
+          <div class="h-28 overflow-hidden rounded-2xl sm:h-36" data-sw-component="shader-bg" data-preset="silk-flow" data-colors="accent,primary,neutral"></div>
+          <div class="h-28 overflow-hidden rounded-2xl sm:h-36" data-sw-component="shader-bg" data-preset="neuro-noise" data-colors="secondary,accent,neutral"></div>
+        </div>
+      </a>
+      <a class="ws-tile rounded-3xl border border-base-content/10 bg-base-100 p-6 lg:col-span-2" href="{{sw-url '/features/templating'}}" data-sw-animation="fade-up" data-sw-delay="80">{{sw-icon "database" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Datasets</h3><p class="mt-1 text-sm leading-relaxed text-base-content/70">Typed collections with 18 field types. Loop them in code; edit rows with a click.</p></a>
+      <a class="ws-tile rounded-3xl border border-base-content/10 bg-base-100 p-6 lg:col-span-2" href="{{sw-url '/features/languages'}}" data-sw-animation="fade-up" data-sw-delay="160">{{sw-icon "translate" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Languages</h3><p class="mt-1 text-sm leading-relaxed text-base-content/70">Add one and every page gets a variant that inherits its code.</p></a>
+
+      <a class="ws-tile overflow-hidden rounded-3xl border border-base-content/10 bg-base-100 lg:col-span-3" href="{{sw-url '/features/forms'}}" data-sw-animation="fade-up">
+        <div class="p-6 pb-0">{{sw-icon "envelope-simple" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Forms with an inbox</h3><p class="mt-1 text-sm leading-relaxed text-base-content/70">A form builder, every submission kept, and spam stopped by honeypot, time trap, proof of work or captcha.</p></div>
+        <div class="mt-6 px-6">{{> ws-media slot="tile_forms" class="rounded-b-none"}}</div>
+      </a>
+      <a class="ws-tile overflow-hidden rounded-3xl border border-base-content/10 bg-base-100 lg:col-span-3" href="{{sw-url '/features/statistics'}}" data-sw-animation="fade-up" data-sw-delay="80">
+        <div class="p-6 pb-0">{{sw-icon "chart-bar" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Statistics without cookies</h3><p class="mt-1 text-sm leading-relaxed text-base-content/70">Visits, sources and countries, with bots counted apart. Rank tracking and Search Console data beside them.</p></div>
+        <div class="mt-6 px-6">{{> ws-media slot="tile_stats" class="rounded-b-none"}}</div>
+      </a>
+
+      <a class="ws-tile rounded-3xl border border-base-content/10 bg-base-100 p-6 lg:col-span-2" href="{{sw-url '/features/media'}}" data-sw-animation="fade-up">{{sw-icon "image" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Images</h3><p class="mt-1 text-sm leading-relaxed text-base-content/70">AVIF and WebP srcsets, blur-up placeholders, crop and rotate, four stock libraries.</p></a>
+      <a class="ws-tile rounded-3xl border border-base-content/10 bg-base-100 p-6 lg:col-span-2" href="{{sw-url '/features/shop'}}" data-sw-animation="fade-up" data-sw-delay="80">{{sw-icon "shopping-bag" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Shop</h3><p class="mt-1 text-sm leading-relaxed text-base-content/70">A cart, markets and currencies, Stripe, PayPal and Mollie, and an orders inbox.</p></a>
+      <a class="ws-tile rounded-3xl border border-base-content/10 bg-base-100 p-6 lg:col-span-2" href="{{sw-url '/features/booking'}}" data-sw-animation="fade-up" data-sw-delay="160">{{sw-icon "calendar-check" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Booking</h3><p class="mt-1 text-sm leading-relaxed text-base-content/70">Appointments, set times, ranges and nights, synced with CalDAV and Google calendars.</p></a>
+    </div>
+  </div>
+</section>
+
+{{!-- ═══ AGENTS — the session on the left, the screenshots it gets back on the right ═══ --}}
+<section class="mx-auto max-w-7xl px-6 py-24 sm:py-36">
+  <div class="grid gap-14 lg:grid-cols-[1fr_1.15fr] lg:items-center">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">Ready for AI agents</p>
+      <h2 class="ws-display mt-4 text-4xl font-bold sm:text-6xl" data-sw-text="mcp_title">Point Claude at your instance and ask for a page.</h2>
+      <p class="mt-6 text-lg leading-relaxed text-base-content/70" data-sw-text="mcp_lead">The MCP endpoint at /mcp signs agents in with OAuth and gives them the roles your team has. And they see what they build: every preview comes back as screenshots at the breakpoints they ask for.</p>
+      <div class="ws-window mt-8 overflow-hidden rounded-2xl">
+        <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">claude</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-dim">&gt;</span> Add a pricing page with three plans from
+  a dataset, then check it on mobile.
+
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">put_content</span>     <span class="tk-dim">dataset plans</span>
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">put_page</span>        <span class="tk-dim">pricing</span>
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">preview_page</span>    <span class="tk-dim">mobile · tablet · fullhd</span>
+<span class="tk-ok">✓</span> The plans stack on mobile and the
+  featured card keeps its badge.</code></pre>
+      </div>
+    </div>
+    <div class="relative pb-16" data-sw-animation="fade-up" data-sw-delay="120">
+      <div class="ws-device">{{> ws-media slot="agent_desktop"}}</div>
+      <div class="ws-device absolute bottom-0 left-0 w-[30%] sm:-left-6" data-sw-parallax-translate="30,-30">{{> ws-media slot="agent_tablet"}}</div>
+      <div class="ws-device absolute -bottom-4 right-4 w-[20%]" data-sw-parallax-translate="50,-50">{{> ws-media slot="agent_mobile"}}</div>
+    </div>
+  </div>
+</section>
+
+{{!-- ═══ PUBLISH ANYWHERE — the wires draw in as the diagram enters the view ═══ --}}
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-24 sm:py-32">
+    <div class="mx-auto max-w-3xl text-center" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">Static output · publish anywhere</p>
+      <h2 class="ws-display mt-4 text-4xl font-bold sm:text-6xl" data-sw-text="deploy_title">Plain HTML, CSS and JS. Wherever you like.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="deploy_lead">No framework ships to the browser, and each page loads only what it uses. Host it on Sitewright, or deploy it to any server. Only the files that changed are uploaded.</p>
+    </div>
+
+    <div class="relative mx-auto mt-16 hidden h-[22rem] max-w-5xl lg:block">
+      <svg class="absolute inset-0 h-full w-full" viewBox="0 0 1000 352" preserveAspectRatio="none" aria-hidden="true" data-sw-svg-scene data-sw-svg-stagger="90">
+        <path class="ws-wire" data-sw-svg="draw" d="M500 176 C 330 176 260 40 190 40" />
+        <path class="ws-wire" data-sw-svg="draw" d="M500 176 C 330 176 260 176 190 176" />
+        <path class="ws-wire" data-sw-svg="draw" d="M500 176 C 330 176 260 312 190 312" />
+        <path class="ws-wire" data-sw-svg="draw" d="M500 176 C 670 176 740 40 810 40" />
+        <path class="ws-wire" data-sw-svg="draw" d="M500 176 C 670 176 740 176 810 176" />
+        <path class="ws-wire" data-sw-svg="draw" d="M500 176 C 670 176 740 312 810 312" />
+      </svg>
+      <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+        <div class="sw-border-beam flex items-center gap-3 rounded-2xl bg-neutral px-6 py-5 text-white shadow-2xl">
+          <svg class="h-10 w-10" viewBox="0 0 96 96" fill="none" aria-hidden="true"><path d="M30 18 V72 H78" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" /><rect x="40" y="52" width="26" height="14" rx="3" fill="#14B8A6" /><rect x="40" y="35" width="26" height="14" rx="3" fill="#6D5BF5" /></svg>
+          <div><p class="font-heading text-lg font-bold">Publish</p><p class="text-xs text-white/60">one build per target</p></div>
+        </div>
+      </div>
+      <div class="ws-node absolute left-0 top-0 w-48">{{sw-icon "house-line" "h-5 w-5 ws-ink"}}<p class="mt-1 font-semibold">Local Hosting</p><p class="text-xs text-base-content/60">on your instance, custom domains</p></div>
+      <div class="ws-node absolute left-0 top-1/2 w-48 -translate-y-1/2">{{sw-icon "lock-key" "h-5 w-5 ws-ink"}}<p class="mt-1 font-semibold">SFTP · rsync</p><p class="text-xs text-base-content/60">delta uploads over SSH</p></div>
+      <div class="ws-node absolute bottom-0 left-0 w-48">{{sw-icon "hard-drives" "h-5 w-5 ws-ink"}}<p class="mt-1 font-semibold">FTP · FTPS</p><p class="text-xs text-base-content/60">shared hosting, TLS pinning</p></div>
+      <div class="ws-node absolute right-0 top-0 w-48">{{sw-icon "brand:github" "h-5 w-5 ws-ink"}}<p class="mt-1 font-semibold">Git · GitHub Pages</p><p class="text-xs text-base-content/60">one fresh commit per deploy</p></div>
+      <div class="ws-node absolute right-0 top-1/2 w-48 -translate-y-1/2">{{sw-icon "eye" "h-5 w-5 ws-ink"}}<p class="mt-1 font-semibold">Demo copy</p><p class="text-xs text-base-content/60">features work, nothing is sent</p></div>
+      <div class="ws-node absolute bottom-0 right-0 w-48">{{sw-icon "file-zip" "h-5 w-5 ws-ink"}}<p class="mt-1 font-semibold">Download .zip</p><p class="text-xs text-base-content/60">host it anywhere yourself</p></div>
+    </div>
+    <ul class="mx-auto mt-12 grid max-w-md list-none gap-3 p-0 lg:hidden">
+      <li class="ws-node flex items-center gap-3">{{sw-icon "house-line" "h-5 w-5 ws-ink"}} Local Hosting, custom domains</li>
+      <li class="ws-node flex items-center gap-3">{{sw-icon "lock-key" "h-5 w-5 ws-ink"}} SFTP and rsync</li>
+      <li class="ws-node flex items-center gap-3">{{sw-icon "hard-drives" "h-5 w-5 ws-ink"}} FTP and FTPS</li>
+      <li class="ws-node flex items-center gap-3">{{sw-icon "brand:github" "h-5 w-5 ws-ink"}} Git and GitHub Pages</li>
+      <li class="ws-node flex items-center gap-3">{{sw-icon "eye" "h-5 w-5 ws-ink"}} Demo copies</li>
+      <li class="ws-node flex items-center gap-3">{{sw-icon "file-zip" "h-5 w-5 ws-ink"}} Download as .zip</li>
+    </ul>
+  </div>
+</section>
+
+{{!-- ═══ SELF-HOST — closing call to action ═══ --}}
+<section class="mx-auto max-w-7xl px-6 py-24 sm:py-36">
+  <div class="sw-border-beam relative overflow-hidden rounded-[2rem] bg-neutral text-white [--sw-beam-width:2px]" data-sw-animation="zoom-in">
+    <div class="ws-grid pointer-events-none absolute inset-0 opacity-60" aria-hidden="true"></div>
+    <div class="relative grid gap-12 p-8 sm:p-14 lg:grid-cols-[1.05fr_1fr] lg:items-center">
+      <div>
+        <h2 class="ws-display text-4xl font-bold sm:text-6xl" data-sw-text="host_title">Run it on your own server.</h2>
+        <p class="mt-5 max-w-xl text-lg leading-relaxed text-white/70" data-sw-text="host_lead">One container and one volume. SQLite inside, headless Chromium for previews and audits, and a database snapshot before every migration. Your sites and your clients' data stay on your hardware.</p>
+        <div class="mt-8 flex flex-wrap gap-3">
+          <a class="btn btn-primary btn-lg" href="{{sw-url '/docs/getting-started'}}">Read the install guide</a>
+          <a class="btn btn-lg gap-2 border-white/20 bg-white/5 text-white hover:border-white/40 hover:bg-white/10" href="https://github.com/sitewright-cms/sitewright" target="_blank" rel="noopener">{{sw-icon "brand:github" "h-5 w-5"}} View on GitHub</a>
+        </div>
+      </div>
+      <div class="ws-window overflow-hidden rounded-2xl">
+        <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">terminal</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-com"># Once: the key that encrypts stored secrets</span>
+<span class="tk-ok">$</span> export SW_ENCRYPTION_KEY="$(openssl rand -base64 32)"
+
+<span class="tk-ok">$</span> docker run -d --name sitewright \
+    -p 127.0.0.1:8080:80 -v sw-data:/app/data \
+    -e SW_PUBLIC_URL=https://sites.example.com \
+    -e TRUST_PROXY=true \
+    -e SW_ENCRYPTION_KEY="$SW_ENCRYPTION_KEY" \
+    --restart unless-stopped \
+    ghcr.io/sitewright-cms/sitewright:latest
+
+<span class="tk-com"># Then point your TLS reverse proxy at 127.0.0.1:8080</span></code></pre>
+      </div>
+    </div>
+  </div>
+</section>

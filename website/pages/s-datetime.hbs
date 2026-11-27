@@ -1,0 +1,173 @@
+{{!-- META {"path":"date-picker","title":"Date and time picker","description":"One attribute turns a text input into a calendar in the site's colours: a date, a two-month range, a date with a time slider, or just the time. More attributes set bounds, steps, the week start and the language.","parent":"showcase","order":6,"data":{"icon":"calendar-dots","preset":"contours"}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-start">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">01 · One line</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="d1_title">A date field.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="d1_lead">Put the marker on a text input. Click the field and the calendar opens below it; the chosen day is written back into the input, so it submits like any other field. The input itself is styled by the platform in both themes.</p>
+      <div class="mt-8 max-w-sm">
+
+<label class="block">
+  <span class="mb-1.5 block text-sm font-semibold">Pick a date</span>
+  <input type="text" name="day" data-sw-component="datetimepicker" placeholder="Select a date" class="w-full" />
+</label>
+
+      </div>
+    </div>
+    <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">date picker · one line</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;label</span> <span class="tk-attr">class</span>=<span class="tk-str">"block"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"mb-1.5 block text-sm font-semibold"</span><span class="tk-tag">&gt;</span>Pick a date<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;input</span> <span class="tk-attr">type</span>=<span class="tk-str">"text"</span> <span class="tk-attr">name</span>=<span class="tk-str">"day"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"datetimepicker"</span> <span class="tk-attr">placeholder</span>=<span class="tk-str">"Select a date"</span> <span class="tk-attr">class</span>=<span class="tk-str">"w-full"</span> <span class="tk-tag">/&gt;</span>
+<span class="tk-tag">&lt;/label</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">02 · Modes</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="d2_title">Range, date and time, or just the time.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="d2_lead"><code class="font-code text-base">data-mode</code> picks the variant. A range opens as two months side by side, so a span across a month boundary is one gesture. Time modes add a slider; <code class="font-code text-base">data-time-step</code> sets its minute step and <code class="font-code text-base">data-time-format</code> picks a 24-hour or a 12-hour clock.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-1 gap-6 rounded-3xl border border-base-content/10 bg-base-100 p-6 sm:grid-cols-3">
+
+<label class="block">
+  <span class="mb-1.5 block text-sm font-semibold">Stay</span>
+  <input type="text" name="stay" data-sw-component="datetimepicker" data-mode="range" placeholder="Arrival – departure" class="w-full" />
+</label>
+<label class="block">
+  <span class="mb-1.5 block text-sm font-semibold">Appointment</span>
+  <input type="text" name="appointment" data-sw-component="datetimepicker" data-mode="datetime" data-time-step="15" data-time-format="HH:mm" placeholder="Date and time" class="w-full" />
+</label>
+<label class="block">
+  <span class="mb-1.5 block text-sm font-semibold">Call me at</span>
+  <input type="text" name="call" data-sw-component="datetimepicker" data-mode="time" data-time-format="hh:mm aa" data-time-step="30" placeholder="Time" class="w-full" />
+</label>
+
+    </div>
+    <div class="mt-6">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">date picker · modes</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;label</span> <span class="tk-attr">class</span>=<span class="tk-str">"block"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"mb-1.5 block text-sm font-semibold"</span><span class="tk-tag">&gt;</span>Stay<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;input</span> <span class="tk-attr">type</span>=<span class="tk-str">"text"</span> <span class="tk-attr">name</span>=<span class="tk-str">"stay"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"datetimepicker"</span> <span class="tk-attr">data-mode</span>=<span class="tk-str">"range"</span> <span class="tk-attr">placeholder</span>=<span class="tk-str">"Arrival – departure"</span> <span class="tk-attr">class</span>=<span class="tk-str">"w-full"</span> <span class="tk-tag">/&gt;</span>
+<span class="tk-tag">&lt;/label</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;label</span> <span class="tk-attr">class</span>=<span class="tk-str">"block"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"mb-1.5 block text-sm font-semibold"</span><span class="tk-tag">&gt;</span>Appointment<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;input</span> <span class="tk-attr">type</span>=<span class="tk-str">"text"</span> <span class="tk-attr">name</span>=<span class="tk-str">"appointment"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"datetimepicker"</span> <span class="tk-attr">data-mode</span>=<span class="tk-str">"datetime"</span> <span class="tk-attr">data-time-step</span>=<span class="tk-str">"15"</span> <span class="tk-attr">data-time-format</span>=<span class="tk-str">"HH:mm"</span> <span class="tk-attr">placeholder</span>=<span class="tk-str">"Date and time"</span> <span class="tk-attr">class</span>=<span class="tk-str">"w-full"</span> <span class="tk-tag">/&gt;</span>
+<span class="tk-tag">&lt;/label</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;label</span> <span class="tk-attr">class</span>=<span class="tk-str">"block"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"mb-1.5 block text-sm font-semibold"</span><span class="tk-tag">&gt;</span>Call me at<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;input</span> <span class="tk-attr">type</span>=<span class="tk-str">"text"</span> <span class="tk-attr">name</span>=<span class="tk-str">"call"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"datetimepicker"</span> <span class="tk-attr">data-mode</span>=<span class="tk-str">"time"</span> <span class="tk-attr">data-time-format</span>=<span class="tk-str">"hh:mm aa"</span> <span class="tk-attr">data-time-step</span>=<span class="tk-str">"30"</span> <span class="tk-attr">placeholder</span>=<span class="tk-str">"Time"</span> <span class="tk-attr">class</span>=<span class="tk-str">"w-full"</span> <span class="tk-tag">/&gt;</span>
+<span class="tk-tag">&lt;/label</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">03 · Always open</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="d3_title">A calendar in the page.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="d3_lead">Put the marker on a block element instead of an input and the calendar stays open in the page flow. <code class="font-code text-base">data-months</code> widens it. Below: a two-month range on the left, and on the right a calendar that collects several separate dates, with weeks starting on Sunday.</p>
+  </div>
+  <div class="mt-10 flex flex-wrap items-start gap-6">
+    <div class="max-w-full overflow-x-auto rounded-3xl border border-base-content/10 bg-base-100 p-3">
+
+<div data-sw-component="datetimepicker" data-mode="range" data-months="2"></div>
+
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-3">
+
+<div data-sw-component="datetimepicker" data-multiple="true" data-first-day="0"></div>
+
+    </div>
+  </div>
+  <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">date picker · inline range</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"datetimepicker"</span> <span class="tk-attr">data-mode</span>=<span class="tk-str">"range"</span> <span class="tk-attr">data-months</span>=<span class="tk-str">"2"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+    </div>
+    <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">date picker · several dates</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"datetimepicker"</span> <span class="tk-attr">data-multiple</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-first-day</span>=<span class="tk-str">"0"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-start">
+      <div data-sw-animation="fade-up">
+        <p class="ws-index ws-ink">04 · Language</p>
+        <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="d4_title">Month names follow the page.</h2>
+        <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="d4_lead">The picker reads the page's language, so a translated page gets translated month and weekday names with no extra work. English, German and Spanish are built in. <code class="font-code text-base">data-locale</code> forces one; this field is German on an English page.</p>
+        <div class="mt-8 max-w-sm">
+
+<label class="block">
+  <span class="mb-1.5 block text-sm font-semibold">Termin</span>
+  <input type="text" name="termin" data-sw-component="datetimepicker" data-locale="de" placeholder="Datum wählen" class="w-full" />
+</label>
+
+        </div>
+      </div>
+      <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">date picker · locale</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;label</span> <span class="tk-attr">class</span>=<span class="tk-str">"block"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"mb-1.5 block text-sm font-semibold"</span><span class="tk-tag">&gt;</span>Termin<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;input</span> <span class="tk-attr">type</span>=<span class="tk-str">"text"</span> <span class="tk-attr">name</span>=<span class="tk-str">"termin"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"datetimepicker"</span> <span class="tk-attr">data-locale</span>=<span class="tk-str">"de"</span> <span class="tk-attr">placeholder</span>=<span class="tk-str">"Datum wählen"</span> <span class="tk-attr">class</span>=<span class="tk-str">"w-full"</span> <span class="tk-tag">/&gt;</span>
+<span class="tk-tag">&lt;/label</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">Reference</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-4xl" data-sw-text="ref_title">The other attributes.</h2>
+  </div>
+  <div class="mt-8 overflow-x-auto rounded-2xl border border-base-content/10 bg-base-100">
+    <table class="table">
+      <thead><tr><th>Attribute</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-min · data-max</td><td>The first and last selectable day, as <code class="font-code text-sm">YYYY-MM-DD</code>. Days outside are disabled.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-first-day</td><td>The first weekday column, 0 for Sunday to 6 for Saturday. Defaults to the language's convention.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-multiple</td><td>Lets the visitor pick any number of separate dates. Not combined with a range.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-position</td><td>Where the popup opens, for example <code class="font-code text-sm">bottom left</code>, <code class="font-code text-sm">top center</code> or <code class="font-code text-sm">auto</code>.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-months</td><td>Months side by side, 2 to 12. A range shows two by default.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="mt-8 max-w-3xl leading-relaxed text-base-content/70">Without JavaScript every field stays a plain text input that still takes a typed value and still submits. The date, time and datetime field types of the form builder render as this picker. Use a text input, not <code class="font-code">type="date"</code>, or the browser's own picker opens as well. The calendar is Vanilla Calendar Pro, shipped only to pages that use it.</p>
+</section>
+
+<section class="border-t border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-20">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <h2 class="ws-display text-3xl font-bold sm:text-4xl">More of the showcase</h2>
+      <a class="btn btn-ghost btn-sm" href="{{sw-url '/showcase'}}">All demos {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+    <div class="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {{#each pages.showcase._attributes.children}}
+      {{#unless (eq path @root.page.path)}}
+      <a class="ws-tile rounded-2xl border border-base-content/10 bg-base-100 p-4" href="{{sw-url path}}">
+        <span class="flex items-center gap-2 font-heading font-semibold">{{#if data.icon}}{{sw-icon data.icon "h-4 w-4 ws-ink"}}{{/if}}{{title}}</span>
+      </a>
+      {{/unless}}
+      {{/each}}
+    </div>
+  </div>
+</section>

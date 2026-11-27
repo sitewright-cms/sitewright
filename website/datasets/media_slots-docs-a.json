@@ -1,0 +1,177 @@
+{
+  "dataset": {
+    "id": "media_slots",
+    "name": "Media slots",
+    "slug": "media_slots",
+    "fields": [
+      {
+        "name": "label",
+        "type": "text",
+        "required": true,
+        "localized": false
+      },
+      {
+        "name": "kind",
+        "type": "select",
+        "required": true,
+        "localized": false,
+        "config": {
+          "options": [
+            "image",
+            "video"
+          ]
+        }
+      },
+      {
+        "name": "ratio",
+        "type": "select",
+        "required": false,
+        "localized": false,
+        "config": {
+          "options": [
+            "16x10",
+            "16x9",
+            "4x3",
+            "3x2",
+            "1x1",
+            "9x16",
+            "3x4",
+            "21x9"
+          ]
+        }
+      },
+      {
+        "name": "image",
+        "type": "image",
+        "required": false,
+        "localized": false
+      },
+      {
+        "name": "video",
+        "type": "file",
+        "required": false,
+        "localized": false
+      },
+      {
+        "name": "poster",
+        "type": "image",
+        "required": false,
+        "localized": false
+      },
+      {
+        "name": "alt",
+        "type": "text",
+        "required": false,
+        "localized": false
+      },
+      {
+        "name": "capture",
+        "type": "text",
+        "required": false,
+        "localized": false
+      }
+    ]
+  },
+  "entries": [
+    {
+      "id": "doc_first_site_code",
+      "values": {
+        "label": "The Code Editor: the source strip above the live preview of the services grid",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The page editor in Code Editor mode, with the Home page source above its live preview",
+        "capture": "Page editor, Home page of a fresh demo project after steps 2 and 4: Code Editor tab, strip expanded (hovered), preview showing the hero and the three service cards; 1440x900, light editor theme"
+      }
+    },
+    {
+      "id": "doc_storage_backups",
+      "values": {
+        "label": "System Settings, Ops tab: the Storage & backups card",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The Storage and backups card listing database, snapshot, media and data folder sizes with the snapshot retention setting",
+        "capture": "Editor as admin, gear menu → System Settings → Ops tab, scrolled so Logging, Storage & backups and Database integrity are visible; the instance should have 2 pre-migration snapshots; light theme, 1440×900"
+      }
+    },
+    {
+      "id": "doc_whitelabel_signin",
+      "values": {
+        "label": "A rebranded sign-in screen: your name, logo and background",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The sign-in screen showing a custom platform name, logo and animated background",
+        "capture": "Signed out, /: sign-in screen after setting Platform name \"Northwind Studio\", a PNG logo, brand colors #0f766e/#f59e0b and an animated platform background; light theme, 1440×900"
+      }
+    },
+    {
+      "id": "doc_whitelabel_settings",
+      "values": {
+        "label": "System Settings, General tab: the Branding card",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The Branding card with the platform name, the two gradient colors and the logo upload",
+        "capture": "Editor as admin, System Settings → General: Branding card filled in (name, two colors with the gradient preview, logo uploaded); light theme, 1440×900, crop to the modal"
+      }
+    },
+    {
+      "id": "doc_editor_tour_layout",
+      "values": {
+        "label": "The editor: project tabs in the header, the Pages list, and the rail tabs on the screen edges",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The Sitewright editor showing the Pages tab with the page tree and the edge rail tabs",
+        "capture": "Editor, demo project, Pages tab with 6–8 pages incl. one child page and one draft; no drawer open so the System Library (left), File Manager (right) and bottom rail tabs are visible; 1440x900"
+      }
+    },
+    {
+      "id": "doc_editor_tour_audit",
+      "values": {
+        "label": "Page Audit: Lighthouse scores, lab metrics and ranked recommendations",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The page editor in Page Audit mode with four score gauges, metrics and a list of recommendations",
+        "capture": "Page editor on the demo home page, Page Audit tab after a completed run, Mobile selected, recommendations list visible; 1440x900"
+      }
+    },
+    {
+      "id": "doc_datasets_editor",
+      "values": {
+        "label": "The Datasets rail: a dataset's entries, with one open in the entry form",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The Datasets rail listing a team_members dataset's entries, with one entry open in its form",
+        "capture": "Editor, Datasets rail (bottom-left tab) open on a team_members dataset with 6 entries (name, role, photo, bio); open one entry so the form shows the image picker and the richtext toolbar; light theme, 1440×900"
+      }
+    },
+    {
+      "id": "doc_client_editing",
+      "values": {
+        "label": "Content Editor: retype a heading, swap an image, open a dataset row",
+        "kind": "video",
+        "ratio": "16x10",
+        "alt": "The Content Editor: a heading is retyped in place, an image is replaced from the media library, and a dataset row opens its form",
+        "capture": "Page editor, Content Editor tab on a page with data-sw-text, data-sw-src and a dataset loop: hover a heading (outline and badge), click and retype it; click the image and pick another; click a dataset card to open its form; then open the Regions panel; 15 s loop, 1440×900"
+      }
+    },
+    {
+      "id": "doc_brand_identity",
+      "values": {
+        "label": "Settings, Corporate Identity: brand colors and typography",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The Corporate Identity settings with the Brand colors tile and the Typography tile",
+        "capture": "Editor, Settings → Corporate Identity, scrolled to the Brand colors (six fixed rows plus one custom color) and Typography (heading and body fonts) tiles; light theme, 1440×900"
+      }
+    },
+    {
+      "id": "doc_chrome_skeleton",
+      "values": {
+        "label": "The Document skeleton map: head, main navigation, sidebars, footer, bottom and scripts in render order",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "Website Settings showing the document skeleton map with each slot, its size and an edit button",
+        "capture": "Website Settings tab, Document skeleton tile of the demo project (nav, footer and critical CSS filled, sidebars empty); crop to the tile, 1440x900"
+      }
+    }
+  ]
+}

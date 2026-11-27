@@ -1,0 +1,143 @@
+{{!-- META {"path":"tabs","title":"Tabs","description":"Content panels behind an accessible tablist. You write the panels; the runtime builds the tab buttons, the ARIA roles and arrow-key navigation, and without JavaScript every panel stays readable.","parent":"showcase","order":3,"data":{"icon":"tabs","preset":"corner-mesh"}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">01 · The defaults</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="t1_title">Write panels. Get tabs.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="t1_lead">Each panel's <code class="font-code text-base">data-sw-title</code> becomes its tab. For a label with an icon, add a <code class="font-code text-base">tabtitle</code> child; the runtime moves it into the button. Labels are per panel, so rich and plain tabs mix. Click a tab, or focus one and use the arrow keys, Home and End.</p>
+  </div>
+  <div class="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6">
+<!--demo:defaults-->
+<div data-sw-component="tabs">
+  <div data-sw-part="panel" data-sw-title="Developers">
+    <span data-sw-part="tabtitle">{{sw-icon "code" "h-4 w-4"}} Developers</span>
+    <p class="pt-4 leading-relaxed text-base-content/70">Write pages in Handlebars, HTML and Tailwind, in a code editor with a live preview.</p>
+  </div>
+  <div data-sw-part="panel" data-sw-title="Clients">
+    <span data-sw-part="tabtitle">{{sw-icon "cursor-text" "h-4 w-4"}} Clients</span>
+    <p class="pt-4 leading-relaxed text-base-content/70">Click a heading on the live preview and type. The layout is not theirs to break.</p>
+  </div>
+  <div data-sw-part="panel" data-sw-title="Agents">
+    <p class="pt-4 leading-relaxed text-base-content/70">Connect Claude or another agent to the MCP endpoint and let it build pages with the same permissions as a person.</p>
+  </div>
+</div>
+<!--/demo-->
+    </div>
+    <div class="min-w-0">
+<!--code:defaults file="tabs · mixed labels"-->
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">02 · Style the bar</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="t2_title">A panel holds any markup.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="t2_lead">Write the <code class="font-code text-base">tablist</code> part yourself only when you want to style the bar, here as a segmented track. The runtime still fills it, and the selector pill still glides to the active tab. Each panel fades in when it opens.</p>
+    </div>
+    <div class="mt-10">
+<!--demo:styled-->
+<div class="rounded-3xl border border-base-content/10 bg-base-100 p-3" data-sw-component="tabs">
+  <div data-sw-part="tablist" class="rounded-2xl bg-base-200 p-1.5"></div>
+  <div data-sw-part="panel" data-sw-title="What you get" class="p-6">
+    <ul class="grid grid-cols-1 list-none gap-3 p-0 sm:grid-cols-3">
+      <li class="flex gap-3">{{sw-icon "check-circle" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80">Tab buttons built from the panels</span></li>
+      <li class="flex gap-3">{{sw-icon "check-circle" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80">Tablist, tab and tabpanel roles</span></li>
+      <li class="flex gap-3">{{sw-icon "check-circle" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80">Roving tabindex and arrow keys</span></li>
+    </ul>
+  </div>
+  <div data-sw-part="panel" data-sw-title="What you write" class="p-6">
+    <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+      <div><p class="ws-numeral text-6xl">0</p><p class="mt-2 text-sm text-base-content/70">lines of JavaScript</p></div>
+      <div><p class="ws-numeral text-6xl">1</p><p class="mt-2 text-sm text-base-content/70">attribute on the root</p></div>
+    </div>
+  </div>
+</div>
+<!--/demo-->
+    </div>
+    <div class="mt-6">
+<!--code:styled file="tabs · styled tablist"-->
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">03 · Vertical</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="t3_title">Tabs down the side.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="t3_lead">The runtime places the tablist beside the panels as their sibling, so a grid on the root makes it vertical: the tablist takes the first column and every panel shares the second.</p>
+  </div>
+  <div class="mt-10 rounded-3xl border border-base-content/10 bg-base-100 p-6">
+<!--demo:vertical-->
+<div data-sw-component="tabs" class="grid grid-cols-1 gap-6 md:[grid-template-columns:13rem_1fr] [&>[data-sw-part=tablist]]:flex-col [&>[data-sw-part=tablist]]:flex-nowrap md:[&>[data-sw-part=panel]]:col-start-2 md:[&>[data-sw-part=panel]]:row-start-1">
+  <div data-sw-part="tablist" class="flex gap-1"></div>
+  <div data-sw-part="panel" data-sw-title="Local Hosting">
+    <p class="leading-relaxed text-base-content/70">Served by the instance itself, at a subdomain of your sites domain or under a path, with custom domains verified by a TXT record.</p>
+  </div>
+  <div data-sw-part="panel" data-sw-title="SFTP">
+    <p class="leading-relaxed text-base-content/70">A password or an SSH key, with host-key pinning, and fast paths over rsync or tar through SSH.</p>
+  </div>
+  <div data-sw-part="panel" data-sw-title="Git">
+    <p class="leading-relaxed text-base-content/70">Each deploy is one fresh commit, force-pushed to the branch you name.</p>
+  </div>
+</div>
+<!--/demo-->
+  </div>
+  <div class="mt-6">
+<!--code:vertical file="tabs · vertical"-->
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">04 · From a dataset</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="t4_title">One tab per row.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="t4_lead">Loop a dataset and each entry becomes a panel. These three come from the dataset behind the cards on this site's home page, so editing a row there changes both.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+      <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6">
+<!--demo:dataset-->
+<div data-sw-component="tabs">
+  {{#each dataset.home_services}}
+  <div data-sw-part="panel" data-sw-title="{{title}}">
+    <div class="flex gap-4 pt-4">
+      {{sw-icon icon "h-8 w-8 shrink-0 ws-ink"}}
+      <p class="leading-relaxed text-base-content/70">{{summary}}</p>
+    </div>
+  </div>
+  {{/each}}
+</div>
+<!--/demo-->
+      </div>
+      <div class="min-w-0">
+<!--code:dataset file="tabs · from a dataset"-->
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">
+      {{sw-icon "eye-slash" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">Without JavaScript</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">The tablist stays hidden and every panel renders, one after another. Nothing is lost.</p>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="80">
+      {{sw-icon "keyboard" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">Keyboard</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">Tab enters the tablist once, the arrow keys move between tabs, and Tab again moves into the open panel.</p>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="160">
+      {{sw-icon "warning-circle" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">Rich labels, safely</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">A tab title holds icons and text, never links or buttons, because its nodes move into a button.</p>
+    </div>
+  </div>
+</section>
+
+{{> showcase-next}}

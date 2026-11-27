@@ -1,0 +1,89 @@
+{{!-- META {"path":"languages","title":"Languages","description":"Add a language and every page gets a version at its own address that inherits the main page's code. Each language keeps its own words, slugs and meta, and the layout stays one.","parent":"features","order":5,"data":{"icon":"translate","eyebrow":"Languages","headline":"Change the layout once. Every language follows."}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid gap-6 lg:grid-cols-[1fr_1.2fr] lg:items-end" data-sw-animation="fade-up">
+    <h2 class="ws-display text-3xl font-bold sm:text-5xl" data-sw-text="steps_title">Translate the words, not the markup.</h2>
+    <p class="max-w-xl text-lg leading-relaxed text-base-content/70" data-sw-text="steps_lead">A language version of a page is a real page with its own address. By default it borrows the main page's code, so a fix to the layout reaches every language at once.</p>
+  </div>
+  <ol class="mt-12 grid list-none gap-4 p-0 lg:grid-cols-3">
+    <li class="rounded-3xl border border-base-content/10 bg-base-100 p-7" data-sw-animation="fade-up"><span class="ws-numeral text-6xl">01</span><h3 class="mt-6 font-heading text-xl font-bold">Add a language</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">One step registers it and creates a version of every page under its prefix, such as <code class="font-code">/de/</code>. The main language keeps unprefixed addresses.</p></li>
+    <li class="rounded-3xl border border-base-content/10 bg-base-100 p-7" data-sw-animation="fade-up" data-sw-delay="80"><span class="ws-numeral text-6xl">02</span><h3 class="mt-6 font-heading text-xl font-bold">Translate in place</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Each version starts as a copy of the main page's text, title, description, share image, slug and menu entry. Change them in the Content Editor, including the slug: <code class="font-code">/de/kontakt/</code>.</p></li>
+    <li class="rounded-3xl border border-base-content/10 bg-base-100 p-7" data-sw-animation="fade-up" data-sw-delay="160"><span class="ws-numeral text-6xl">03</span><h3 class="mt-6 font-heading text-xl font-bold">Fork only when needed</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Inherited pages carry a badge in the pages list. If one language needs a different layout, fork that page and it gets its own code.</p></li>
+  </ol>
+  <div class="ws-browser mx-auto mt-14 max-w-5xl" data-sw-animation="fade-up">
+    <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Website Settings · Languages · Add language</span></div>
+    {{> ws-media slot="feat_languages_add" class="rounded-none"}}
+  </div>
+</section>
+
+<section class="bg-neutral text-white">
+  <div class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.1fr]">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index text-accent">Shared strings</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="strings_title">One key, every language.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-white/70" data-sw-text="strings_lead">Labels that repeat across the site, like a button or a footer line, live in one catalog of keys. A page asks for the key and gets its own language, then the main language, then your default.</p>
+      <ul class="mt-6 list-none space-y-3 p-0 text-white/80">
+        <li class="flex gap-3">{{sw-icon "check-circle" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>The Translations &amp; Labels grid shows every key by language.</span></li>
+        <li class="flex gap-3">{{sw-icon "check-circle" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>With <span class="font-code text-accent">data-sw-translate</span>, a key is click-to-edit on the preview.</span></li>
+        <li class="flex gap-3">{{sw-icon "check-circle" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Every page knows its other versions, so a language switcher is a short loop.</span></li>
+      </ul>
+    </div>
+    <div class="ws-window overflow-hidden rounded-2xl" data-sw-animation="fade-up" data-sw-delay="100">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">snippets/language-switch.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;h2</span> <span class="tk-attr">data-sw-translate</span>=<span class="tk-str">"home.headline"</span><span class="tk-tag">&gt;</span>Welcome<span class="tk-tag">&lt;/h2&gt;</span>
+<span class="tk-tag">&lt;p&gt;</span><span class="tk-hb">\{{sw-translate "home.lead" default="We build websites."}}</span><span class="tk-tag">&lt;/p&gt;</span>
+
+<span class="tk-com">\{{!-- The contact page, in the reader's language --}}</span>
+<span class="tk-tag">&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-page-url "contact"}}</span>"</span><span class="tk-tag">&gt;</span>…<span class="tk-tag">&lt;/a&gt;</span>
+
+<span class="tk-com">\{{!-- A language switcher --}}</span>
+<span class="tk-hb">\{{#each page.translations}}</span>
+  <span class="tk-tag">&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-url path}}</span>"</span> <span class="tk-attr">hreflang</span>=<span class="tk-str">"<span class="tk-hb">\{{locale}}</span>"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-hb">\{{locale}}</span>
+  <span class="tk-tag">&lt;/a&gt;</span>
+<span class="tk-hb">\{{/each}}</span></code></pre>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1.15fr_1fr]">
+  <div class="ws-browser order-2 lg:order-1" data-sw-animation="fade-up">
+    <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Website Settings · Translations</span></div>
+    {{> ws-media slot="feat_languages_coverage" class="rounded-none"}}
+  </div>
+  <div class="order-1 lg:order-2" data-sw-animation="fade-up" data-sw-delay="100">
+    <p class="ws-index ws-ink">What is missing</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="gaps_title">See the gaps before a visitor does.</h2>
+    <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="gaps_lead">The Translations tile shows how much of the catalog each language covers. Dataset entries have a tab per language with a dot for every version that exists, and they store only the fields that differ, so the rest follows the main language.</p>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+    <h2 class="ws-display max-w-2xl text-3xl font-bold sm:text-4xl" data-sw-animation="fade-up" data-sw-text="seo_title">Search engines get it right.</h2>
+    <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">{{sw-icon "link-simple" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">hreflang on every page</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Each page links its other versions and an <code class="whitespace-nowrap font-code">x-default</code>, as absolute addresses once the site's URL is set.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "tree-structure" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">One sitemap</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">With the site's URL set, <code class="whitespace-nowrap font-code">sitemap.xml</code> lists every indexable page in every language.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "code" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">The right lang</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">The html element of every page carries that page's language, so browsers and screen readers read it right.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">{{sw-icon "magnifying-glass" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Search per language</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Site search builds one index per language, so a German visitor searches German pages.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "list-dashes" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Menus per language</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Each language's navigation lists its own pages, under its own titles.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "arrow-u-up-left" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Undo a language</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Removing a language takes its pages and strings with it, and History can bring them back.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="sw-border-beam mx-auto max-w-4xl rounded-3xl border border-base-content/10 bg-base-100 p-8 sm:p-10 [--sw-beam-width:2px]" data-sw-animation="fade-up">
+    <div class="grid gap-8 sm:grid-cols-[auto_1fr] sm:items-start">
+      <span class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">{{sw-icon "user-sound" "h-6 w-6 ws-ink"}}</span>
+      <div>
+        <h3 class="font-heading text-2xl font-bold" data-sw-text="who_title">People translate. Sitewright keeps it in order.</h3>
+        <p class="mt-3 leading-relaxed text-base-content/70" data-sw-text="who_lead">There is no machine translation built in, and visitors are never redirected by their browser's language. A translator works in the Content Editor on each language's pages. An AI agent connected over MCP can write into the same pages with the same tools.</p>
+        <a class="btn btn-ghost btn-sm mt-4 px-0 hover:bg-transparent" href="{{sw-url '/docs/guides/languages'}}">The languages guide {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+{{> feature-next features=pages.features._attributes.children}}

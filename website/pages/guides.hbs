@@ -1,0 +1,12 @@
+{{!-- META {"path":"guides","title":"Guides","description":"Step-by-step guides for languages, forms, the shop, booking, domains, analytics, agents and more.","parent":"docs","nav":{"title":"Guides","slots":["custom"],"order":4,"dropdown":true},"data":{"icon":"compass"}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <div class="ws-article">
+    <ul class="list-none space-y-3 p-0">
+      {{#each page.children}}
+      <li><a class="ws-tile block rounded-2xl border border-base-content/10 bg-base-100 p-5 no-underline" href="{{sw-url path}}"><span class="font-heading text-lg font-bold text-base-content">{{title}}</span><span class="mt-1 block text-sm text-base-content/70">{{description}}</span></a></li>
+      {{/each}}
+    </ul>
+  </div>
+</div>

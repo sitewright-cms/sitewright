@@ -1,0 +1,113 @@
+{{!-- META {"path":"components","title":"Components & motion","description":"Ten components you switch on with an attribute, 31 animated backgrounds, and motion written as data attributes. Each page loads only the scripts it uses, and motion steps back for visitors who ask for less.","parent":"features","order":3,"data":{"icon":"sparkle","eyebrow":"Components & motion","headline":"Interactive parts, switched on with an attribute."}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="flex flex-wrap items-end justify-between gap-6" data-sw-animation="fade-up">
+    <div class="max-w-2xl">
+      <p class="ws-index ws-ink">Ten components</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="comp_title">Try each one live.</h2>
+    </div>
+    <p class="max-w-md text-base-content/70" data-sw-text="comp_lead">Every card opens its showcase page, built with Sitewright like the rest of this site. The second line says what a visitor gets without JavaScript.</p>
+  </div>
+  <div class="mt-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    <a class="ws-tile flex flex-col rounded-2xl border border-base-content/10 bg-base-100 p-5" href="{{sw-url '/showcase/carousel'}}" data-sw-animation="fade-up">{{sw-icon "slideshow" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading font-bold">Carousel</h3><p class="mt-1 text-sm text-base-content/70">Fade or slide, autoplay, swipe, keyboard.</p><p class="mt-3 text-xs text-base-content/50">No JS: a scroll-snap row</p></a>
+    <a class="ws-tile flex flex-col rounded-2xl border border-base-content/10 bg-base-100 p-5" href="{{sw-url '/showcase/lightbox'}}" data-sw-animation="fade-up" data-sw-delay="40">{{sw-icon "images" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading font-bold">Lightbox</h3><p class="mt-1 text-sm text-base-content/70">Full screen, thumbnails, pinch to zoom.</p><p class="mt-3 text-xs text-base-content/50">No JS: links to the full image</p></a>
+    <a class="ws-tile flex flex-col rounded-2xl border border-base-content/10 bg-base-100 p-5" href="{{sw-url '/showcase/tabs'}}" data-sw-animation="fade-up" data-sw-delay="80">{{sw-icon "tabs" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading font-bold">Tabs</h3><p class="mt-1 text-sm text-base-content/70">Built from your panels, arrow keys included.</p><p class="mt-3 text-xs text-base-content/50">No JS: panels stacked</p></a>
+    <a class="ws-tile flex flex-col rounded-2xl border border-base-content/10 bg-base-100 p-5" href="{{sw-url '/showcase/modal'}}" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "app-window" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading font-bold">Modal</h3><p class="mt-1 text-sm text-base-content/70">A native dialog: focus, Escape and backdrop from the browser.</p><p class="mt-3 text-xs text-base-content/50">No JS: the trigger does nothing</p></a>
+    <a class="ws-tile flex flex-col rounded-2xl border border-base-content/10 bg-base-100 p-5" href="{{sw-url '/showcase/banner'}}" data-sw-animation="fade-up" data-sw-delay="160">{{sw-icon "megaphone" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading font-bold">Banner</h3><p class="mt-1 text-sm text-base-content/70">Dismissible, and it remembers how often to return.</p><p class="mt-3 text-xs text-base-content/50">No JS: stays hidden</p></a>
+    <a class="ws-tile flex flex-col rounded-2xl border border-base-content/10 bg-base-100 p-5" href="{{sw-url '/showcase/forms'}}" data-sw-animation="fade-up">{{sw-icon "textbox" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading font-bold">Form</h3><p class="mt-1 text-sm text-base-content/70">Generated from a form you define, with spam checks.</p><p class="mt-3 text-xs text-base-content/50">No JS: cannot submit, by design</p></a>
+    <a class="ws-tile flex flex-col rounded-2xl border border-base-content/10 bg-base-100 p-5" href="{{sw-url '/showcase/date-picker'}}" data-sw-animation="fade-up" data-sw-delay="40">{{sw-icon "calendar-dots" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading font-bold">Date picker</h3><p class="mt-1 text-sm text-base-content/70">Date, range, date and time, or time.</p><p class="mt-3 text-xs text-base-content/50">No JS: a text field that still submits</p></a>
+    <a class="ws-tile flex flex-col rounded-2xl border border-base-content/10 bg-base-100 p-5" href="{{sw-url '/showcase/animated-backgrounds'}}" data-sw-animation="fade-up" data-sw-delay="80">{{sw-icon "waves" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading font-bold">Animated background</h3><p class="mt-1 text-sm text-base-content/70">31 WebGL presets in your brand colors.</p><p class="mt-3 text-xs text-base-content/50">No WebGL: a brand gradient</p></a>
+    <a class="ws-tile flex flex-col rounded-2xl border border-base-content/10 bg-base-100 p-5" href="{{sw-url '/showcase/image-maps'}}" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "map-trifold" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading font-bold">Image map</h3><p class="mt-1 text-sm text-base-content/70">Hotspots, tooltips, floors and zoom.</p><p class="mt-3 text-xs text-base-content/50">No JS: the plain image</p></a>
+    <a class="ws-tile flex flex-col rounded-2xl border border-base-content/10 bg-base-100 p-5" href="{{sw-url '/showcase/search'}}" data-sw-animation="fade-up" data-sw-delay="160">{{sw-icon "magnifying-glass" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading font-bold">Search</h3><p class="mt-1 text-sm text-base-content/70">A static index per language, no server.</p><p class="mt-3 text-xs text-base-content/50">No JS: an inert field</p></a>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.1fr]">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">The contract</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="contract_title">You write the markup. The runtime adds the behavior.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="contract_lead">A component is a <code class="whitespace-nowrap font-code">data-sw-component</code> marker and a few named parts. Style them with Tailwind like anything else. For tabs, the runtime builds the buttons from your panel titles and wires up the roles and the arrow keys.</p>
+      <a class="btn btn-ghost mt-6 px-0 hover:bg-transparent" href="{{sw-url '/docs/reference/components'}}">Component reference {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+    <div class="ws-window overflow-hidden rounded-2xl" data-sw-animation="fade-up" data-sw-delay="100">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/pricing.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"tabs"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"panel"</span> <span class="tk-attr">data-sw-title</span>=<span class="tk-str">"Monthly"</span><span class="tk-tag">&gt;</span>
+    …
+  <span class="tk-tag">&lt;/div&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"panel"</span> <span class="tk-attr">data-sw-title</span>=<span class="tk-str">"Yearly"</span><span class="tk-tag">&gt;</span>
+    …
+  <span class="tk-tag">&lt;/div&gt;</span>
+<span class="tk-tag">&lt;/div&gt;</span>
+
+<span class="tk-com">&lt;!-- Motion is attributes too --&gt;</span>
+<span class="tk-tag">&lt;section</span> <span class="tk-attr">data-sw-parallax-scene</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-parallax-layer</span>
+       <span class="tk-attr">data-sw-parallax-translate</span>=<span class="tk-str">"70,-70"</span><span class="tk-tag">&gt;&lt;/div&gt;</span>
+  <span class="tk-tag">&lt;h2</span> <span class="tk-attr">data-sw-animation</span>=<span class="tk-str">"fade-up"</span><span class="tk-tag">&gt;</span>…<span class="tk-tag">&lt;/h2&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">data-sw-animation</span>=<span class="tk-str">"fade-up"</span> <span class="tk-attr">data-sw-delay</span>=<span class="tk-str">"120"</span><span class="tk-tag">&gt;</span>…<span class="tk-tag">&lt;/p&gt;</span>
+<span class="tk-tag">&lt;/section&gt;</span></code></pre>
+    </div>
+  </div>
+</section>
+
+<section class="relative isolate overflow-hidden bg-neutral text-white" data-sw-component="shader-bg" data-preset="silk-flow" data-speed="0.5" data-intensity="0.6" data-colors="neutral,primary,accent">
+  <div data-sw-part="overlay" class="bg-gradient-to-r from-black/60 via-black/30 to-black/0"></div>
+  <div class="ws-grid pointer-events-none absolute inset-0 opacity-50" aria-hidden="true"></div>
+  <div class="ws-hero-copy relative mx-auto max-w-7xl px-6 py-24 sm:py-32">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index text-white/80">Animated backgrounds · live</p>
+      <h2 class="ws-display mt-4 text-4xl font-bold sm:text-6xl" data-sw-text="shader_title">This section is one of 31.</h2>
+      <p class="mt-5 max-w-2xl text-lg leading-relaxed text-white/85" data-sw-text="shader_lead">WebGL shaders that take your brand colors, a speed, an intensity and an angle, and can follow the pointer. They pause off screen, show a still frame to visitors who prefer reduced motion, and fall back to a gradient where WebGL is missing.</p>
+    </div>
+    <div class="mt-10 flex flex-wrap gap-2" data-sw-animation="fade-up" data-sw-delay="100">
+      {{#each (sw-split "mesh-gradient|silk-flow|plasma|caustics|lava-lamp|voronoi-cells|liquid-metal|starfield|neuro-noise" "|")}}
+      <span class="rounded-full border border-white/20 bg-black/25 px-3 py-1 font-code text-xs text-white/85 backdrop-blur">{{this}}</span>
+      {{/each}}
+      <span class="rounded-full px-3 py-1 text-xs text-white/70">and 22 more</span>
+    </div>
+    <a class="btn mt-8 border-white/25 bg-black/25 text-white backdrop-blur hover:border-white/50 hover:bg-black/40" href="{{sw-url '/showcase/animated-backgrounds'}}">See all 31 {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid items-center gap-12 lg:grid-cols-[1fr_1.15fr]">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">Motion and effects</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="motion_title">Movement, a few attributes at a time.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="motion_lead">Write the attributes by hand, or let the builders in the editor's Library write them: the parallax builder, the button builder and the SVG animation studio, which plays the real runtimes as you adjust them.</p>
+    </div>
+    <div class="ws-browser" data-sw-animation="fade-up" data-sw-delay="100">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Library · SVG animation studio</span></div>
+      {{> ws-media slot="feat_components_studio" class="rounded-none"}}
+    </div>
+  </div>
+  <div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <a class="ws-tile rounded-2xl border border-base-content/10 bg-base-100 p-6" href="{{sw-url '/showcase/motion'}}" data-sw-animation="fade-up">{{sw-icon "arrows-out-cardinal" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Entrance animations</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Fifteen effects (fades, zooms, slides and flips) with delay, duration, easing and a play-once switch. <code class="whitespace-nowrap font-code">sw-stagger</code> spaces out a loop.</p></a>
+    <a class="ws-tile rounded-2xl border border-base-content/10 bg-base-100 p-6" href="{{sw-url '/showcase/parallax'}}" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "stack" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Parallax</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Move, fade, scale or blur as the page scrolls, on one element or a layered scene. The editor has a parallax builder.</p></a>
+    <a class="ws-tile rounded-2xl border border-base-content/10 bg-base-100 p-6" href="{{sw-url '/showcase/svg-animation'}}" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "pen-nib" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">SVG animation</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">33 effects, from line drawing to morphing one shape into another, staged in scenes. Try them in the SVG animation studio.</p></a>
+    <a class="ws-tile rounded-2xl border border-base-content/10 bg-base-100 p-6" href="{{sw-url '/showcase/effects'}}" data-sw-animation="fade-up">{{sw-icon "cursor-click" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Nav and button effects</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">19 menu effects and 28 button effects as classes. A sticky header that pins or hides on scroll, a preloader in nine styles, scrollspy and ripples.</p></a>
+    <a class="ws-tile rounded-2xl border border-base-content/10 bg-base-100 p-6" href="{{sw-url '/showcase/icons'}}" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "smiley" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Icons</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">1,512 Phosphor icons in six weights, 274 brand logos and 255 flags, inlined as SVG. Only the ones a site uses are published.</p></a>
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "moon-stars" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Light and dark</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Turn themes on and <code class="whitespace-nowrap font-code">\{{sw-theme-toggle}}</code> gives visitors the switch. Their choice applies before the first paint, so the page never flashes.</p></div>
+  </div>
+  <a class="btn btn-ghost mt-8 px-0 hover:bg-transparent" href="{{sw-url '/docs/reference/effects'}}">Effects reference {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 pb-20 sm:pb-28">
+  <div class="grid gap-6 lg:grid-cols-2">
+    <div class="sw-border-beam rounded-3xl border border-base-content/10 bg-base-100 p-8 [--sw-beam-width:2px]" data-sw-animation="fade-up">
+      {{sw-icon "feather" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold" data-sw-text="ships_title">A page carries only what it uses.</h3>
+      <p class="mt-3 leading-relaxed text-base-content/70" data-sw-text="ships_lead">Component scripts, animations, parallax and SVG motion load on the pages that use them and nowhere else. Only site-wide pieces, like the preloader, the sticky header or back-to-top, load on every page.</p>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-8" data-sw-animation="fade-up" data-sw-delay="100">
+      {{sw-icon "person-simple-walk" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold" data-sw-text="calm_title">Calm for those who ask.</h3>
+      <p class="mt-3 leading-relaxed text-base-content/70" data-sw-text="calm_lead">When a visitor's system prefers reduced motion, entrance animations and parallax stand still, carousels stop autoplaying, animated backgrounds hold one frame and drawn SVGs appear finished. Content that animates in is visible without JavaScript too.</p>
+    </div>
+  </div>
+</section>
+
+{{> feature-next features=pages.features._attributes.children}}

@@ -1,0 +1,18 @@
+{{!--
+  The header of every inner page: a link back to the parent, the title (or page.data.headline), and the page's
+  description as the lead. Optional page.data.eyebrow above the title.
+    {{> page-hero parent=page.parent}}
+  The parent is PASSED IN: the renderer builds page.parent only when the page's own source names it, and it does
+  not look inside snippets.
+--}}
+<section class="relative overflow-hidden border-b border-base-content/10 bg-base-200/50">
+  <div class="ws-grid-ink pointer-events-none absolute inset-0" aria-hidden="true"></div>
+  <div class="relative mx-auto max-w-7xl px-6 pb-14 pt-14 sm:pb-20 sm:pt-20">
+    {{#if parent}}
+    <a class="ws-index ws-ink inline-flex items-center gap-2 hover:underline" href="{{sw-url parent.path}}">{{sw-icon "arrow-left" "h-3.5 w-3.5"}} {{#if parent.data.crumb}}{{parent.data.crumb}}{{else}}{{parent.title}}{{/if}}</a>
+    {{/if}}
+    {{#if page.data.eyebrow}}<p class="ws-index mt-6 text-base-content/60">{{page.data.eyebrow}}</p>{{/if}}
+    <h1 class="ws-display mt-4 max-w-4xl text-4xl font-bold sm:text-6xl" data-sw-animation="fade-up">{{#if page.data.headline}}{{page.data.headline}}{{else}}{{page.title}}{{/if}}</h1>
+    {{#if page.description}}<p class="mt-5 max-w-3xl text-lg leading-relaxed text-base-content/70 sm:text-xl" data-sw-animation="fade-up" data-sw-delay="80">{{page.description}}</p>{{/if}}
+  </div>
+</section>

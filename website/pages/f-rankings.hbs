@@ -1,0 +1,91 @@
+{{!-- META {"path":"rank-tracking","title":"Rank tracking & search engines","description":"Track where a site appears on Google for the keywords that matter, by device and place, and read its Search Console and Bing data, without asking clients for their accounts.","parent":"features","order":13,"data":{"icon":"trend-up","eyebrow":"Rank tracking & search engines","headline":"Know where every keyword ranks, and what it costs to check."}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1.15fr_1fr]">
+  <div class="ws-browser order-2 lg:order-1" data-sw-animation="fade-up">
+    <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Statistics · Search rankings</span></div>
+    {{> ws-media slot="feat_rank_table" class="rounded-none"}}
+  </div>
+  <div class="order-1 lg:order-2" data-sw-animation="fade-up" data-sw-delay="100">
+    <p class="ws-index ws-ink">Search rankings</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="rank_title">Positions on Google, on a schedule.</h2>
+    <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="rank_lead">Give a project its domain and up to 500 keywords. Each keyword is checked daily or weekly, on desktop or mobile, from the country or city you choose, in the language you choose. The history stays for 25 months.</p>
+    <div class="mt-6 flex flex-wrap gap-2 text-sm">
+      <span class="rounded-full border border-base-content/10 bg-base-200/60 px-3 py-1">Keyword</span>
+      <span class="rounded-full border border-base-content/10 bg-base-200/60 px-3 py-1">Position</span>
+      <span class="rounded-full border border-base-content/10 bg-base-200/60 px-3 py-1">Change</span>
+      <span class="rounded-full border border-base-content/10 bg-base-200/60 px-3 py-1">Best</span>
+      <span class="rounded-full border border-base-content/10 bg-base-200/60 px-3 py-1">Trend</span>
+      <span class="rounded-full border border-base-content/10 bg-base-200/60 px-3 py-1">Page</span>
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">How a position is counted</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="count_title">One search, read the way a person reads it.</h2>
+    </div>
+    <ol class="mt-12 grid list-none gap-4 p-0 lg:grid-cols-3">
+      <li class="rounded-3xl border border-base-content/10 bg-base-100 p-7" data-sw-animation="fade-up"><span class="ws-numeral text-6xl">01</span><h3 class="mt-6 font-heading text-xl font-bold">From one place</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Every check is one search on one device, from the location and language set on the keyword. A place can be a country or, with DataForSEO, a city or region.</p></li>
+      <li class="rounded-3xl border border-base-content/10 bg-base-100 p-7" data-sw-animation="fade-up" data-sw-delay="80"><span class="ws-numeral text-6xl">02</span><h3 class="mt-6 font-heading text-xl font-bold">Page by page</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Results are read from page 1, then 2, then 3 to 5, then 6 to 10, and reading stops when the site is found. A featured snippet counts as position 1 and is marked as one.</p></li>
+      <li class="rounded-3xl border border-base-content/10 bg-base-100 p-7" data-sw-animation="fade-up" data-sw-delay="160"><span class="ws-numeral text-6xl">03</span><h3 class="mt-6 font-heading text-xl font-bold">Checked twice</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">A drop to "not found" is searched again before it is recorded, so one odd result does not show up as a fall in the chart.</p></li>
+    </ol>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid gap-6 lg:grid-cols-[1fr_1.15fr] lg:items-end" data-sw-animation="fade-up">
+    <h2 class="ws-display text-3xl font-bold sm:text-5xl" data-sw-text="cost_title">Your provider. Your budget.</h2>
+    <p class="max-w-xl text-lg leading-relaxed text-base-content/70" data-sw-text="cost_lead">Results come from a SERP provider you choose, with your own credentials, stored encrypted. Each check is booked against a monthly budget before it is sent, so a busy month stops at the limit you set instead of running up a bill.</p>
+  </div>
+  <div class="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">{{sw-icon "map-pin-area" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">DataForSEO</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Countries, regions and cities as locations.</p></div>
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "cloud-arrow-down" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Apify</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">The Google Search scraper, with an API token. Tracked by country.</p></div>
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "lightning" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Bright Data</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">The SERP API. Tracked by country.</p></div>
+    <div class="sw-border-beam rounded-2xl border border-base-content/10 bg-base-100 p-6 [--sw-beam-width:2px]" data-sw-animation="fade-up" data-sw-delay="180">{{sw-icon "wallet" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">A monthly cap</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Set in US dollars by the instance admin. Search depth (top 10 to top 100) and paused keywords keep it small.</p></div>
+  </div>
+</section>
+
+<section class="bg-neutral text-white">
+  <div class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.1fr]">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index text-accent">Search Console and Bing</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="engines_title">The platform holds the accounts.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-white/70" data-sw-text="engines_lead">The instance connects once: a Google service account and a Bing Webmaster key. From the Search engines tile, staff verify a site, submit its sitemap and read its clicks, impressions, click-through rate, average position, top searches and top pages. No client has to hand over a login.</p>
+      <ul class="mt-6 list-none space-y-3 p-0 text-white/80">
+        <li class="flex gap-3">{{sw-icon "check-circle" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Verification tags are added at publish. Nobody pastes them in.</span></li>
+        <li class="flex gap-3">{{sw-icon "check-circle" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Up to 10 Google accounts can be made Search Console owners.</span></li>
+        <li class="flex gap-3">{{sw-icon "check-circle" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Agents read the same data with <span class="font-code text-accent">get_rankings</span> and <span class="font-code text-accent">get_search_performance</span>.</span></li>
+      </ul>
+    </div>
+    <div class="ws-window overflow-hidden rounded-2xl" data-sw-animation="fade-up" data-sw-delay="100">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">claude</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-dim">&gt;</span> How did the site do in search this month,
+  and which keywords moved?
+
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">get_search_performance</span>  <span class="tk-dim">google · 28 days</span>
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">get_search_performance</span>  <span class="tk-dim">bing · 28 days</span>
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">get_rankings</span>            <span class="tk-dim">last 90 days</span>
+<span class="tk-ok">✓</span> Clicks, impressions and the top queries
+  for both engines, and each keyword's
+  position against its best.</code></pre>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.15fr]">
+  <div data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">Who sees what</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="roles_title">Clients read. Staff decide.</h2>
+    <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="roles_lead">Clients see the rankings and search data of their own project, next to their statistics. Only agency staff change the domain and keywords or press Check now, and only the instance admin chooses the provider and the budget.</p>
+    <a class="btn btn-ghost mt-6 px-0 hover:bg-transparent" href="{{sw-url '/docs/guides/rank-tracking'}}">Set up rank tracking {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+  </div>
+  <div class="ws-browser" data-sw-animation="fade-up" data-sw-delay="100">
+    <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Statistics · Search performance</span></div>
+    {{> ws-media slot="feat_search_performance" class="rounded-none"}}
+  </div>
+</section>
+
+{{> feature-next features=pages.features._attributes.children}}

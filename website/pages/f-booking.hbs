@@ -1,0 +1,110 @@
+{{!-- META {"path":"booking","title":"Booking","description":"Appointments, set times, date ranges and nights, booked on the site and checked against the calendars the business already keeps: ICS feeds, CalDAV and Google Calendar.","parent":"features","order":8,"data":{"icon":"calendar-check","eyebrow":"Booking","headline":"Bookings that respect the calendar you already keep."}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">Four ways to book</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="modes_title">A haircut, a class, a rental or a stay.</h2>
+  </div>
+  <div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-7" data-sw-animation="fade-up">{{sw-icon "scissors" "h-7 w-7 ws-ink"}}<h3 class="mt-5 font-heading text-xl font-bold">Appointments</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">A fixed length on a grid of start times, with buffers before and after.</p></div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-7" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "users-four" "h-7 w-7 ws-ink"}}<h3 class="mt-5 font-heading text-xl font-bold">Set times</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Start times per weekday, each with its own number of seats.</p></div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-7" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "arrows-left-right" "h-7 w-7 ws-ink"}}<h3 class="mt-5 font-heading text-xl font-bold">From–to</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">The visitor picks a start and an end, between a shortest and a longest booking.</p></div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-7" data-sw-animation="fade-up" data-sw-delay="180">{{sw-icon "bed" "h-7 w-7 ws-ink"}}<h3 class="mt-5 font-heading text-xl font-bold">Nights or days</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Whole nights, with check-in at 15:00 and check-out at 11:00 unless you change them, or whole days.</p></div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1.15fr_1fr]">
+    <div class="ws-browser order-2 lg:order-1" data-sw-animation="fade-up">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">salon.example/book</span></div>
+      {{> ws-media slot="feat_booking_widget" class="rounded-none"}}
+    </div>
+    <div class="order-1 lg:order-2" data-sw-animation="fade-up" data-sw-delay="100">
+      <p class="ws-index ws-ink">Rules, not spreadsheets</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="rules_title">Only times that really work are offered.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="rules_lead">Each person or room has opening hours, blocked times, a capacity and a time zone. Each offering adds its own rules on top.</p>
+      <ul class="mt-6 list-none space-y-3 p-0 text-base-content/80">
+        <li class="flex gap-3">{{sw-icon "clock-countdown" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Minimum notice, and how far ahead people may book, up to two years.</span></li>
+        <li class="flex gap-3">{{sw-icon "users-three" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Places per booking, and whether the visitor chooses the person or room.</span></li>
+        <li class="flex gap-3">{{sw-icon "globe-hemisphere-west" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Times in the business's zone, named in the widget when the visitor's differs.</span></li>
+        <li class="flex gap-3">{{sw-icon "check-square-offset" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Booked at once, or held as a request you accept or decline within three days.</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid gap-6 lg:grid-cols-[1fr_1.2fr] lg:items-end" data-sw-animation="fade-up">
+    <div>
+      <p class="ws-index ws-ink">Outside calendars</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="cal_title">The calendar stays the source of truth.</h2>
+    </div>
+    <p class="max-w-xl text-lg leading-relaxed text-base-content/70" data-sw-text="cal_lead">Connect the calendars a business already uses and their busy times are taken off the widget. A calendar that cannot be read counts as busy, so nothing is double-booked because a feed was down.</p>
+  </div>
+  <div class="mt-10 overflow-x-auto rounded-2xl border border-base-content/10 bg-base-100" data-sw-animation="fade-up">
+    <table class="w-full min-w-[44rem] border-collapse text-left text-sm">
+      <thead><tr class="bg-base-200/70"><th class="px-5 py-4 font-heading text-base font-semibold">Calendar</th><th class="px-5 py-4 font-heading text-base font-semibold">Reads busy times</th><th class="px-5 py-4 font-heading text-base font-semibold">Writes bookings in</th><th class="px-5 py-4 font-heading text-base font-semibold">Works with</th></tr></thead>
+      <tbody class="align-top text-base-content/80">
+        <tr class="border-t border-base-content/10"><th class="px-5 py-4 font-medium text-base-content"><span class="inline-flex items-center gap-2">{{sw-icon "rss" "h-4 w-4 ws-ink"}} ICS address</span></th><td class="px-5 py-4">{{sw-icon "check:bold" "h-4 w-4 text-accent"}}</td><td class="px-5 py-4">{{sw-icon "minus:bold" "h-4 w-4 text-base-content/40"}}</td><td class="px-5 py-4">Google's secret address, Outlook, iCloud, and Airbnb or Booking.com exports</td></tr>
+        <tr class="border-t border-base-content/10"><th class="px-5 py-4 font-medium text-base-content"><span class="inline-flex items-center gap-2">{{sw-icon "calendar-blank" "h-4 w-4 ws-ink"}} CalDAV</span></th><td class="px-5 py-4">{{sw-icon "check:bold" "h-4 w-4 text-accent"}}</td><td class="px-5 py-4">Optional</td><td class="px-5 py-4">Tested with Nextcloud, Fastmail, iCloud, Radicale and Baïkal, using an app password</td></tr>
+        <tr class="border-t border-base-content/10"><th class="px-5 py-4 font-medium text-base-content"><span class="inline-flex items-center gap-2">{{sw-icon "brand:googlecalendar" "h-4 w-4 ws-ink"}} Google Calendar</span></th><td class="px-5 py-4">{{sw-icon "check:bold" "h-4 w-4 text-accent"}}</td><td class="px-5 py-4">Optional</td><td class="px-5 py-4">A calendar shared with the instance's Google service account</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="mt-4 text-sm text-base-content/60" data-sw-animation="fade-up">Calendars are read again every five minutes, and once more before a booking if the last reading is over a minute old. Going the other way, a private ICS feed lists every booking, with requests marked tentative.</p>
+</section>
+
+<section class="bg-neutral text-white">
+  <div class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.1fr]">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index text-accent">On the page</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="embed_title">One helper for the widget, one for the status page.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-white/70" data-sw-text="embed_lead">The confirmation email is written in the language of the page the customer booked on, carries an .ics file and links to the status page, where they can cancel until the booking starts. Reminders go out before the date if you want them.</p>
+      <p class="mt-4 leading-relaxed text-white/60">Bookings get the same spam checks as forms, with proof of work and a captcha as options.</p>
+    </div>
+    <div class="ws-window overflow-hidden rounded-2xl" data-sw-animation="fade-up" data-sw-delay="100">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/book.hbs · pages/my-booking.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-hb">\{{sw-booking "haircut"}}</span>
+
+<span class="tk-com">\{{!-- The status page, in your own markup --}}</span>
+<span class="tk-hb">\{{#sw-booking-status}}</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"status-booked"</span> <span class="tk-attr">hidden</span><span class="tk-tag">&gt;</span>Confirmed.<span class="tk-tag">&lt;/p&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"details"</span> <span class="tk-attr">hidden</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;strong</span> <span class="tk-attr">data-sw-field</span>=<span class="tk-str">"offering"</span><span class="tk-tag">&gt;&lt;/strong&gt;</span>
+    <span class="tk-tag">&lt;span</span> <span class="tk-attr">data-sw-field</span>=<span class="tk-str">"when"</span><span class="tk-tag">&gt;&lt;/span&gt;</span>
+  <span class="tk-tag">&lt;/p&gt;</span>
+  <span class="tk-tag">&lt;button</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"cancel"</span> <span class="tk-attr">hidden</span><span class="tk-tag">&gt;</span>Cancel<span class="tk-tag">&lt;/button&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"cancel-confirm"</span> <span class="tk-attr">hidden</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;button</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"cancel-yes"</span><span class="tk-tag">&gt;</span>Yes<span class="tk-tag">&lt;/button&gt;</span>
+    <span class="tk-tag">&lt;button</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"cancel-no"</span><span class="tk-tag">&gt;</span>No<span class="tk-tag">&lt;/button&gt;</span>
+  <span class="tk-tag">&lt;/div&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"message"</span><span class="tk-tag">&gt;&lt;/p&gt;</span>
+<span class="tk-hb">\{{/sw-booking-status}}</span></code></pre>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
+    <div class="sw-border-beam rounded-3xl border border-base-content/10 bg-base-100 p-8 [--sw-beam-width:2px]" data-sw-animation="fade-up">
+      {{sw-icon "credit-card" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold" data-sw-text="pay_title">Paid in advance, if you like.</h3>
+      <p class="mt-3 leading-relaxed text-base-content/70" data-sw-text="pay_lead">Charge per booking, per unit or per night through one of the project's payment providers. The time is held for 20 minutes while the customer pays. A request is paid after you accept it, and a cancellation is refunded in full up to a cut-off you set.</p>
+      <div class="mt-6 overflow-hidden rounded-2xl border border-base-content/10">{{> ws-media slot="feat_booking_requests"}}</div>
+    </div>
+    <div class="flex flex-col rounded-3xl border border-base-content/10 bg-base-100 p-8" data-sw-animation="fade-up" data-sw-delay="100">
+      {{sw-icon "robot" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold" data-sw-text="agents_title">Agents can run the diary.</h3>
+      <p class="mt-3 leading-relaxed text-base-content/70" data-sw-text="agents_lead">An agent connected over MCP lists upcoming bookings and open requests, checks free times without booking anything, and accepts, declines or cancels. Each answer emails the customer.</p>
+      <div class="mt-6 rounded-xl border border-base-content/10 bg-base-200/60 p-4 font-code text-sm">
+        <p><span class="ws-ink">list_bookings</span> <span class="text-base-content/50">requests</span></p>
+        <p class="mt-1"><span class="ws-ink">booking_availability</span> <span class="text-base-content/50">haircut · next week</span></p>
+        <p class="mt-1"><span class="ws-ink">answer_booking</span> <span class="text-base-content/50">accept</span></p>
+      </div>
+      <a class="btn btn-ghost btn-sm mt-auto self-start px-0 pt-6 hover:bg-transparent" href="{{sw-url '/docs/guides/booking'}}">The booking guide {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+  </div>
+</section>
+
+{{> feature-next features=pages.features._attributes.children}}

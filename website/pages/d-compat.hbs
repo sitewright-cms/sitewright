@@ -1,0 +1,60 @@
+{{!-- META {"path":"compatibility","title":"Versions and compatibility","description":"How releases are numbered, what may change between them before 1.0, what 1.0 is planned to promise, and which Node and browser versions Sitewright runs on.","parent":"self-hosting","order":4,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>Sitewright follows semantic versioning, and the unit of release is the container image, <code>ghcr.io/sitewright-cms/sitewright:X.Y.Z</code>. Nothing is published to npm: the <code>@sitewright/*</code> packages in the repository are internal.</p>
+
+    <h2 id="pre-1-0">Before 1.0: minor versions may break things</h2>
+    <p>Sitewright has not reached 1.0. Until it does, the rule in the changelog applies: <strong>minor versions may include breaking changes.</strong> That covers the HTTP API, the authoring vocabulary (helpers, <code>data-sw-*</code> attributes, components) and the shape of stored content. There is no compatibility promise yet.</p>
+    <p>What you can rely on is that changes are written down. Every release has a changelog entry, grouped under headings such as Added, Changed, Removed, Fixed and Security. Read the entries between your version and the new one before you upgrade.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">terminal</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-ok">$</span> curl -s https://sites.example.com/version
+<span class="tk-dim">{"current":"0.85.0","latest":"0.85.0","updateAvailable":false,"releaseUrl":"https://github.com/sitewright-cms/sitewright/releases/latest","build":"…"}</span></code></pre>
+    </div>
+
+    <h2 id="upgrade-path">Upgrades go forward only</h2>
+    <ul>
+      <li>Database migrations run on start and only forward. Each start with pending migrations snapshots the database first.</li>
+      <li>So far every release can upgrade any earlier instance in one step. If a future release cannot, the instance refuses to start, leaves its data untouched and serves a page naming the release to upgrade through first.</li>
+      <li>Downgrading is not supported. To go back after a bad upgrade, restore the pre-migration snapshot and run the previous image, as described in <a href="{{sw-url '/docs/self-hosting/upgrades-and-backups'}}">Upgrades and backups</a>.</li>
+    </ul>
+
+    <h2 id="update-banner">The update banner</h2>
+    <p>The instance checks GitHub for the latest release and keeps the answer for six hours. When a newer one exists, the editor shows a banner naming it, with a link to the release notes. Nothing is installed for you: you pull the new image when it suits you. <code>SW_DISABLE_UPDATE_CHECK=true</code> turns the check off, for installs without internet access. After an upgrade, editors who still have the old editor open get a separate banner asking them to reload.</p>
+
+    <h2 id="plan">What 1.0 is planned to promise</h2>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>A draft, not in force.</strong> The repository's <code>docs/compatibility.md</code> describes what Sitewright intends to promise from 1.0.0. Until 1.0 ships, nothing below binds a release.</p></div>
+    <p>From 1.0, the version number would be a promise about named surfaces: a major version when a stable surface breaks, a minor for new capability, a patch for fixes only. Surfaces fall into three tiers:</p>
+    <table>
+      <thead><tr><th>Tier</th><th>Promise</th><th>Examples in the draft</th></tr></thead>
+      <tbody>
+        <tr><td>Stable</td><td>Breaks only in a major version, with a documented migration path.</td><td>Routes that published sites and visitors reach (form submission, media, site serving, signed preview links); content CRUD, sign-in and API-key capabilities; content kinds and their schemas; the binding directives, <code>\{{sw-*}}</code> helpers, components and the <code>--sw-*</code> / <code>.sw-*</code> CSS; the published-site layout; export bundles; the container contract (<code>SW_DATA_DIR</code>, the documented environment variables, <code>/health</code>, <code>/ready</code>, <code>/version</code>).</td></tr>
+        <tr><td>Provisional</td><td>Documented and used, still moving. Changes carry an upgrade note in the changelog.</td><td><code>/admin/*</code>, <code>/ai/*</code>, the agent, import and clone routes; the runtime <code>data-sw-*</code> attributes beyond the binding directives; the response bodies of <code>/health</code> and <code>/ready</code>.</td></tr>
+        <tr><td>Internal</td><td>No promise.</td><td>The <code>@sitewright/*</code> packages; the SQL schema and the layout inside the data folder; the editor's markup; agent instructions; log format; the bundled example projects.</td></tr>
+      </tbody>
+    </table>
+    <p>Downgrades would stay unsupported. Removing something stable would follow a deprecation: announced in the changelog with its replacement, kept working for the rest of the major version, warned about where use can be detected, and removed in the next major. A deprecation would run at least two minor releases and 90 days, whichever is longer. A major version would get security and migration fixes for 12 months after its successor ships.</p>
+    <p>One question is still open: whether the authoring model freezes at 1.0. The promised surfaces are already generated from the running system and committed under <code>contract/</code> in the repository, so a change to one shows up as a diff in review.</p>
+    <div class="ws-callout"><p class="!mt-0"><strong>Until then,</strong> read data through the API or MCP rather than the database file, and automate through the API rather than the editor's page structure. Those are the boundaries the plan already draws.</p></div>
+
+    <h2 id="runtime">Node and browsers</h2>
+    <table>
+      <thead><tr><th>Part</th><th>Runs on</th></tr></thead>
+      <tbody>
+        <tr><td>Release image</td><td>Node 22 (<code>node:22-slim</code>), built for x86-64. A release is not published unless the image's Node meets the repository's minimum patch level.</td></tr>
+        <tr><td>Building from source</td><td>Node <code>^22.23.4</code>, <code>^24.22.1</code> or <code>&gt;=26.12.1</code>, with pnpm 11 through Corepack.</td></tr>
+        <tr><td>The editor</td><td>Compiled for Vite's widely-available baseline: Chrome and Edge 111, Firefox 114, Safari 16.4 and newer. Passkeys need HTTPS.</td></tr>
+        <tr><td>Published sites</td><td>Static HTML with CSS compiled by Tailwind CSS v4, and small scripts only on the pages that use a feature. Tailwind's documentation lists the browsers that CSS needs.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="next">Next</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/self-hosting/upgrades-and-backups'}}">Upgrades and backups</a></li>
+      <li><a href="https://github.com/sitewright-cms/sitewright/blob/main/CHANGELOG.md" target="_blank" rel="noopener">The changelog</a></li>
+      <li><a href="{{sw-url '/docs/reference/helpers'}}">Template helpers</a></li>
+    </ul>
+  </article>
+</div>

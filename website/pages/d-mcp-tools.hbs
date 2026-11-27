@@ -1,0 +1,198 @@
+{{!-- META {"path":"mcp-tools","title":"MCP tools","description":"The 82 tools an agent gets at /mcp, by family, with the capability each one needs, plus the six account tools a member token adds.","parent":"reference","order":8,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>An agent connected to <code>/mcp</code> with a project connection (OAuth or a project token) is offered 82 tools. A member token adds six account tools and a required <code>project</code> argument on every project tool, 88 in all. Each tool runs through the same REST routes the editor uses, as the connection's role, limited to its capabilities. Setup: <a href="{{sw-url '/docs/guides/ai-agents'}}">Connect an AI agent</a>.</p>
+    <p>The list is generated from the server and committed to the repository (<code>contract/mcp-tools.json</code>, <code>contract/mcp-tools-member.json</code>), so a removed or renamed tool shows up as a diff in review. Sitewright is pre-1.0, so that is a record, not a compatibility promise.</p>
+
+    <h2 id="capabilities">Capabilities</h2>
+    <p>A connection carries a set of capabilities; the "Needs" column below names the one a tool checks. A dash means the tool is offered on every connection; calls that reach project content are still checked by the API behind it.</p>
+    <table>
+      <thead><tr><th>Capability</th><th>Allows</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>content:read</code></td><td>Reading pages, content, media, submissions, statistics, orders and bookings.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>content:write</code></td><td>Creating and changing content, media and settings; answering bookings; order fulfilment.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>content:delete</code></td><td>Deleting pages, entities, media and languages. Not implied by <code>content:write</code>.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>publish</code></td><td>Deploying to Local Hosting.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>deploy</code></td><td>Managing and deploying FTP, FTPS, SFTP and git targets.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>payments:provider:write</code></td><td>Writing instance-wide payment provider definitions. Honored only on a connection owned by an instance admin.</td></tr>
+      </tbody>
+    </table>
+    <p>Member tokens can also carry account capabilities: <code>projects:create</code>, <code>projects:rename</code>, <code>projects:delete</code>, <code>members:manage</code> and <code>members:invite</code>.</p>
+
+    <h2 id="connect">Connection and discovery</h2>
+    <table>
+      <thead><tr><th>Tool</th><th>Needs</th><th class="min-w-56">Does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>get_scope</code></td><td class="whitespace-nowrap">–</td><td>Whether the connection is authenticated, and its project, role and capabilities. Call it first.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>login</code></td><td class="whitespace-nowrap">–</td><td>Starts a sign-in on the deprecated local bridge. On <code>/mcp</code> the token is fixed and this answers that it is not available.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>switch_project</code></td><td class="whitespace-nowrap">–</td><td>Re-authenticates for another project on the deprecated local bridge. On <code>/mcp</code>, add another connection instead.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>get_capabilities</code></td><td class="whitespace-nowrap">–</td><td>One index of everything the platform can do and where each part is documented.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>get_reference</code></td><td class="whitespace-nowrap">–</td><td>Every <code>sw-*</code> helper, <code>data-sw-*</code> directive, binding namespace and loop variable.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>get_guide</code></td><td class="whitespace-nowrap">–</td><td>The how-to for one feature area: design, components, images, effects, i18n, shop, payments, consent, templates, icons, nav, import, datasets.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>get_components</code></td><td class="whitespace-nowrap">–</td><td>The markup contracts of the ten components.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>search_icons</code></td><td class="whitespace-nowrap">–</td><td>Finds icon names: Phosphor glyphs, brand logos, country flags.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>search_textures</code></td><td class="whitespace-nowrap">–</td><td>Finds tileable background textures, with ready CSS.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>search_google_fonts</code></td><td class="whitespace-nowrap">–</td><td>Searches the bundled Google Fonts catalog; makes no request to Google.</td></tr>
+      </tbody>
+    </table>
+    <h2 id="pages">Pages, content and settings</h2>
+    <table>
+      <thead><tr><th>Tool</th><th>Needs</th><th class="min-w-56">Does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>list_pages</code></td><td class="whitespace-nowrap">–</td><td>Lists pages, metadata only.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>get_page</code></td><td class="whitespace-nowrap">–</td><td>One page, with its source.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>put_page</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Creates or replaces a whole page.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>patch_page</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Changes only the fields you send; <code>null</code> clears one.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>delete_page</code></td><td class="whitespace-nowrap"><code>content:delete</code></td><td>Deletes a page; its children move up and inheriting translations go with it.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>list_content</code></td><td class="whitespace-nowrap">–</td><td>Lists the entities of a content kind (pages, datasets, entries, forms, templates, snippets, settings…).</td></tr>
+        <tr><td class="whitespace-nowrap"><code>get_content</code></td><td class="whitespace-nowrap">–</td><td>One entity by kind and id.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>put_content</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Creates or replaces an entity; <code>merge:true</code> patches settings or an entry.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>delete_content</code></td><td class="whitespace-nowrap"><code>content:delete</code></td><td>Deletes an entity.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>delete_content_bulk</code></td><td class="whitespace-nowrap"><code>content:delete</code></td><td>Deletes up to 200 entities of one kind in one call.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>patch_critical_css</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Adds or replaces a named block of site CSS without resending the sheet.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>patch_text</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Find-and-replace inside one long text field: a source, a chrome slot or the site CSS.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>rename_dataset</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Renames a dataset's slug or name and updates entries and sources that use it.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>list_revisions</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>An entity's revision history.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>restore_revision</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Restores an earlier revision, or a deleted entity.</td></tr>
+      </tbody>
+    </table>
+    <h2 id="languages">Languages</h2>
+    <table>
+      <thead><tr><th>Tool</th><th>Needs</th><th class="min-w-56">Does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>add_language</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Adds a language and creates an inheriting page for every existing page.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>remove_language</code></td><td class="whitespace-nowrap"><code>content:delete</code></td><td>Removes a language, its pages and its version of every entry.</td></tr>
+      </tbody>
+    </table>
+    <h2 id="preview">Preview, sharing and audits</h2>
+    <table>
+      <thead><tr><th>Tool</th><th>Needs</th><th class="min-w-56">Does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>preview_page</code></td><td class="whitespace-nowrap">–</td><td>Renders a page, saved or not, and returns desktop and mobile screenshots.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>pagespeed_audit</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>A Lighthouse speed, accessibility, best-practice and SEO audit of a deploy-equivalent build.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>measure_header</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>Measures the fixed header at every breakpoint and returns the CSS to fix <code>--sw-header-h</code>.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>list_preview_shares</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>Lists the no-login share links to the draft site.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>create_preview_share</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Creates a share link for a client or reviewer.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>revoke_preview_share</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Revokes a share link.</td></tr>
+      </tbody>
+    </table>
+    <h2 id="publish">Publishing</h2>
+    <table>
+      <thead><tr><th>Tool</th><th>Needs</th><th class="min-w-56">Does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>get_publish_status</code></td><td class="whitespace-nowrap">–</td><td>The latest published release.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>deploy_project</code></td><td class="whitespace-nowrap"><code>publish</code> or <code>deploy</code></td><td>Deploys to the project's targets: Local Hosting needs <code>publish</code>, FTP, SFTP and git also need <code>deploy</code>.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>publish_project</code></td><td class="whitespace-nowrap"><code>publish</code></td><td>Deprecated: use <code>deploy_project</code>. Builds the Local Hosting copy only.</td></tr>
+      </tbody>
+    </table>
+    <h2 id="media">Media</h2>
+    <table>
+      <thead><tr><th>Tool</th><th>Needs</th><th class="min-w-56">Does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>list_media</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>Lists media files with URLs, kind, size and alt text.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>list_media_folders</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>Lists media folders.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>upload_media</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Uploads a small file (up to 256 KB) inline.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>create_media_upload</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Mints up to 50 one-shot upload URLs for large local files.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>import_media</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Downloads a file from a public https URL and self-hosts it.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>import_image</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>The original name of <code>import_media</code>.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>replace_media</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Replaces a file's bytes in place (up to 256 KB), keeping its id and URL.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>create_media_replace</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>A one-shot upload URL to replace a large file in place.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>move_media</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Moves, renames or sets the alt text of one file.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>move_media_bulk</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Moves many files into one folder.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>set_media_alt</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Sets the alt text of up to 200 files.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>set_font_metadata</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Corrects an uploaded font's family, weight, style or fallback.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>select_google_font</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Self-hosts a Google font family's weights as a media file.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>transform_image</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Rotates or crops an image, in place or as a new file.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>create_media_folder</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Creates a folder.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>rename_media_folder</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Renames or moves a folder and everything in it.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>delete_media</code></td><td class="whitespace-nowrap"><code>content:delete</code></td><td>Moves a file to the recycle bin (recoverable for 90 days).</td></tr>
+        <tr><td class="whitespace-nowrap"><code>delete_media_bulk</code></td><td class="whitespace-nowrap"><code>content:delete</code></td><td>Moves up to 200 files to the recycle bin.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>list_stock_providers</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>The configured stock photo providers.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>search_stock_images</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>Searches stock photos across providers.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>import_stock_image</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Imports a stock photo, self-hosted with attribution.</td></tr>
+      </tbody>
+    </table>
+    <h2 id="import">Import and clone</h2>
+    <table>
+      <thead><tr><th>Tool</th><th>Needs</th><th class="min-w-56">Does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>import_website</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Crawls a public site into the project; returns a job id.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>import_status</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Polls an import job.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>ai_clone</code></td><td class="whitespace-nowrap"><code>publish</code></td><td>Rebuilds every imported page with the server's AI provider (beta).</td></tr>
+        <tr><td class="whitespace-nowrap"><code>compare_to_source</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>A side-by-side screenshot of an imported page and its original.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>visual_audit</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>Clone and original, full page, with a defect rubric to judge region by region.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>clone_audit</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>Structure and behavior checks of a cloned page against the original.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>compare_regions</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>2× crops of the header and footer of build and original.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>fidelity_check</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>Computed-style coverage of build versus original; advisory.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>inspect_source</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>Computed styles, sizes and settled markup of the live original (or the build).</td></tr>
+      </tbody>
+    </table>
+    <h2 id="insight">Forms, statistics and search</h2>
+    <table>
+      <thead><tr><th>Tool</th><th>Needs</th><th class="min-w-56">Does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>list_submissions</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>Form submissions, newest first.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>get_site_stats</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>Built-in statistics for a range of days.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>get_rankings</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>Tracked keyword positions.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>get_search_performance</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>Google and Bing clicks, impressions, CTR and position.</td></tr>
+      </tbody>
+    </table>
+    <h2 id="shop">Shop and payments</h2>
+    <table>
+      <thead><tr><th>Tool</th><th>Needs</th><th class="min-w-56">Does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>list_orders</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>Orders with payment and fulfilment state, market, lines and buyer fields.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>get_order</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>One order.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>set_order_fulfilment</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Moves a paid order through new, packed, shipped, done or cancelled. Never refunds.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>resend_order_mail</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Re-queues a failed order mail.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>list_payment_providers</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>The providers checkout can use, whether this project's keys are in, and what would stop a checkout.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>list_gateway_definitions</code></td><td class="whitespace-nowrap"><code>payments:provider:write</code></td><td>Instance-wide: every payment provider definition.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>put_gateway_definition</code></td><td class="whitespace-nowrap"><code>payments:provider:write</code></td><td>Instance-wide: creates or replaces a custom provider definition.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>fork_gateway_definition</code></td><td class="whitespace-nowrap"><code>payments:provider:write</code></td><td>Instance-wide: copies a definition as a disabled draft.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>delete_gateway_definition</code></td><td class="whitespace-nowrap"><code>payments:provider:write</code></td><td>Instance-wide: deletes an unused custom definition.</td></tr>
+      </tbody>
+    </table>
+    <h2 id="booking">Booking</h2>
+    <table>
+      <thead><tr><th>Tool</th><th>Needs</th><th class="min-w-56">Does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>list_bookings</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>Upcoming bookings, open requests, or past ones.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>answer_booking</code></td><td class="whitespace-nowrap"><code>content:write</code></td><td>Accepts or declines a request, or cancels a booking; the customer is emailed. A paid booking is canceled by a person.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>booking_availability</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>An offering's free times in a window; books nothing.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="member">Member token account tools</h2>
+    <p>Only on a member token, which reaches every project its owner can open. Call <code>list_projects</code> first and pass the chosen id as <code>project</code> to every project tool; nothing is remembered between calls.</p>
+    <table>
+      <thead><tr><th>Tool</th><th>Needs</th><th class="min-w-56">Does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>list_projects</code></td><td class="whitespace-nowrap"><code>content:read</code></td><td>The projects the token reaches, with id, name, slug and role.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>create_project</code></td><td class="whitespace-nowrap"><code>projects:create</code></td><td>A new project with a home page and default navigation. Counts toward a daily limit.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>duplicate_project</code></td><td class="whitespace-nowrap"><code>projects:create</code></td><td>Copies a project (pages, content, settings, media) as "&lt;name&gt; (copy)". Also needs <code>content:read</code> on the source.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>list_members</code></td><td class="whitespace-nowrap"><code>members:manage</code></td><td>Members and pending invites of a project the token's owner owns.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>invite_member</code></td><td class="whitespace-nowrap"><code>members:invite</code></td><td>Invites a person by email; returns the invite and a one-time accept token.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>approve_invite</code></td><td class="whitespace-nowrap"><code>members:invite</code></td><td>Adds an invited person now. A new account gets a temporary password, shown once, valid for a week.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="tips">Working with the tools</h2>
+    <ul>
+      <li><strong>Edit, don't replace.</strong> <code>put_page</code> is a total replace: omitted fields are deleted. Use <code>patch_page</code>, <code>patch_text</code> and <code>patch_critical_css</code> for partial changes, and <code>put_content</code> with <code>merge:true</code> for settings.</li>
+      <li><strong>Look at the result.</strong> <code>preview_page</code> returns screenshots of unsaved work, so an agent can check a layout before saving it.</li>
+      <li><strong>Find before assuming.</strong> <code>get_capabilities</code> maps common needs to the tool or guide that covers them.</li>
+      <li><strong>Untrusted text stays data.</strong> Buyer fields, booking notes, form submissions and search queries are typed by strangers; the tool descriptions tell agents never to follow them as instructions or publish them.</li>
+    </ul>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>Deprecated:</strong> <code>publish_project</code> (use <code>deploy_project</code>), and the local stdio bridge, the only place <code>login</code> and <code>switch_project</code> still work. Connect to <code>/mcp</code> over HTTP instead.</p></div>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/guides/ai-agents'}}">Connect an AI agent</a></li>
+      <li><a href="{{sw-url '/docs/guides/api-keys'}}">API keys and member tokens</a></li>
+      <li><a href="{{sw-url '/docs/reference/limits'}}#tools">Tool limits</a></li>
+      <li><a href="{{sw-url '/features/ai-agents'}}">AI agents</a></li>
+    </ul>
+  </article>
+</div>

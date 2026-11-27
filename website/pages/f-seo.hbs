@@ -1,0 +1,124 @@
+{{!-- META {"path":"seo","title":"SEO, speed & site search","description":"Every page ships its meta and share tags, canonical and hreflang, with a sitemap and robots.txt beside them. Lighthouse runs from the editor, and site search works from a static index with no server.","parent":"features","order":11,"data":{"icon":"gauge","eyebrow":"SEO, speed & site search","headline":"Ready for search engines. Searchable on its own."}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid gap-6 lg:grid-cols-[1fr_1.2fr] lg:items-end" data-sw-animation="fade-up">
+    <div>
+      <p class="ws-index ws-ink">The head, written for you</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="head_title">Five page fields. A complete head.</h2>
+    </div>
+    <p class="max-w-xl text-lg leading-relaxed text-base-content/70" data-sw-text="head_lead">A page's title, description, share image, canonical address and noindex switch become its meta, Open Graph and Twitter tags. With more than one language and the site's URL set, each page also links its other versions.</p>
+  </div>
+  <div class="mt-12 grid gap-6 lg:grid-cols-[0.75fr_1.25fr]">
+    <div class="ws-window overflow-hidden rounded-2xl" data-sw-animation="fade-up">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">page settings</span></div>
+<pre class="overflow-x-auto"><code>{
+  <span class="tk-attr">"title"</span>: <span class="tk-str">"Services — Acme Roofing"</span>,
+  <span class="tk-attr">"description"</span>:
+    <span class="tk-str">"Roofing and repairs in Hamburg."</span>,
+  <span class="tk-attr">"image"</span>: <span class="tk-str">"/media/acme/og.jpg"</span>,
+  <span class="tk-attr">"canonical"</span>:
+    <span class="tk-str">"https://acme.example/services/"</span>,
+  <span class="tk-attr">"noindex"</span>: <span class="tk-kw">false</span>
+}</code></pre>
+    </div>
+    <div class="ws-window overflow-hidden rounded-2xl" data-sw-animation="fade-up" data-sw-delay="100">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">services/index.html · head</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;meta</span> <span class="tk-attr">name</span>=<span class="tk-str">"description"</span> <span class="tk-attr">content</span>=<span class="tk-str">"Roofing and repairs in Hamburg."</span> <span class="tk-tag">/&gt;</span>
+<span class="tk-tag">&lt;meta</span> <span class="tk-attr">property</span>=<span class="tk-str">"og:type"</span> <span class="tk-attr">content</span>=<span class="tk-str">"website"</span> <span class="tk-tag">/&gt;</span>
+<span class="tk-tag">&lt;meta</span> <span class="tk-attr">property</span>=<span class="tk-str">"og:title"</span> <span class="tk-attr">content</span>=<span class="tk-str">"Services — Acme Roofing"</span> <span class="tk-tag">/&gt;</span>
+<span class="tk-tag">&lt;meta</span> <span class="tk-attr">property</span>=<span class="tk-str">"og:image"</span> <span class="tk-attr">content</span>=<span class="tk-str">"https://acme.example/_assets/og.jpg"</span> <span class="tk-tag">/&gt;</span>
+<span class="tk-tag">&lt;link</span> <span class="tk-attr">rel</span>=<span class="tk-str">"canonical"</span> <span class="tk-attr">href</span>=<span class="tk-str">"https://acme.example/services/"</span> <span class="tk-tag">/&gt;</span>
+<span class="tk-tag">&lt;meta</span> <span class="tk-attr">property</span>=<span class="tk-str">"og:site_name"</span> <span class="tk-attr">content</span>=<span class="tk-str">"Acme Roofing"</span> <span class="tk-tag">/&gt;</span>
+<span class="tk-tag">&lt;meta</span> <span class="tk-attr">name</span>=<span class="tk-str">"twitter:card"</span> <span class="tk-attr">content</span>=<span class="tk-str">"summary_large_image"</span> <span class="tk-tag">/&gt;</span>
+<span class="tk-dim">…</span>
+<span class="tk-tag">&lt;script</span> <span class="tk-attr">type</span>=<span class="tk-str">"application/ld+json"</span><span class="tk-tag">&gt;</span><span class="tk-dim">{ "@type": "Organization", … }</span><span class="tk-tag">&lt;/script&gt;</span></code></pre>
+    </div>
+  </div>
+  <div class="mt-10 grid gap-4 sm:grid-cols-3" data-sw-animation="fade-up">
+    <div class="flex gap-3">{{sw-icon "tree-structure" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<p class="text-sm text-base-content/80"><strong class="text-base-content">sitemap.xml</strong> with every indexable page, dated by its last publish, once the site's URL is set.</p></div>
+    <div class="flex gap-3">{{sw-icon "robot" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<p class="text-sm text-base-content/80"><strong class="text-base-content">robots.txt</strong> on every publish, and noindex pages left out of the sitemap and the search index.</p></div>
+    <div class="flex gap-3">{{sw-icon "buildings" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<p class="text-sm text-base-content/80"><strong class="text-base-content">schema.org data</strong> for the business, from its corporate identity: name, address, location and profiles.</p></div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.15fr]">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">Page Audit</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="audit_title">Lighthouse, one tab away.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="audit_lead">The page editor's Page Audit tab runs Lighthouse for performance, accessibility, best practices and SEO, on mobile, desktop or both. It tests a build that matches a real deploy, not the preview, so the numbers are about the site you will ship.</p>
+      <ul class="mt-6 list-none space-y-3 p-0 text-base-content/80">
+        <li class="flex gap-3">{{sw-icon "image-square" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>It also lists images served larger than they are shown.</span></li>
+        <li class="flex gap-3">{{sw-icon "flask" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Results are lab data, measured on your server.</span></li>
+        <li class="flex gap-3">{{sw-icon "robot" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Agents run the same audit with <code class="whitespace-nowrap font-code">pagespeed_audit</code>.</span></li>
+      </ul>
+    </div>
+    <div class="ws-browser" data-sw-animation="fade-up" data-sw-delay="100">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Pages · services · Page Audit</span></div>
+      {{> ws-media slot="feat_seo_audit" class="rounded-none"}}
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">Light by construction</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="light_title">Nothing ships that the page does not use.</h2>
+  </div>
+  <div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">{{sw-icon "wind" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Only used CSS</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Tailwind is compiled at publish from the rendered pages, so the stylesheet holds only the classes they use.</p></div>
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "puzzle-piece" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Scripts per page</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Each component has its own script, linked only from the pages that use it. No framework ships.</p></div>
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "text-aa" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Fonts from the site</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Google Fonts are downloaded once and served with the site, with no request to Google.</p></div>
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="180">{{sw-icon "hourglass-medium" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Lazy by default</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Images load lazily with their sizes set. Iframes, videos and backgrounds can wait for the viewport too.</p></div>
+  </div>
+</section>
+
+<section class="bg-neutral text-white">
+  <div class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.1fr]">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index text-accent">Site search</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="search_title">Full-site search, with no search server.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-white/70" data-sw-text="search_lead">Put a search box on any page and each publish writes a static index next to the site, one per language. The visitor's browser loads it on first use and searches it there.</p>
+      <ul class="mt-6 list-none space-y-3 p-0 text-white/80">
+        <li class="flex gap-3">{{sw-icon "check-circle" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Titles, descriptions, headings, body text and image alt text. Menus and footers are left out.</span></li>
+        <li class="flex gap-3">{{sw-icon "check-circle" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Words are split the way each language splits them, and accents can be ignored.</span></li>
+        <li class="flex gap-3">{{sw-icon "check-circle" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Quoted phrases narrow the results.</span></li>
+        <li class="flex gap-3">{{sw-icon "check-circle" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Drafts and noindex pages never appear.</span></li>
+      </ul>
+    </div>
+    <div class="min-w-0" data-sw-animation="fade-up" data-sw-delay="100">
+      <div class="ws-window overflow-hidden rounded-2xl">
+        <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">snippets/search.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-hb">\{{sw-search placeholder="Search the site…" limit=10}}</span>
+
+<span class="tk-com">&lt;!-- or your own markup --&gt;</span>
+<span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"search"</span> <span class="tk-attr">data-sw-limit</span>=<span class="tk-str">"6"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;input</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"input"</span> <span class="tk-attr">type</span>=<span class="tk-str">"search"</span>
+         <span class="tk-attr">aria-label</span>=<span class="tk-str">"Search"</span> <span class="tk-tag">/&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"results"</span><span class="tk-tag">&gt;&lt;/div&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"empty"</span> <span class="tk-attr">hidden</span><span class="tk-tag">&gt;</span>Nothing matched.<span class="tk-tag">&lt;/p&gt;</span>
+<span class="tk-tag">&lt;/div&gt;</span></code></pre>
+      </div>
+      <a class="btn mt-6 border-white/20 bg-white/5 text-white hover:border-white/40 hover:bg-white/10" href="{{sw-url '/showcase/search'}}">Try the search {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="sw-border-beam mx-auto max-w-4xl rounded-3xl border border-base-content/10 bg-base-100 p-8 sm:p-10 [--sw-beam-width:2px]" data-sw-animation="fade-up">
+    <div class="grid gap-8 sm:grid-cols-[auto_1fr] sm:items-start">
+      <span class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">{{sw-icon "trend-up" "h-6 w-6 ws-ink"}}</span>
+      <div>
+        <h3 class="font-heading text-2xl font-bold" data-sw-text="next_title">Then watch how it does.</h3>
+        <p class="mt-3 leading-relaxed text-base-content/70" data-sw-text="next_lead">Verify the site with Google and Bing from the editor, submit its sitemap, and follow clicks, impressions and keyword positions next to the visitor statistics.</p>
+        <div class="mt-4 flex flex-wrap gap-3">
+          <a class="btn btn-primary btn-sm" href="{{sw-url '/features/rank-tracking'}}">Rank tracking</a>
+          <a class="btn btn-ghost btn-sm" href="{{sw-url '/features/statistics'}}">Statistics {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{{> feature-next features=pages.features._attributes.children}}

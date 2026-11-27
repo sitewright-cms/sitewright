@@ -1,0 +1,105 @@
+{{!-- META {"path":"shop","title":"Set up the shop","description":"Sell from a static site: a product dataset, add-to-cart buttons and a cart, order channels from WhatsApp to real card payments, markets with their own currency, and the orders inbox.","parent":"guides","order":3,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>The shop is a cart in the visitor's browser that hands the order to a channel you choose. Most channels send an order request (a WhatsApp message, an email, a form submission) and the seller confirms the price. A <strong>checkout</strong> channel takes a real payment: the server re-prices the order from the published catalog and charges it through a payment provider.</p>
+
+    <h2 id="enable">1. Switch the shop on</h2>
+    <p>In <strong>Settings → Website → Shop</strong>, turn the shop on and set the currency formatting (symbol before or after, decimals). The cart is off until you do. Every visible word of the cart (button labels, the drawer title, field labels) lives in the translation catalog, so it can be translated like any other string.</p>
+
+    <h2 id="catalog">2. Add the products and the cart</h2>
+    <p>Keep the catalog in a dataset, for example <code>products</code> with <code>sku</code>, <code>name</code>, <code>price</code> (a number) and <code>image</code>. Loop it with an add-to-cart button per product, and place one cart mount for the whole site, typically in the footer slot:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/shop.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"grid gap-6 sm:grid-cols-3"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-hb">\{{#each dataset.products}}</span>
+  <span class="tk-tag">&lt;article</span> <span class="tk-attr">class</span>=<span class="tk-str">"card bg-base-100"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-hb">\{{sw-image image alt=name}}</span>
+    <span class="tk-tag">&lt;h3&gt;</span><span class="tk-hb">\{{name}}</span><span class="tk-tag">&lt;/h3&gt;</span>
+    <span class="tk-hb">\{{sw-add-to-cart sku=sku name=name price=price image=image}}</span>
+  <span class="tk-tag">&lt;/article&gt;</span>
+  <span class="tk-hb">\{{/each}}</span>
+<span class="tk-tag">&lt;/div&gt;</span>
+
+<span class="tk-com">&lt;!-- once, in the footer slot --&gt;</span>
+<span class="tk-hb">\{{sw-cart}}</span></code></pre>
+    </div>
+    <p>Bare, <code>\{{sw-cart}}</code> draws the platform's floating cart and drawer. For your own design, use the block form and bind it with <code>data-sw-part</code>, <code>data-sw-field</code> and <code>data-sw-action</code>; fork the global <code>cart-drawer</code> snippet to start from the default. A ready-made storefront over a <code>products</code> dataset is the global <code>shop</code> template.</p>
+
+    <h2 id="channels">3. Choose how orders reach you</h2>
+    <p>Channels are set in the Shop settings. Each has a stable key, and its label comes from the translation catalog.</p>
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Settings · Website · Shop</span></div>
+      {{> ws-media slot="doc_shop_channels" class="rounded-none"}}
+    </div>
+    <table>
+      <thead><tr><th>Kind</th><th>What happens</th><th class="min-w-56">Price</th></tr></thead>
+      <tbody>
+        <tr><td><code>whatsapp</code></td><td>Opens WhatsApp with the order written out, to your number. Can ask for fields (name, address) first.</td><td>An inquiry</td></tr>
+        <tr><td><code>mailto</code></td><td>Opens the visitor's mail program with the order. Can ask for fields first.</td><td>An inquiry</td></tr>
+        <tr><td><code>payment</code></td><td>Opens a payment link built from a URL template, e.g. <code>https://paypal.me/acme/{total}</code>. The platform learns nothing about the payment.</td><td>An inquiry</td></tr>
+        <tr><td><code>form</code></td><td>Posts the order to a form's inbox and emails it.</td><td>An inquiry</td></tr>
+        <tr><td><code>checkout</code></td><td>A real, processed payment through a payment provider; both you and the buyer are emailed once the provider confirms.</td><td>Charged, re-priced on the server</td></tr>
+      </tbody>
+    </table>
+    <p>For the first four, the cart's prices are not authoritative: the order is a request and you confirm price and payment yourself.</p>
+
+    <h2 id="checkout">4. Take real payments</h2>
+    <p>A checkout channel needs three steps, by three kinds of person, in order:</p>
+    <ol>
+      <li><strong>Instance admin:</strong> switches payments on for the instance in System Settings (off by default; it needs <code>SW_ENCRYPTION_KEY</code>), and enables a payment provider. Stripe, PayPal and Mollie are built in; others can be added as a definition (see the <code>payments</code> agent guide). A provider is proven with a real test-mode checkout before it can take live money.</li>
+      <li><strong>Someone on the project, signed in:</strong> enters the project's own keys in <strong>Settings → Website → Payments</strong>, for test and live mode, and pastes the webhook URL shown there into the provider's dashboard. Keys are entered by a person in the browser; no token can reach that screen.</li>
+      <li><strong>Author:</strong> sets an ISO currency code for the shop, adds the channel, and creates the thank-you page.</li>
+    </ol>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">website.shop (excerpt)</span></div>
+<pre class="overflow-x-auto"><code>{ <span class="tk-attr">"enabled"</span>: <span class="tk-kw">true</span>,
+  <span class="tk-attr">"currency"</span>: { <span class="tk-attr">"code"</span>: <span class="tk-str">"EUR"</span>, <span class="tk-attr">"position"</span>: <span class="tk-str">"after"</span>, <span class="tk-attr">"decimals"</span>: <span class="tk-kw">2</span> },
+  <span class="tk-attr">"channels"</span>: [
+    { <span class="tk-attr">"kind"</span>: <span class="tk-str">"checkout"</span>, <span class="tk-attr">"key"</span>: <span class="tk-str">"pay_now"</span>, <span class="tk-attr">"gatewayId"</span>: <span class="tk-str">"stripe"</span>,
+      <span class="tk-attr">"email"</span>: <span class="tk-str">"orders@example.com"</span>, <span class="tk-attr">"returnPath"</span>: <span class="tk-str">"/thank-you/"</span> }
+  ] }</code></pre>
+    </div>
+    <p>The <code>returnPath</code> page carries <code>\{{sw-order-status}}</code> (fork the global <code>thank-you</code> template). Arriving there is never taken as proof of payment: the panel reads the order's state from the platform, and the order becomes paid only when the provider's verified webhook says so.</p>
+    <p>The browser sends only SKUs and quantities. The amount comes from the price list the last deploy published, so <strong>a price change is charged only after you deploy again</strong>.</p>
+
+    <h2 id="markets">5. Sell in several currencies (optional)</h2>
+    <p>Markets give each region its own currency, prices, shipping and tax. The first market is the default; one market may be "rest of world".</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">website.shop.markets</span></div>
+<pre class="overflow-x-auto"><code>[ { <span class="tk-attr">"id"</span>: <span class="tk-str">"eu"</span>, <span class="tk-attr">"name"</span>: <span class="tk-str">"Europe"</span>, <span class="tk-attr">"currency"</span>: <span class="tk-str">"EUR"</span>, <span class="tk-attr">"countries"</span>: [<span class="tk-str">"DE"</span>, <span class="tk-str">"AT"</span>], <span class="tk-attr">"locale"</span>: <span class="tk-str">"de"</span> },
+  { <span class="tk-attr">"id"</span>: <span class="tk-str">"ch"</span>, <span class="tk-attr">"name"</span>: <span class="tk-str">"Switzerland"</span>, <span class="tk-attr">"currency"</span>: <span class="tk-str">"CHF"</span>, <span class="tk-attr">"countries"</span>: [<span class="tk-str">"CH"</span>],
+    <span class="tk-attr">"pricing"</span>: { <span class="tk-attr">"shipping"</span>: { <span class="tk-attr">"flatMinor"</span>: <span class="tk-kw">900</span> }, <span class="tk-attr">"tax"</span>: { <span class="tk-attr">"rateBp"</span>: <span class="tk-kw">810</span> } } },
+  { <span class="tk-attr">"id"</span>: <span class="tk-str">"row"</span>, <span class="tk-attr">"name"</span>: <span class="tk-str">"Rest of world"</span>, <span class="tk-attr">"currency"</span>: <span class="tk-str">"USD"</span>, <span class="tk-attr">"restOfWorld"</span>: <span class="tk-kw">true</span>, <span class="tk-attr">"pricing"</span>: {} } ]</code></pre>
+    </div>
+    <p>Prices are entered per market, never converted: give the product dataset a <code>prices</code> field and pass it as <code>\{{sw-add-to-cart … prices=prices}}</code> and <code>\{{sw-price prices=prices}}</code>. A market with no price for a product does not sell it. The visitor's market comes from <code>\{{sw-market-switcher}}</code> if they chose one, else the page language, else their region, else the first market. Checkout asks for the ship-to country and refuses one outside the market.</p>
+
+    <h2 id="orders">6. Run the orders</h2>
+    <p>Paid orders land in the project's orders inbox with their payment state, market, ship-to country, lines and the buyer's fields. Move each through <em>new → packed → shipped → done</em> (or cancelled), with a note such as a tracking number. A failed order mail can be sent again once the cause, usually SMTP, is fixed.</p>
+    <p>Refunds, full or partial, are issued by a person from the order in the inbox. No API token or agent can refund. Restocking is a separate, explicit choice.</p>
+
+    <h2 id="verify">Check your work</h2>
+    <ul>
+      <li>Add products in the draft preview and open the cart. A checkout from the preview is a rehearsal: it never touches stock and is marked as a preview order.</li>
+      <li>Deploy. The deploy result (and <code>deploy_project</code> for an agent) carries the sealed price list per market, in minor units, with any warnings: a SKU missing from a market's list is not sold there.</li>
+      <li>Pay once in test mode on the live site and watch the order go to paid in the inbox, with both mails sent. A test order says so in its subject and body.</li>
+    </ul>
+
+    <h2 id="pitfalls">Pitfalls</h2>
+    <ul>
+      <li><strong>One SKU at two prices blocks the deploy</strong> of a shop that takes payments, naming every offender. Translate product text, never prices.</li>
+      <li><strong>A price must be exact</strong> in the currency's minor units: <code>19.999</code> in euros is an error, not a rounding.</li>
+      <li><strong>The thank-you hand-off needs HTTPS.</strong> The cart only returns to an <code>https://</code> page.</li>
+      <li><strong>Buyer data is personal data.</strong> Use it to run the shop; never put it in a page or an entry.</li>
+      <li><strong>Demo copies</strong> drop the WhatsApp, mailto and payment-link channels and fake the checkout. See <a href="{{sw-url '/docs/guides/demo-copies'}}">Demo copies</a>.</li>
+    </ul>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/reference/helpers'}}#shop">Shop helpers</a></li>
+      <li><a href="{{sw-url '/docs/reference/field-types'}}">The prices field</a></li>
+      <li><a href="{{sw-url '/features/shop'}}">Shop</a></li>
+    </ul>
+  </article>
+</div>

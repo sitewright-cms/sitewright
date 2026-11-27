@@ -1,0 +1,119 @@
+{{!-- META {"path":"forms","title":"Forms","description":"Define a form once, embed it anywhere by its id. The platform renders the fields, validates them, filters spam, keeps every submission in an inbox and mails it on, and on a translated page it picks the matching translated form.","parent":"showcase","order":16,"data":{"icon":"textbox","preset":"interference"}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="grid grid-cols-1 gap-10 lg:grid-cols-[1fr_1.1fr] lg:items-start">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">01 · One helper</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="fm1_title">A whole form from its id.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="fm1_lead">A form is a content entry of its own: fields, labels, the success and error messages, where submissions go and which spam checks apply. The helper renders all of it, with the honeypot and the submit wiring added for you. The date field here is the date picker.</p>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6 sm:p-8">
+      {{#if forms.sc_demo}}
+<!--demo:helper-->
+{{sw-form "sc_demo" class="grid gap-4"}}
+<!--/demo-->
+      {{else}}
+      <div class="grid gap-4" aria-hidden="true">
+        <label class="block"><span class="mb-1.5 block text-sm font-semibold">Your name</span><input type="text" class="w-full" placeholder="Ada Lovelace" disabled /></label>
+        <label class="block"><span class="mb-1.5 block text-sm font-semibold">Email</span><input type="text" class="w-full" placeholder="you@example.com" disabled /></label>
+        <label class="block"><span class="mb-1.5 block text-sm font-semibold">Preferred call date</span><input type="text" class="w-full" placeholder="Select a date" disabled /></label>
+        <label class="block"><span class="mb-1.5 block text-sm font-semibold">Message</span><textarea class="w-full" rows="3" disabled></textarea></label>
+        <button type="button" class="btn btn-primary w-fit" disabled>Send</button>
+      </div>
+      <p class="mt-4 text-sm text-base-content/60">A preview of the demo form's fields. Sending is switched off on this copy.</p>
+      {{/if}}
+    </div>
+  </div>
+  <div class="mt-6">
+<!--code:helper file="forms · helper"-->
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">02 · Your own markup</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="fm2_title">Your layout, the platform's plumbing.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="fm2_lead">Write the fields yourself and mark the form with <code class="font-code text-base">data-sw-form</code>. At render the platform adds what you leave out: the submit wiring, the honeypot, the captcha when the form asks for one, and the success and error messages from the definition. Field names must match the definition, which also decides what is required.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+      <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6 sm:p-8">
+        {{#if forms.sc_demo}}
+<!--demo:custom-->
+<form data-sw-form="sc_demo" class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+  <label class="block"><span class="mb-1.5 block text-sm font-semibold">Your name</span><input type="text" name="name" required class="w-full" /></label>
+  <label class="block"><span class="mb-1.5 block text-sm font-semibold">Email</span><input type="email" name="email" required class="w-full" /></label>
+  <label class="block sm:col-span-2"><span class="mb-1.5 block text-sm font-semibold">Topic</span>
+    <select name="topic" required class="select w-full">
+      <option>A question about Sitewright</option>
+      <option>A bug report</option>
+      <option>Something else</option>
+    </select>
+  </label>
+  <label class="block sm:col-span-2"><span class="mb-1.5 block text-sm font-semibold">Message</span><textarea name="message" rows="4" required class="w-full"></textarea></label>
+  <button type="submit" class="btn btn-primary sm:col-span-2">Send it</button>
+</form>
+<!--/demo-->
+        {{else}}
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2" aria-hidden="true">
+          <label class="block"><span class="mb-1.5 block text-sm font-semibold">Your name</span><input type="text" class="w-full" disabled /></label>
+          <label class="block"><span class="mb-1.5 block text-sm font-semibold">Email</span><input type="text" class="w-full" disabled /></label>
+          <label class="block sm:col-span-2"><span class="mb-1.5 block text-sm font-semibold">Message</span><textarea rows="3" class="w-full" disabled></textarea></label>
+          <button type="button" class="btn btn-primary sm:col-span-2" disabled>Send it</button>
+        </div>
+        {{/if}}
+      </div>
+      <div class="min-w-0">
+<!--code:custom file="forms · own markup"-->
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">03 · Fields</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-4xl" data-sw-text="fm3_title">Twelve field types.</h2>
+    <p class="mt-4 leading-relaxed text-base-content/70" data-sw-text="fm3_lead">Up to 50 fields per form. The server checks required fields, email and URL formats, numbers and the allowed options again on submit. Submissions are stored as text only: there is no file upload field.</p>
+  </div>
+  <ul class="mt-8 grid grid-cols-1 list-none gap-3 p-0 sm:grid-cols-3 lg:grid-cols-6">
+    <li class="rounded-2xl border border-base-content/10 bg-base-100 p-4"><p class="font-code text-sm font-semibold ws-ink">text</p><p class="mt-1 text-xs text-base-content/60">One line</p></li>
+    <li class="rounded-2xl border border-base-content/10 bg-base-100 p-4"><p class="font-code text-sm font-semibold ws-ink">email</p><p class="mt-1 text-xs text-base-content/60">Checked format</p></li>
+    <li class="rounded-2xl border border-base-content/10 bg-base-100 p-4"><p class="font-code text-sm font-semibold ws-ink">tel</p><p class="mt-1 text-xs text-base-content/60">Phone number</p></li>
+    <li class="rounded-2xl border border-base-content/10 bg-base-100 p-4"><p class="font-code text-sm font-semibold ws-ink">url</p><p class="mt-1 text-xs text-base-content/60">http or https</p></li>
+    <li class="rounded-2xl border border-base-content/10 bg-base-100 p-4"><p class="font-code text-sm font-semibold ws-ink">number</p><p class="mt-1 text-xs text-base-content/60">Decimal only</p></li>
+    <li class="rounded-2xl border border-base-content/10 bg-base-100 p-4"><p class="font-code text-sm font-semibold ws-ink">textarea</p><p class="mt-1 text-xs text-base-content/60">Several lines</p></li>
+    <li class="rounded-2xl border border-base-content/10 bg-base-100 p-4"><p class="font-code text-sm font-semibold ws-ink">select</p><p class="mt-1 text-xs text-base-content/60">One of a list</p></li>
+    <li class="rounded-2xl border border-base-content/10 bg-base-100 p-4"><p class="font-code text-sm font-semibold ws-ink">radio</p><p class="mt-1 text-xs text-base-content/60">One of a group</p></li>
+    <li class="rounded-2xl border border-base-content/10 bg-base-100 p-4"><p class="font-code text-sm font-semibold ws-ink">checkbox</p><p class="mt-1 text-xs text-base-content/60">Yes or no, or several</p></li>
+    <li class="rounded-2xl border border-base-content/10 bg-base-100 p-4"><p class="font-code text-sm font-semibold ws-ink">date</p><p class="mt-1 text-xs text-base-content/60">The date picker</p></li>
+    <li class="rounded-2xl border border-base-content/10 bg-base-100 p-4"><p class="font-code text-sm font-semibold ws-ink">time</p><p class="mt-1 text-xs text-base-content/60">The time slider</p></li>
+    <li class="rounded-2xl border border-base-content/10 bg-base-100 p-4"><p class="font-code text-sm font-semibold ws-ink">datetime</p><p class="mt-1 text-xs text-base-content/60">Both at once</p></li>
+  </ul>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">
+        {{sw-icon "shield-check" "h-6 w-6 ws-ink"}}
+        <h3 class="mt-4 font-heading text-lg font-bold">Spam stays out</h3>
+        <p class="mt-2 text-sm leading-relaxed text-base-content/70">Every form gets a honeypot, a time trap, a check for any human input and a rate limit. Per form you can add proof of work, which costs each visitor a moment of CPU, or a captcha: hCaptcha, reCAPTCHA v2 or v3, set up once per project. Filtered attempts are counted, not stored.</p>
+      </div>
+      <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="80">
+        {{sw-icon "tray" "h-6 w-6 ws-ink"}}
+        <h3 class="mt-4 font-heading text-lg font-bold">Where it goes</h3>
+        <p class="mt-2 text-sm leading-relaxed text-base-content/70">To the project's inbox and on by email, through the instance's mail server or the project's own SMTP. Or to the <code class="font-code">contact.php</code> mailer that ships with an exported site, to your own third-party endpoint, or composed into a WhatsApp message on the visitor's phone.</p>
+      </div>
+      <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="160">
+        {{sw-icon "translate" "h-6 w-6 ws-ink"}}
+        <h3 class="mt-4 font-heading text-lg font-bold">Per language</h3>
+        <p class="mt-2 text-sm leading-relaxed text-base-content/70">On a German page, <code class="font-code">sc_demo</code> resolves to <code class="font-code">sc_demo-de</code> when that form exists, so translated pages share the page code and each language keeps its own labels and messages.</p>
+      </div>
+    </div>
+    <p class="mt-8 max-w-3xl text-sm leading-relaxed text-base-content/70">Without JavaScript a platform form does not submit: it has no action attribute by design, because submission runs through the spam checks in the browser. Never write the endpoint or the form component marker yourself; both are added at render.</p>
+  </div>
+</section>
+
+{{> showcase-next}}

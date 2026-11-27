@@ -1,0 +1,128 @@
+{{!-- META {"path":"lightbox","title":"Lightbox","description":"A full-screen image viewer with a thumbnail strip, an open animation that grows from the tile, a counter and captions, swipe, pinch zoom and keyboard control. One attribute on a gallery, or on a single image.","parent":"showcase","order":2,"data":{"icon":"frame-corners","preset":"silk-flow"}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">01 · A gallery</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="l1_title">Click a tile.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="l1_lead">The picture grows out of its tile into a full-screen viewer with a thumbnail strip, an image counter and the caption. Arrow keys, swipe and pinch zoom work, Escape closes it, and focus returns to the tile. These are this site's own brand files from its media library.</p>
+  </div>
+  <div class="mt-10">
+<!--demo:gallery-->
+<div data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="Sitewright brand files">
+  <div data-sw-part="grid" class="gap-4 !grid-cols-2 md:!grid-cols-4">
+    <a data-sw-part="item" href="{{sw-url "/media/sitewright/gaFj7w-favicon.svg"}}" data-caption="Favicon: the mark on an indigo tile" class="ws-tile overflow-hidden rounded-2xl bg-neutral">
+      <img src="{{sw-url "/media/sitewright/gaFj7w-favicon.svg"}}" alt="Sitewright favicon" class="!object-contain p-10" />
+    </a>
+    <a data-sw-part="item" href="{{sw-url "/media/sitewright/MoWg0O-apple-touch-icon.png"}}" data-caption="Home-screen icon, 180 × 180" class="ws-tile overflow-hidden rounded-2xl bg-neutral">
+      <img src="{{sw-url "/media/sitewright/MoWg0O-apple-touch-icon.png"}}" alt="Sitewright home-screen icon" class="!object-contain p-10" />
+    </a>
+    <a data-sw-part="item" href="{{sw-url "/media/sitewright/EypGc7-logo-mark-dark.svg"}}" data-caption="The mark, for dark backgrounds" class="ws-tile overflow-hidden rounded-2xl bg-neutral">
+      <img src="{{sw-url "/media/sitewright/EypGc7-logo-mark-dark.svg"}}" alt="Sitewright mark" class="!object-contain p-10" />
+    </a>
+    <a data-sw-part="item" href="{{sw-url "/media/sitewright/lqPLU8-logo-lockup-dark.png"}}" data-caption="The lockup, for dark backgrounds" class="ws-tile overflow-hidden rounded-2xl bg-neutral">
+      <img src="{{sw-url "/media/sitewright/lqPLU8-logo-lockup-dark.png"}}" alt="Sitewright logo lockup" class="!object-contain p-6" />
+    </a>
+  </div>
+</div>
+<!--/demo-->
+  </div>
+  <div class="mt-6">
+<!--code:gallery file="lightbox · explicit grid"-->
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">02 · Stripped down</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="l2_title">Any container of images.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="l2_lead">No parts needed: put the attribute on a container of links or bare images and lay it out yourself. This one also switches off the thumbnail strip and the arrows, so the viewer runs on swipe, keys and the counter.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+<!--demo:minimal-->
+<div data-sw-component="lightbox" data-thumbnails="false" data-arrows="false" class="grid grid-cols-2 gap-3" aria-label="Brand marks">
+  <a href="{{sw-url "/media/sitewright/EypGc7-logo-mark-dark.svg"}}" data-caption="Mark, dark backgrounds">
+    <img src="{{sw-url "/media/sitewright/EypGc7-logo-mark-dark.svg"}}" alt="Sitewright mark" class="aspect-square w-full rounded-xl bg-neutral object-contain p-8" />
+  </a>
+  <a href="{{sw-url "/media/sitewright/gaFj7w-favicon.svg"}}" data-caption="Favicon">
+    <img src="{{sw-url "/media/sitewright/gaFj7w-favicon.svg"}}" alt="Sitewright favicon" class="aspect-square w-full rounded-xl bg-neutral object-contain p-8" />
+  </a>
+</div>
+<!--/demo-->
+      <div class="min-w-0">
+<!--code:minimal file="lightbox · minimal"-->
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">03 · One image, one line</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="l3_title">The whole lightbox on an img tag.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="l3_lead">Put the attribute straight on an image and that image opens full-screen. Add <code class="font-code text-base">data-full</code> when the viewer should load a larger file than the one on the page.</p>
+  </div>
+  <div class="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-center">
+    <div class="grid place-items-center rounded-3xl bg-neutral p-10 sm:p-16">
+<!--demo:single-->
+<img data-sw-component="lightbox" data-thumbnails="false" src="{{sw-url "/media/sitewright/lqPLU8-logo-lockup-dark.png"}}" data-caption="Sitewright, the lockup" alt="Sitewright logo lockup" class="w-full max-w-sm cursor-zoom-in" />
+<!--/demo-->
+    </div>
+    <div class="min-w-0">
+<!--code:single file="lightbox · single image"-->
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">04 · One gallery, separate places</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="l4_title">Merge images by name.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="l4_lead">Each lightbox root is its own gallery. Give several the same <code class="font-code text-base">data-gallery</code> name and they open as one: these two images sit in separate cards, and clicking either pages through both. It works across sections of a page and across all three forms.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2">
+<!--demo:group-->
+<figure class="rounded-3xl border border-base-content/10 bg-base-100 p-4">
+  <img data-sw-component="lightbox" data-gallery="brand-tour" src="{{sw-url "/media/sitewright/gaFj7w-favicon.svg"}}" data-caption="1 of the tour: the favicon" alt="Sitewright favicon" class="aspect-[16/10] w-full cursor-zoom-in rounded-2xl bg-neutral object-contain p-10" />
+  <figcaption class="mt-3 px-1 text-sm text-base-content/70">In this card: the favicon.</figcaption>
+</figure>
+<figure class="rounded-3xl border border-base-content/10 bg-base-100 p-4">
+  <img data-sw-component="lightbox" data-gallery="brand-tour" src="{{sw-url "/media/sitewright/lqPLU8-logo-lockup-dark.png"}}" data-caption="2 of the tour: the lockup" alt="Sitewright logo lockup" class="aspect-[16/10] w-full cursor-zoom-in rounded-2xl bg-neutral object-contain p-10" />
+  <figcaption class="mt-3 px-1 text-sm text-base-content/70">In another card: the lockup.</figcaption>
+</figure>
+<!--/demo-->
+    </div>
+    <div class="mt-6">
+<!--code:group file="lightbox · data-gallery"-->
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="grid grid-cols-1 gap-10 lg:grid-cols-[1fr_1.2fr]">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">Switches</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-4xl" data-sw-text="ref_title">Everything else is an attribute on the root.</h2>
+      <p class="mt-4 leading-relaxed text-base-content/70" data-sw-text="ref_lead">Without JavaScript, a linked tile is a plain link to the full image, so it still opens. A bare image just stays an image. Tiles appended to a gallery later, for example by a "load more" button, join it on their own.</p>
+    </div>
+    <div class="overflow-x-auto rounded-2xl border border-base-content/10 bg-base-100">
+      <table class="table">
+        <thead><tr><th>Attribute</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td class="whitespace-nowrap font-code text-sm">data-thumbnails="false"</td><td>Hides the bottom thumbnail strip.</td></tr>
+          <tr><td class="whitespace-nowrap font-code text-sm">data-arrows="false"</td><td>Hides the previous and next arrows.</td></tr>
+          <tr><td class="whitespace-nowrap font-code text-sm">data-animation="false"</td><td>Opens without growing from the tile. Off anyway under reduced motion.</td></tr>
+          <tr><td class="whitespace-nowrap font-code text-sm">data-fit="fill"</td><td>Covers the screen on touch devices instead of showing the whole image.</td></tr>
+          <tr><td class="whitespace-nowrap font-code text-sm">data-tilt="true"</td><td>Pans a zoomed image with the phone's tilt.</td></tr>
+          <tr><td class="whitespace-nowrap font-code text-sm">data-history="true"</td><td>Writes the open image into the URL hash.</td></tr>
+          <tr><td class="whitespace-nowrap font-code text-sm">data-gallery="name"</td><td>Merges every lightbox with that name into one gallery.</td></tr>
+          <tr><td class="whitespace-nowrap font-code text-sm">data-caption · data-full</td><td>Per image: the caption, and the full-size file for a bare image.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+{{> showcase-next}}

@@ -1,0 +1,74 @@
+{{!-- META {"path":"install","title":"Install with Docker","description":"Run Sitewright as one container behind a TLS reverse proxy, with one volume for all its data.","parent":"getting-started","data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>Sitewright ships as a single container: the API, the editor, the build pipeline and a headless Chromium for previews and audits, over one data directory. You run it behind a reverse proxy that handles HTTPS.</p>
+
+    <h2 id="requirements">What you need</h2>
+    <ul>
+      <li>A host with Docker.</li>
+      <li>A domain, and a TLS-terminating reverse proxy in front of the container (Caddy, nginx, Traefik or a cloud load balancer). The container serves plain HTTP on port 80. HTTPS is required in production: secure cookies and passkeys only work over it.</li>
+    </ul>
+
+    <h2 id="run">Start the container</h2>
+    <p>Generate the key that encrypts stored secrets (deploy credentials, SMTP passwords, sign-in secrets) once, and keep it safe. Then start the container:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">terminal</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-ok">$</span> export SW_ENCRYPTION_KEY="$(openssl rand -base64 32)"
+
+<span class="tk-ok">$</span> docker run -d --name sitewright \
+    -p 127.0.0.1:8080:80 \
+    -v sw-data:/app/data \
+    -e SW_PUBLIC_URL=https://sites.example.com \
+    -e TRUST_PROXY=true \
+    -e SW_ENCRYPTION_KEY="$SW_ENCRYPTION_KEY" \
+    --restart unless-stopped \
+    ghcr.io/sitewright-cms/sitewright:latest</code></pre>
+    </div>
+    <p>On first start the container applies its database migrations, creates the first admin and starts serving.</p>
+    <table>
+      <thead><tr><th>Setting</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td><code>-v sw-data:/app/data</code></td><td>The one persistent volume: the database, media, published sites and backups. Back it up.</td></tr>
+        <tr><td><code>SW_PUBLIC_URL</code></td><td>The https address of the instance. It turns on secure cookies and sets the origin passkeys are bound to.</td></tr>
+        <tr><td><code>TRUST_PROXY=true</code></td><td>Rate limits and the sign-in throttle then key on the visitor's real address from <code>X-Forwarded-For</code>. Set it only when a proxy is in front.</td></tr>
+        <tr><td><code>127.0.0.1:8080</code></td><td>Keeps the plain-HTTP port off the internet; only the proxy is exposed.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="proxy">Put a reverse proxy in front</h2>
+    <p>Caddy obtains a certificate on its own:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">Caddyfile</span></div>
+<pre class="overflow-x-auto"><code>sites.example.com {
+    reverse_proxy 127.0.0.1:8080
+}</code></pre>
+    </div>
+    <p>With nginx, pass the forwarded headers and allow large uploads:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">nginx.conf</span></div>
+<pre class="overflow-x-auto"><code>server {
+    server_name sites.example.com;
+    client_max_body_size 210m;
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}</code></pre>
+    </div>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>Not behind a WAF.</strong> A web application firewall with the OWASP Core Rule Set's defaults refuses the editor's saves, agents' writes and uploads. If one must stay in front, exclude the paths listed in the hardening guide.</p></div>
+
+    <h2 id="first-login">Sign in</h2>
+    <p>Open your address and sign in as <code>admin@sitewright.example</code> with the password <code>123456</code>, unless you set <code>SW_ADMIN_EMAIL</code> and <code>SW_ADMIN_PASSWORD</code>. In production you are asked to change that password on first sign-in. New installations also contain this website as a demo project to open and study.</p>
+
+    <h2 id="next">Next</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/getting-started/first-site'}}">Build your first site</a></li>
+      <li><a href="{{sw-url '/docs/self-hosting/environment'}}">Every environment variable</a></li>
+      <li><a href="{{sw-url '/docs/self-hosting/upgrades-and-backups'}}">Upgrades and backups</a></li>
+    </ul>
+  </article>
+</div>

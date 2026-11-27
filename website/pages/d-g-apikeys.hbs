@@ -1,0 +1,98 @@
+{{!-- META {"path":"api-keys","title":"API keys and member tokens","description":"Create a project token for one site or a member token that reaches all of yours, choose its capabilities, and use it with the REST API or an MCP agent.","parent":"guides","order":9,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>A token lets a script, a CI job or an agent act without a browser sign-in. It is sent as <code>Authorization: Bearer &lt;token&gt;</code> and works the same against the REST API and the MCP endpoint at <code>/mcp</code>. There are two kinds:</p>
+    <table>
+      <thead><tr><th></th><th>Project token</th><th class="min-w-56">Member token</th></tr></thead>
+      <tbody>
+        <tr><td>Prefix</td><td><code>swk_</code></td><td><code>swm_</code></td></tr>
+        <tr><td>Reaches</td><td>One project</td><td>Every project its owner can open</td></tr>
+        <tr><td>Role</td><td>Chosen when created: <code>owner</code> or <code>member</code>, never above yours</td><td>Your role on each project, looked up on every request</td></tr>
+        <tr><td>Who can create one</td><td>The project's owner (platform admins count as owner)</td><td>Agency staff: platform admins and developers</td></tr>
+        <tr><td>MCP tools</td><td>82</td><td>88: adds account tools, and every project tool takes a <code>project</code> argument</td></tr>
+        <tr><td>Expiry</td><td>1 to 365 days</td><td>1 to 365 days</td></tr>
+      </tbody>
+    </table>
+    <p>What a token can do is its role intersected with its capabilities. Tokens are shown once, when created; only a hash is stored. Creating, listing and revoking tokens needs a person signed in to the editor: no token can mint or revoke another.</p>
+
+    <h2 id="project-token">1. Create a project token</h2>
+    <ol>
+      <li>Open the project, then <strong>Account Settings → Access keys → Project tokens</strong> from the user menu.</li>
+      <li>Give it a name, a role, an expiry and its capabilities. The form starts with read and write.</li>
+      <li>Copy the token. It is not shown again.</li>
+    </ol>
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Account Settings · Access keys</span></div>
+      {{> ws-media slot="doc_access_keys" class="rounded-none"}}
+    </div>
+    <table>
+      <thead><tr><th>Capability</th><th>Allows</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>content:read</code></td><td>Reading pages, content, media, submissions, statistics, orders and bookings.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>content:write</code></td><td>Writing them. Does not include delete.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>content:delete</code></td><td>Deleting pages, entities, media and languages.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>publish</code></td><td>Publishing to Local Hosting.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>deploy</code></td><td>Managing and deploying FTP, FTPS, SFTP and git targets.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>payments:provider:write</code></td><td>Instance-wide payment provider definitions. Offered to, and honored for, instance admins only.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="member-token">2. Create a member token (staff)</h2>
+    <p>In <strong>Account Settings → Access keys → Member tokens</strong>. Creating one asks for your password or a passkey. Besides the project capabilities, a member token can carry account capabilities, all off by default:</p>
+    <table>
+      <thead><tr><th>Capability</th><th>Allows</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>projects:create</code></td><td>Creating and duplicating projects, within a daily limit (50 by default; an admin can raise it to 1,000, a token can set a lower one).</td></tr>
+        <tr><td class="whitespace-nowrap"><code>projects:rename</code></td><td>Renaming projects.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>projects:delete</code></td><td>Deleting projects.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>members:manage</code></td><td>Listing a project's members and invites, on projects you own.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>members:invite</code></td><td>Inviting people and approving invites, on projects you own.</td></tr>
+      </tbody>
+    </table>
+    <p>An account holds up to 25 live member tokens. A token stops working the moment its owner loses staff status. When you change your password you are asked whether to keep your member tokens working or revoke them; an admin's password reset revokes them unless told otherwise. Admins can list and revoke everyone's member tokens in <strong>System Settings → Security</strong>.</p>
+
+    <h2 id="rest">3. Use it with the REST API</h2>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">terminal</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-com"># What is this token?</span>
+<span class="tk-ok">$</span> curl -s https://sites.example.com/api-key/self -H "Authorization: Bearer $SW_TOKEN"
+
+<span class="tk-com"># List the project's pages</span>
+<span class="tk-ok">$</span> curl -s https://sites.example.com/projects/$PROJECT/content/page \
+    -H "Authorization: Bearer $SW_TOKEN"
+
+<span class="tk-com"># Replace one entry of the "team" dataset (content:write)</span>
+<span class="tk-ok">$</span> curl -s -X PUT "https://sites.example.com/projects/$PROJECT/content/entry/anna?dataset=team" \
+    -H "Authorization: Bearer $SW_TOKEN" -H "Content-Type: application/json" \
+    -d '{"dataset":"team","status":"published","values":{"name":"Anna","role":"Designer"}}'</code></pre>
+    </div>
+    <p>Reads need <code>content:read</code>, writes <code>content:write</code>, deletes <code>content:delete</code>. A project token used on another project gets a 404; a missing capability gets a 403 that names it. A request may carry a session cookie or a bearer token, not both. Routes that need a person (token management, payment keys, refunds) refuse any token. Every registered route is listed in the repository's <code>contract/http-routes.json</code>.</p>
+    <div class="ws-callout"><p class="!mt-0"><strong>Pre-1.0.</strong> The routes and tool names are recorded in the repository's <code>contract/</code> snapshots so a change shows up in review, but Sitewright makes no compatibility promise before 1.0. Pin the version you script against.</p></div>
+
+    <h2 id="mcp">4. Use it with an agent</h2>
+    <p>Pass the token as a header when adding the MCP server; see <a href="{{sw-url '/docs/guides/ai-agents'}}#headless">Connect an AI agent</a>. With a member token, the agent calls <code>list_projects</code> first and names the project in every call.</p>
+
+    <h2 id="verify">Check your work</h2>
+    <ul>
+      <li><code>GET /api-key/self</code> returns the token's kind, project, role and capabilities.</li>
+      <li>The editor's <strong>AI agent details</strong> dialog shows when each project token was last used.</li>
+    </ul>
+
+    <h2 id="pitfalls">Pitfalls</h2>
+    <ul>
+      <li><strong>Treat a token like a password.</strong> Keep it in a secret store or an environment variable, never in a repository.</li>
+      <li><strong>Revoking is immediate.</strong> Any client using the token stops working at once. Revoked and expired tokens are purged after 90 days.</li>
+      <li><strong>Behind a proxy</strong>, rate limits key on the client's address only with <code>TRUST_PROXY=true</code>. A verified token gets 1,500 requests a minute.</li>
+      <li><strong>Agents connected with OAuth</strong> hold short-lived tokens of the same <code>swk_</code> kind; they do not appear in the token list.</li>
+    </ul>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/reference/mcp-tools'}}">MCP tools</a></li>
+      <li><a href="{{sw-url '/docs/reference/limits'}}#rate-limits">Rate limits</a></li>
+      <li><a href="{{sw-url '/docs/self-hosting/security'}}">Security</a></li>
+    </ul>
+  </article>
+</div>

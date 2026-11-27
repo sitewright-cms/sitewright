@@ -1,0 +1,92 @@
+{{!-- META {"path":"client-editing","title":"Making content editable","description":"Mark the parts of a page a client may change with data-sw-* attributes. In the Content editor those parts become click-to-edit, and everything else stays exactly as you wrote it.","parent":"concepts","order":6,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>You write the page. Where a client should be able to change something, you add one attribute to the element that holds it. The text or image you wrote is the default. When someone edits it in the Content editor, the new value is saved on the page and replaces the default when the site is built. Publishing strips the attributes, so the live HTML carries no trace of them.</p>
+
+    <h2 id="directives">The directives</h2>
+    <table>
+      <thead><tr><th>Attribute</th><th>Makes editable</th><th>How it is edited</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>data-sw-text</code></td><td>The element's text, as plain text.</td><td>Click and type in place.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-html</code></td><td>A rich-text region.</td><td>In place, with a formatting toolbar, plus an HTML source view.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-href</code></td><td>A link's URL.</td><td>A popover. Combine with <code>data-sw-text</code> on the same link to edit its label too.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-src</code></td><td>An <code>&lt;img&gt;</code>.</td><td>Click it to open the file picker.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-bg</code></td><td>An element's background image.</td><td>The file picker; written as an inline <code>background-image</code>.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-translate</code></td><td>A shared string from the project's translations.</td><td>In place, for the language of the page.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-entry</code></td><td>A dataset row.</td><td>Added for you by a dataset loop; a click opens the entry's form.</td></tr>
+      </tbody>
+    </table>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/home.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;section</span> <span class="tk-attr">data-sw-bg</span>=<span class="tk-str">"hero_bg"</span> <span class="tk-attr">class</span>=<span class="tk-str">"bg-cover bg-center py-24"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"sw-container"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;h1</span> <span class="tk-attr">data-sw-text</span>=<span class="tk-str">"headline"</span><span class="tk-tag">&gt;</span>Websites that work<span class="tk-tag">&lt;/h1&gt;</span>
+    <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-html</span>=<span class="tk-str">"intro"</span><span class="tk-tag">&gt;&lt;p&gt;</span>We design and build sites for small teams.<span class="tk-tag">&lt;/p&gt;&lt;/div&gt;</span>
+    <span class="tk-tag">&lt;a</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary"</span> <span class="tk-attr">href</span>=<span class="tk-str">"/contact"</span>
+       <span class="tk-attr">data-sw-href</span>=<span class="tk-str">"cta_url"</span> <span class="tk-attr">data-sw-text</span>=<span class="tk-str">"cta_label"</span><span class="tk-tag">&gt;</span>Get in touch<span class="tk-tag">&lt;/a&gt;</span>
+    <span class="tk-hb">\{{sw-image "/media/acme/k3P9qx-team.jpg" alt="Our team" editable="team_photo"}}</span>
+  <span class="tk-tag">&lt;/div&gt;</span>
+<span class="tk-tag">&lt;/section&gt;</span></code></pre>
+    </div>
+    <p>The last line shows the responsive way to make an image replaceable. <code>editable="key"</code> on <code>sw-image</code> puts <code>data-sw-src</code> on the image it emits, so it keeps its <code>srcset</code>, dimensions and blur-up placeholder, and a replacement from the media library gets new ones built for it. A hand-written <code>&lt;img data-sw-src&gt;</code> works too, but ships a single file to every screen.</p>
+
+    <h2 id="storage">Where the values are saved</h2>
+    <p>The value of the attribute is a key. Where the edit is saved depends on its form:</p>
+    <table>
+      <thead><tr><th>Key</th><th>Saved in</th><th>Use it for</th></tr></thead>
+      <tbody>
+        <tr><td><code>headline</code></td><td><code>page.data.headline</code> on this page</td><td>Most page content.</td></tr>
+        <tr><td><code>page.data.hero.title</code></td><td>A nested path in this page's data</td><td>Grouping related values.</td></tr>
+        <tr><td><code>website.data.footer.note</code></td><td>The site-wide <code>website.data</code> object</td><td>One value shared by every page, and editable content in the header, footer and other slots, which have no page data of their own.</td></tr>
+        <tr><td><code>nav_cta</code> on <code>data-sw-translate</code></td><td><code>website.translations</code>, per language</td><td>Short strings repeated across pages and languages, such as a button label in the menu.</td></tr>
+      </tbody>
+    </table>
+    <p>Keep keys unique on a page. Because edits are ordinary page data, a template can read them too: <code>\{{page.data.headline}}</code>. Clearing a link or image value brings back the default you wrote.</p>
+    <div class="ws-callout"><p class="!mt-0">Binding text is also what makes a page translatable. A translation of the page inherits its code and supplies only its own values for these keys. See <a href="{{sw-url '/docs/guides/languages'}}">Languages</a>.</p></div>
+
+    <h2 id="controls">Controls for values a page uses</h2>
+    <p>Some values are not visible text: the gallery folder a page shows, which dataset a section lists, the page's share image. <code>sw-control</code> puts a small chip on the page that only appears in the Content editor, and is removed on publish. It sets a page.data key, a <code>website.data</code> path, or one of <code>page.title</code>, <code>page.description</code> and <code>page.image</code>.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/gallery.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-hb">\{{sw-control target="gallery_folder" as="folder" label="Gallery folder"}}</span>
+<span class="tk-hb">\{{sw-control target="page.image" as="image" label="Share image"}}</span>
+<span class="tk-hb">\{{sw-control target="page.description" as="textarea" label="Search description"}}</span>
+
+<span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"grid gap-4 sm:grid-cols-3"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-hb">\{{#sw-folder page.data.gallery_folder}}</span>
+    <span class="tk-hb">\{{sw-image url alt=alt}}</span>
+  <span class="tk-hb">\{{/sw-folder}}</span>
+<span class="tk-tag">&lt;/div&gt;</span></code></pre>
+    </div>
+    <p><code>as=</code> picks the input: <code>text</code>, <code>textarea</code>, <code>url</code>, <code>number</code>, <code>color</code>, <code>date</code>, <code>image</code>, <code>file</code>, <code>select</code> (with <code>options=</code>), <code>folder</code>, <code>dataset</code>, or <code>dataset-item</code> (with <code>dataset=</code>, to choose one entry). An unknown <code>as</code>, or a <code>select</code> without options, is a render error rather than a silent text box.</p>
+
+    <h2 id="datasets">Dataset rows</h2>
+    <p>Repeating content belongs in a dataset, and its rows are editable without any attribute from you: <code>\{{#each dataset.x}}</code> and <code>\{{#sw-pick-entry}}</code> mark each entry's element, and a click opens the entry form with every field. Do not put <code>data-sw-*</code> attributes on the fields inside a loop. See <a href="{{sw-url '/docs/concepts/datasets'}}">Datasets and entries</a>.</p>
+
+    <h2 id="content-editor">In the Content editor</h2>
+    <p>Open a page and switch to the <strong>Content Editor</strong> tab. Hovering an editable element outlines it and shows a badge naming what it is bound to. The <strong>Regions</strong> panel lists every editable part of the page, grouped into page content and dataset entries; choosing one scrolls to it and opens its editor. That is how you reach content the page hides: a closed dialog, a slide that is not showing, a control chip.</p>
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Content Editor · home</span></div>
+      {{> ws-media slot="doc_client_editing" class="rounded-none"}}
+    </div>
+
+    <h2 id="boundaries">What can and cannot change</h2>
+    <p>In the Content editor, a person can change exactly what you marked:</p>
+    <ul>
+      <li>text, rich text, links, images and backgrounds with a <code>data-sw-*</code> attribute, and the shared strings behind <code>data-sw-translate</code>;</li>
+      <li>the values behind <code>sw-control</code> chips;</li>
+      <li>dataset entries, through their forms.</li>
+    </ul>
+    <p>The markup, classes, layout and order of elements cannot be changed there, and neither can anything you left unmarked. Each value also passes a check for its kind before it reaches the page: <code>data-sw-text</code> is escaped as plain text, rich text is sanitized to a safe set of HTML (no scripts, no event handlers), and URLs that would run code, such as <code>javascript:</code>, are dropped.</p>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>The Content editor is a surface, not a permission.</strong> A client you invite to a project is a project member, and members can also open the Code editor, the datasets and the publish controls. Owner-only actions, such as deleting the project and inviting or managing members, stay with the owner. If a client should only edit content, agree that with them, and keep your work recoverable with page history.</p></div>
+
+    <h2 id="next">Next</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/reference/editing-attributes'}}">Editing attributes reference</a></li>
+      <li><a href="{{sw-url '/docs/concepts/header-footer-sidebars'}}">Header, footer and sidebars</a></li>
+      <li><a href="{{sw-url '/docs/getting-started/editor-tour'}}">A tour of the editor</a></li>
+    </ul>
+  </article>
+</div>

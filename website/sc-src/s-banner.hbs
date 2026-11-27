@@ -1,0 +1,136 @@
+{{!-- META {"path":"banner","title":"Banner","description":"A dismissible announcement with your own content. The runtime reveals it, places it, animates it in and remembers the dismissal for as long as you choose. It is not the cookie banner; that one comes from the consent manager.","parent":"showcase","order":5,"data":{"icon":"megaphone","preset":"sun-rays"}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">01 · In the page</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="b1_title">An announcement bar.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="b1_lead">A banner ships with the <code class="font-code text-base">hidden</code> attribute and the runtime reveals it. <code class="font-code text-base">data-position="inline"</code> keeps it in the page flow. This one uses <code class="font-code text-base">data-frequency="always"</code>, so dismissing it lasts until the next page load. Try it.</p>
+  </div>
+  <div class="mt-10">
+<!--demo:bar-->
+<div data-sw-component="banner" data-sw-banner-id="sc-bar" data-position="inline" data-frequency="always" role="status" class="rounded-2xl border-primary/30 bg-primary/5" hidden>
+  {{sw-icon "megaphone" "h-5 w-5 shrink-0 ws-ink"}}
+  <p>New in the showcase: every component on its own page. <a class="font-semibold underline" href="{{sw-url '/showcase'}}">See them all</a></p>
+  <button type="button" class="btn btn-ghost btn-sm btn-circle" data-sw-part="dismiss" aria-label="Dismiss">{{sw-icon "x:bold" "h-4 w-4"}}</button>
+</div>
+<!--/demo-->
+  </div>
+  <div class="mt-6">
+<!--code:bar file="banner · inline bar"-->
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">02 · Backgrounds</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="b2_title">A gradient, or a live shader.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="b2_lead">A banner is free content, so its surface is yours. For layered media, put an inner wrapper inside with <code class="font-code text-base">relative</code>: an inline banner is statically positioned, and absolute layers would escape it otherwise.</p>
+    </div>
+    <div class="mt-10 space-y-4">
+<!--demo:gradient-->
+<div data-sw-component="banner" data-sw-banner-id="sc-gradient" data-position="inline" data-frequency="always" role="status" class="rounded-2xl border-0 bg-gradient-to-r from-primary to-secondary text-white" hidden>
+  {{sw-icon "sparkle" "h-5 w-5 shrink-0"}}
+  <p class="font-medium">A CSS gradient from the brand tokens: no image request, and it follows the theme.</p>
+  <button type="button" class="btn btn-ghost btn-sm btn-circle text-white" data-sw-part="dismiss" aria-label="Dismiss">{{sw-icon "x:bold" "h-4 w-4"}}</button>
+</div>
+<!--/demo-->
+<!--demo:shader-->
+<div data-sw-component="banner" data-sw-banner-id="sc-shader" data-position="inline" data-frequency="always" role="status" class="overflow-hidden rounded-2xl border-0 p-0 text-white" hidden>
+  <div class="relative flex w-full flex-wrap items-center gap-3 px-5 py-5">
+    <div class="absolute inset-0" data-sw-component="shader-bg" data-preset="sun-rays" data-colors="primary,accent,neutral" data-intensity="0.55"></div>
+    <div class="absolute inset-0 bg-black/30"></div>
+    <div class="relative grow">
+      <p class="font-semibold">A live WebGL background</p>
+      <p class="text-sm text-white/80">A nested shader-bg paints behind the content; a scrim keeps the text legible.</p>
+    </div>
+    <button type="button" class="btn btn-ghost btn-sm btn-circle relative text-white" data-sw-part="dismiss" aria-label="Dismiss">{{sw-icon "x:bold" "h-4 w-4"}}</button>
+  </div>
+</div>
+<!--/demo-->
+    </div>
+    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div class="min-w-0">
+<!--code:gradient file="banner · gradient"-->
+      </div>
+      <div class="min-w-0">
+<!--code:shader file="banner · shader background"-->
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">03 · Pinned to the viewport</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="b3_title">Look at the bottom left.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="b3_lead">This page has a real floating banner. <code class="font-code text-base">data-delay="scroll"</code> held it back until you scrolled, and <code class="font-code text-base">data-frequency="session"</code> keeps it away for the rest of the browser session once you dismiss it. Without a position it sits bottom right.</p>
+  </div>
+  <div class="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-[1.1fr_1fr] lg:items-start">
+    <div class="min-w-0">
+<!--demo:floating-->
+<div data-sw-component="banner" data-sw-banner-id="sc-floating" data-position="bottom-left" data-frequency="session" data-delay="scroll" role="status" class="rounded-2xl" hidden>
+  <div>
+    <p class="font-heading font-semibold">A floating banner</p>
+    <p class="text-sm text-base-content/70">It appeared after your first scroll.</p>
+  </div>
+  <button type="button" class="btn btn-primary btn-sm" data-sw-part="dismiss">Got it</button>
+</div>
+<!--/demo-->
+<!--code:floating file="banner · floating"-->
+    </div>
+    <div class="relative aspect-[16/10] rounded-3xl border-2 border-dashed border-base-content/15 bg-base-200/50" aria-label="Banner positions" role="img">
+      <span class="absolute left-3 top-3 rounded-md bg-base-100 px-2 py-1 font-code text-xs shadow">top-left</span>
+      <span class="absolute left-1/2 top-3 -translate-x-1/2 rounded-md bg-base-100 px-2 py-1 font-code text-xs shadow">top</span>
+      <span class="absolute right-3 top-3 rounded-md bg-base-100 px-2 py-1 font-code text-xs shadow">top-right</span>
+      <span class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md bg-base-100 px-2 py-1 font-code text-xs shadow">center</span>
+      <span class="absolute bottom-3 left-3 rounded-md bg-primary px-2 py-1 font-code text-xs text-primary-content shadow">bottom-left</span>
+      <span class="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-md bg-base-100 px-2 py-1 font-code text-xs shadow">bottom</span>
+      <span class="absolute bottom-3 right-3 rounded-md bg-base-100 px-2 py-1 font-code text-xs shadow">bottom-right <span class="opacity-60">default</span></span>
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">04 · Entrance</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="b4_title">Any reveal effect.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="b4_lead">By default a banner fades and rises in. Give it a <code class="font-code text-base">data-sw-animation</code> effect and that runs instead, with the usual delay, duration and easing attributes. The dismissal plays it in reverse. For an inline banner a plain fade reads best.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+      <div class="min-w-0">
+<!--demo:entrance-->
+<div data-sw-component="banner" data-sw-banner-id="sc-entrance" data-position="inline" data-frequency="always" data-sw-animation="fade" data-sw-duration="900" role="status" class="rounded-2xl" hidden>
+  {{sw-icon "star-four" "h-5 w-5 shrink-0 text-accent"}}
+  <p>This banner faded in over 900 ms. Dismiss it to see the fade run backwards.</p>
+  <button type="button" class="btn btn-ghost btn-sm btn-circle" data-sw-part="dismiss" aria-label="Dismiss">{{sw-icon "x:bold" "h-4 w-4"}}</button>
+</div>
+<!--/demo-->
+      </div>
+      <div class="min-w-0">
+<!--code:entrance file="banner · entrance"-->
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="grid grid-cols-1 gap-10 lg:grid-cols-2">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">Remembering</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-4xl" data-sw-text="b5_title">How often it comes back.</h2>
+      <p class="mt-4 leading-relaxed text-base-content/70" data-sw-text="b5_lead">A plain dismiss follows <code class="font-code">data-frequency</code>. Two more parts change that for one click: <code class="font-code">dismiss-forever</code> hides it for good, and <code class="font-code">remind</code> snoozes it for <code class="font-code">data-remind-days</code> (one day by default). Each banner is remembered in the visitor's browser under its own <code class="font-code">data-sw-banner-id</code>, so give every banner a unique one.</p>
+    </div>
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-5"><p class="font-code text-sm font-semibold ws-ink">once</p><p class="mt-1 text-sm text-base-content/70">The default. Gone for good after a dismiss.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-5"><p class="font-code text-sm font-semibold ws-ink">session</p><p class="mt-1 text-sm text-base-content/70">Back in the next browser session.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-5"><p class="font-code text-sm font-semibold ws-ink">days:N</p><p class="mt-1 text-sm text-base-content/70">Back after N days.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-5"><p class="font-code text-sm font-semibold ws-ink">always</p><p class="mt-1 text-sm text-base-content/70">Nothing is stored. Back on every page load.</p></div>
+    </div>
+  </div>
+  <p class="mt-10 max-w-3xl text-sm leading-relaxed text-base-content/70">Without JavaScript no banner appears at all: the markup stays hidden and there is nothing to dismiss. A <code class="font-code">center</code> banner is a card in the middle of the screen, not a modal: it does not trap focus or block the page.</p>
+</section>
+
+{{> showcase-next}}

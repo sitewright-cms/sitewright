@@ -1,0 +1,97 @@
+{{!-- META {"path":"analytics-and-consent","title":"Statistics, analytics and consent","description":"Count visits with the built-in statistics, add an external analytics tool behind the consent banner, gate embeds by consent, and allow the origins a site needs.","parent":"guides","order":6,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>There are two ways to count visitors, and they can run side by side. The <strong>built-in statistics</strong> count on your own instance with no cookie and no third party. An <strong>external tool</strong> (Google Analytics, Plausible, Matomo and others) is registered with the <strong>consent manager</strong>, which loads it only after the visitor agrees and widens the site's content security policy to exactly its origins.</p>
+
+    <h2 id="statistics">1. Built-in statistics</h2>
+    <p>Agency staff (a platform admin or developer) switch it on per site, in <strong>Settings → Website → Analytics → Built-in statistics</strong> (<code>website.statistics.enabled</code>). Anyone who can edit the settings can switch it off. The next deploy adds a small script, under 1 KB, to every page; the draft preview and the page-speed audit never get it.</p>
+    <table>
+      <thead><tr><th>Counted</th><th>How</th></tr></thead>
+      <tbody>
+        <tr><td>Humans and bots</td><td>A human pageview is a real browser that ran the script. Bots are split into search engines, AI crawlers and assistants, SEO tools, uptime monitors, link previews and others.</td></tr>
+        <tr><td>Visitors</td><td>One per person per day, from a hash with a salt that rotates at midnight UTC. A visitor cannot be followed from one day to the next.</td></tr>
+        <tr><td>Device and country</td><td>Desktop, mobile or tablet; the country from the IP address in a bundled database. Both can filter the dashboard.</td></tr>
+        <tr><td>Pages, sources, goals</td><td>Views per page; where visitors came from (direct, search, social, AI assistant, referral, or a <code>utm_source</code> / <code>ref</code> campaign); form submissions per form.</td></tr>
+      </tbody>
+    </table>
+    <p>Nothing is stored on the visitor's device. The IP address and user agent are never stored. Only daily totals are kept, for 25 months. Under a device or country filter, anything counted fewer than three times is left out so a narrow filter cannot single out a person. Your privacy policy should still mention the counting.</p>
+    <p>Read the numbers in the project's <strong>Statistics</strong> tab, export them as CSV, or ask an agent (<code>get_site_stats</code>).</p>
+    <div class="ws-callout"><p class="!mt-0"><strong>Sites on other hosts</strong> report to <code>&lt;SW_PUBLIC_URL&gt;/a/&lt;project&gt;</code>, so FTP, SFTP and git builds include the counter only when <code>SW_PUBLIC_URL</code> is set. On those hosts only bots that run JavaScript are seen; on Local Hosting every bot request is counted as it is served. Behind a proxy, set <code>TRUST_PROXY=true</code> or every visitor arrives from one address and one country.</p></div>
+
+    <h2 id="consent">2. Turn on the consent manager</h2>
+    <p>Turn it on in <strong>Settings → Website → Consent</strong> (<code>website.consent.enabled</code>). The banner is added to every page by itself: Accept all, Reject all and Customize, with a panel of categories (strictly necessary, always on; functional; analytics; marketing). The choice is remembered in the visitor's browser and withdrawn with one click. Every word of the banner is in the translation catalog.</p>
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">example.com</span></div>
+      {{> ws-media slot="doc_consent_banner" class="rounded-none"}}
+    </div>
+    <p>Add a way back to the preferences, usually in the footer: <code>\{{sw-consent-settings}}</code>, or a plain link to <code>#sw-consent</code>.</p>
+
+    <h2 id="analytics">3. Register the analytics tool</h2>
+    <p>Add the tool as an integration, under the consent settings or the <strong>Analytics tools</strong> list. Copy the id from the tool's own snippet.</p>
+    <table>
+      <thead><tr><th>Preset</th><th>Needs</th><th class="min-w-56">Without consent</th></tr></thead>
+      <tbody>
+        <tr><td><code>ga4</code>, <code>gtm</code></td><td><code>measurementId</code> (<code>G-…</code> or <code>GTM-…</code>); gets Google Consent Mode v2 signals</td><td>Never loads</td></tr>
+        <tr><td><code>plausible</code></td><td><code>siteId</code>; <code>host</code> when self-hosted</td><td>Can load with <code>requireConsent: false</code></td></tr>
+        <tr><td><code>umami</code></td><td><code>siteId</code> (the website UUID); <code>host</code> when self-hosted</td><td>Can load with <code>requireConsent: false</code></td></tr>
+        <tr><td><code>matomo</code></td><td><code>siteId</code> and <code>host</code></td><td>Can load with <code>requireConsent: false</code> (with its cookies off)</td></tr>
+        <tr><td><code>fathom</code></td><td><code>siteId</code></td><td>Can load with <code>requireConsent: false</code></td></tr>
+        <tr><td><code>simpleanalytics</code></td><td>nothing</td><td>Can load with <code>requireConsent: false</code></td></tr>
+        <tr><td><code>custom</code></td><td>An https <code>src</code>; extra hosts in <code>origins</code>, widget iframes in <code>frameOrigins</code></td><td>Never loads</td></tr>
+      </tbody>
+    </table>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">website.consent</span></div>
+<pre class="overflow-x-auto"><code>{ <span class="tk-attr">"enabled"</span>: <span class="tk-kw">true</span>, <span class="tk-attr">"version"</span>: <span class="tk-kw">1</span>, <span class="tk-attr">"layout"</span>: <span class="tk-str">"bar"</span>, <span class="tk-attr">"denyButton"</span>: <span class="tk-kw">true</span>, <span class="tk-attr">"privacyHref"</span>: <span class="tk-str">"/privacy"</span>,
+  <span class="tk-attr">"categories"</span>: [<span class="tk-str">"functional"</span>, <span class="tk-str">"analytics"</span>, <span class="tk-str">"marketing"</span>],
+  <span class="tk-attr">"integrations"</span>: [
+    { <span class="tk-attr">"id"</span>: <span class="tk-str">"ga"</span>, <span class="tk-attr">"name"</span>: <span class="tk-str">"Google Analytics"</span>, <span class="tk-attr">"category"</span>: <span class="tk-str">"analytics"</span>, <span class="tk-attr">"preset"</span>: <span class="tk-str">"ga4"</span>, <span class="tk-attr">"measurementId"</span>: <span class="tk-str">"G-XXXXXXX"</span> }
+  ] }</code></pre>
+    </div>
+    <p>On publish, the site's content security policy is widened to exactly the origins of the registered tools. After adding a tracker, raise <code>version</code> to ask every visitor again.</p>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>Never paste a tracker snippet into the head or scripts setting.</strong> It skips consent, and on platform hosting the site's content security policy blocks it while the preview seems to show it working.</p></div>
+
+    <h2 id="embeds">4. Embeds and other scripts</h2>
+    <p>Paste a provider's normal <code>&lt;iframe&gt;</code> (YouTube, Vimeo, Maps, Calendly). With the consent manager on, any cross-origin iframe is held behind an "Allow once / Always allow" placeholder until its category is accepted, and its origin is added to the policy for you.</p>
+    <table>
+      <thead><tr><th>Attribute</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>data-sw-consent="marketing"</code></td><td>The category for this iframe (default: <code>defaultEmbedCategory</code>, <code>functional</code> unless set).</td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-consent-note="…"</code></td><td>Custom placeholder text.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-consent-skip</code></td><td>Load this iframe without asking.</td></tr>
+      </tbody>
+    </table>
+    <p>A script you added yourself to the head stays ungated. To gate it, change it to <code>&lt;script type="text/plain" data-sw-consent="analytics" src="…"&gt;</code>; it runs once the category is accepted, keeping its own attributes.</p>
+
+    <h2 id="csp">5. Allow other origins</h2>
+    <p>A third party that is not a tracker (a captcha, a font or CDN host, a maps embed, your own API) belongs in <code>website.cspOrigins</code>, not in the consent manager: <code>{ "script": [], "connect": [], "frame": [], "font": [], "style": [], "media": [] }</code>, bare hostnames, optionally with one leading <code>*.</code>, up to 20 per list. The policy is enforced as a response header on platform-hosted sites only, so "works in the preview, blocked live" means a missing entry here.</p>
+
+    <h2 id="search">6. Search engine numbers</h2>
+    <p>Once agency staff verify the site with Google and Bing (in the website settings under search engines), the Statistics tab shows clicks, impressions, CTR, average position, and the top queries and pages for the last 7, 28 or 90 days (<code>get_search_performance</code> for agents). Keyword positions are a separate feature: <a href="{{sw-url '/docs/guides/rank-tracking'}}">Track rankings</a>.</p>
+
+    <h2 id="verify">Check your work</h2>
+    <ul>
+      <li>Statistics count from the first deploy after switching them on. Visit the live site in a normal browser and the visit appears in the Statistics tab within about a minute.</li>
+      <li>Open the live site in a private window: the banner shows, and the browser's network panel has no request to the analytics host until you accept.</li>
+      <li>Reopen the preferences with <code>\{{sw-consent-settings}}</code> and withdraw analytics: its known cookies are deleted, and the page reloads if the tool had already run.</li>
+    </ul>
+
+    <h2 id="pitfalls">Pitfalls</h2>
+    <ul>
+      <li><strong>The preview is never counted.</strong> The draft preview runs no analytics or marketing code, so your own previews do not inflate the numbers.</li>
+      <li><strong>A WAF with default rules drops every pageview.</strong> The beacon is <code>text/plain</code>, which the OWASP Core Rule Set refuses.</li>
+      <li><strong>Do not turn on the consent manager just to allow an origin.</strong> Use <code>cspOrigins</code>.</li>
+      <li><strong>Demo copies</strong> leave out the statistics counter and the managed analytics integrations, so a showcase never reaches the live site's accounts.</li>
+    </ul>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/features/statistics'}}">Statistics</a></li>
+      <li><a href="{{sw-url '/showcase/consent'}}">The consent manager, live</a></li>
+      <li><a href="{{sw-url '/docs/self-hosting/security'}}">Security</a></li>
+      <li><a href="{{sw-url '/docs/reference/editing-attributes'}}#other">Other data-sw-* attributes</a></li>
+    </ul>
+  </article>
+</div>

@@ -1,0 +1,95 @@
+{{!-- META {"path":"authoring-model","title":"How a site is built","description":"Pages are code, content is data. Six building blocks cover everything in between: components, datasets, snippets, widgets, templates and slots.","parent":"concepts","order":1,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>A Sitewright page is its code: Handlebars source with HTML, Tailwind CSS v4 and daisyUI 5. There is no block tree or page builder between you and the markup. What a client may change is marked in that code, and repeated content lives beside it as data. Everything else is one of six building blocks, and each has one job.</p>
+
+    <h2 id="blocks">The six building blocks</h2>
+    <table>
+      <thead><tr><th>Block</th><th>What it is</th><th>In code</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Component</strong></td><td>An interactive runtime the platform ships: carousel, tabs, lightbox, modal, banner, form, date and time picker, animated shader background, image map and site search. You write the markup; the runtime adds the behaviour.</td><td><code>data-sw-component="carousel"</code> with <code>data-sw-part</code> roles</td></tr>
+        <tr><td><strong>Dataset</strong></td><td>A collection of typed records (18 field types, including nested lists and objects), edited in a grid. It replaces a database for content that repeats.</td><td><code>\{{#each dataset.team}}</code></td></tr>
+        <tr><td><strong>Snippet</strong></td><td>A named piece of markup you include in pages, templates and other snippets. The built-in snippets are a cookbook of worked recipes to copy.</td><td><code>\{{&gt; team-card}}</code></td></tr>
+        <tr><td><strong>Widget</strong></td><td>A snippet that owns a dataset. Saving a page that includes one creates the dataset, so its content is edited as data, without code.</td><td><code>\{{&gt; hero-slider}}</code></td></tr>
+        <tr><td><strong>Template</strong></td><td>A whole-page layout shared by many pages. Each page that uses it only supplies its own content.</td><td><code>"template": "global:text"</code> on the page</td></tr>
+        <tr><td><strong>Slot</strong></td><td>A site-wide region around every page: the main navigation, two sidebars, the footer and a bottom area for global dialogs.</td><td><code>website.mainNav</code>, <code>website.footer</code>, …</td></tr>
+      </tbody>
+    </table>
+    <p>Pages themselves sit in a tree, and their place in it decides their URL and their menus. That is covered in <a href="{{sw-url '/docs/concepts/pages-and-routes'}}">Pages and routes</a>.</p>
+
+    <h2 id="choose">Which one to reach for</h2>
+    <ul>
+      <li>You need <strong>behaviour</strong>, such as a slider, tabs, a modal or a lightbox: use a <strong>component</strong>. Its contract lists the parts and options (<a href="{{sw-url '/docs/reference/components'}}">component reference</a>).</li>
+      <li>You have <strong>content that repeats</strong>, such as services, team members, FAQs or prices: put it in a <strong>dataset</strong> and loop over it.</li>
+      <li>Many pages share <strong>one layout</strong>, such as blog posts or case studies: make a <strong>template</strong>.</li>
+      <li>You want <strong>markup in several places</strong>, or a starting point to copy: write a <strong>snippet</strong>.</li>
+      <li>A client should <strong>drop in a block and edit it without code</strong>: use a <strong>widget</strong>.</li>
+      <li>Something appears on <strong>every page</strong>, such as the header or footer: it belongs in a <strong>slot</strong>.</li>
+    </ul>
+
+    <h2 id="example">The blocks together</h2>
+    <p>A team section shows three of them at once: a heading a client can retype, a dataset loop, and a project snippet for the card, included once per entry. Inside the loop the snippet sees the current entry, so it reads <code>\{{name}}</code> and <code>\{{role}}</code> directly.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/about · source</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;section</span> <span class="tk-attr">class</span>=<span class="tk-str">"mx-auto max-w-5xl px-6 py-16"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;h2</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-3xl font-bold"</span> <span class="tk-attr">data-sw-text</span>=<span class="tk-str">"team_title"</span><span class="tk-tag">&gt;</span>The people behind it<span class="tk-tag">&lt;/h2&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-8 grid gap-6 sm:grid-cols-3"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-hb">\{{#each dataset.team}}</span>
+      <span class="tk-hb">\{{&gt; team-card}}</span>
+    <span class="tk-hb">\{{/each}}</span>
+  <span class="tk-tag">&lt;/div&gt;</span>
+<span class="tk-tag">&lt;/section&gt;</span></code></pre>
+    </div>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">snippets/team-card</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;article</span> <span class="tk-attr">class</span>=<span class="tk-str">"rounded-box bg-base-200 p-5"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-hb">\{{sw-image photo alt=name class="aspect-square w-full rounded-box object-cover"}}</span>
+  <span class="tk-tag">&lt;h3</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-4 font-semibold"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{name}}</span><span class="tk-tag">&lt;/h3&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-sm text-base-content/70"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{role}}</span><span class="tk-tag">&lt;/p&gt;</span>
+<span class="tk-tag">&lt;/article&gt;</span></code></pre>
+    </div>
+    <p>The developer writes this once. A client then retypes the heading in the Content Editor and adds, removes or reorders people in the <code>team</code> dataset. Neither touches the other's work.</p>
+
+    <h2 id="layers">How they layer</h2>
+    <ul>
+      <li><strong>Elements</strong> are plain HTML. A <code>data-sw-*</code> attribute on one makes its text, link, image or background editable.</li>
+      <li><strong>Components</strong> add behaviour to a group of elements.</li>
+      <li><strong>Widgets</strong> compose components and markup, and own a dataset. The hero slider widget uses the carousel component and keeps its slides in a <code>hero</code> dataset.</li>
+      <li><strong>Templates</strong> compose all of the above into a whole page.</li>
+      <li><strong>Slots</strong> wrap every page in the same chrome.</li>
+      <li><strong>Datasets</strong> sit beside all of this as the data layer: pages, templates, snippets and slots can all loop over them.</li>
+    </ul>
+
+    <h2 id="who">Who works with which</h2>
+    <p>The blocks fall into two vocabularies. Developers and agents <strong>produce</strong>: they write page source, snippets, templates, slots, dataset fields and component markup. Clients <strong>consume</strong>: they retype marked text in the Content Editor, swap images and links, edit dataset entries and fill in widgets. A widget is the bridge between the two, written once in code and edited many times without it.</p>
+    <table>
+      <thead><tr><th>Surface</th><th>Used for</th></tr></thead>
+      <tbody>
+        <tr><td>Code Editor, Snippets and Templates rails, slot editors</td><td>Producing: markup, layout, loops, components</td></tr>
+        <tr><td>Content Editor, Datasets rail, File Manager</td><td>Consuming: the words, pictures, links and rows</td></tr>
+        <tr><td>MCP tools</td><td>Agents, for both, within the role and capabilities of the token they connect with (<a href="{{sw-url '/docs/guides/ai-agents'}}">AI agents</a>)</td></tr>
+      </tbody>
+    </table>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>The split is a way of building, not a lock.</strong> A client you invite to a project gets the same editor you have, code included; only a few project-level actions, such as deleting the project and managing its members, stay with the owner. What keeps a layout intact is that clients have no reason to open the code: everything they need to change is marked as editable.</p></div>
+
+    <h2 id="build">From source to static files</h2>
+    <ol>
+      <li><strong>Save.</strong> Every page, snippet, template and slot is checked when it is saved. The check refuses inline event handlers, raw <code>&#123;&#123;&#123; &#125;&#125;&#125;</code> output, a value in an unquoted attribute, a bare value in a URL attribute without the <code>sw-url</code> helper, unknown helpers, and the landmark elements <code>&lt;nav&gt;</code>, <code>&lt;main&gt;</code>, <code>&lt;footer&gt;</code> and <code>&lt;aside&gt;</code> that the page skeleton owns.</li>
+      <li><strong>Render.</strong> Each page is rendered against a fixed set of data, mainly <code>company</code>, <code>website</code>, <code>page</code>, <code>pages</code>, <code>dataset</code> and <code>nav</code>, and nothing else. Values are escaped, and Handlebars prototype access is off.</li>
+      <li><strong>Build.</strong> All data is resolved at build time. A dataset never creates routes: anything with its own URL is a real page. Tailwind CSS is compiled for the classes the site uses, and a component's runtime is only included on pages that use it.</li>
+      <li><strong>Publish.</strong> The output is static: one directory per page, assets under <code>_assets/</code>, <code>sitemap.xml</code> and <code>robots.txt</code>. Internal links are relative, so the files work at a domain root or in a subfolder.</li>
+    </ol>
+    <p>The whole pipeline runs inside the one container, with a SQLite database and media on its data volume. There is no separate build service to run.</p>
+    <div class="ws-callout"><p class="!mt-0"><strong>The vocabulary is kept small on purpose.</strong> When something new is needed, it is expressed as one of these six or as an option on one of them.</p></div>
+
+    <h2 id="next">Read on</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/concepts/templates-and-snippets'}}">Templates and snippets</a></li>
+      <li><a href="{{sw-url '/docs/concepts/datasets'}}">Datasets and entries</a></li>
+      <li><a href="{{sw-url '/docs/concepts/header-footer-sidebars'}}">Header, footer and sidebars</a></li>
+      <li><a href="{{sw-url '/docs/reference/helpers'}}">Template helpers</a></li>
+    </ul>
+  </article>
+</div>

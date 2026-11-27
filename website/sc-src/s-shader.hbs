@@ -1,0 +1,148 @@
+{{!-- META {"path":"animated-backgrounds","title":"Animated backgrounds","description":"A WebGL background behind any section, in the site's own colours: 31 presets, tuned with speed, intensity, angle, pointer and colour attributes. Reduced motion gets one still frame, and no JavaScript a CSS gradient.","parent":"showcase","order":9,"data":{"icon":"sparkle","preset":"neuro-noise"}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">01 · One attribute</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="a1_title">Move your pointer across it.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="a1_lead">This panel is one element with the shader-bg marker and the Neuro Noise preset. The runtime paints a canvas behind the content; an overlay part sits between the two to keep the text legible. With <code class="font-code text-base">data-interactive</code> the pointer bends the field.</p>
+  </div>
+  <div class="mt-10">
+<!--demo:hero-->
+<div class="relative grid min-h-[26rem] place-items-center overflow-hidden rounded-3xl px-6 text-center text-white" data-sw-component="shader-bg" data-preset="neuro-noise" data-speed="0.8" data-intensity="0.6" data-colors="primary,accent,neutral" data-interactive="true">
+  <div data-sw-part="overlay" class="bg-black/20"></div>
+  <div class="max-w-xl">
+    <p class="ws-display text-4xl font-bold sm:text-6xl">Neuro Noise</p>
+    <p class="mt-4 text-lg text-white/80">No video and no image: a shader, drawn live in the brand colours.</p>
+  </div>
+</div>
+<!--/demo-->
+  </div>
+  <div class="mt-6">
+<!--code:hero file="shader-bg · interactive hero"-->
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">02 · Presets</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="a2_title">Pick a look with data-preset.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="a2_lead">Eight of the 31 presets, each in this site's palette. Subtle ones such as Mesh Gradient read best behind text; bold ones such as Plasma or Voronoi Cells suit a decorative band.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+<!--demo:presets-->
+<div class="relative flex h-44 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="mesh-gradient">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">mesh-gradient</span>
+</div>
+<!--elide:one tile per preset, the same markup-->
+<div class="relative flex h-44 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="silk-flow">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">silk-flow</span>
+</div>
+<div class="relative flex h-44 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="plasma">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">plasma</span>
+</div>
+<div class="relative flex h-44 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="caustics">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">caustics</span>
+</div>
+<div class="relative flex h-44 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="lava-lamp">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">lava-lamp</span>
+</div>
+<div class="relative flex h-44 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="voronoi-cells">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">voronoi-cells</span>
+</div>
+<div class="relative flex h-44 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="starfield">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">starfield</span>
+</div>
+<div class="relative flex h-44 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="liquid-metal">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">liquid-metal</span>
+</div>
+<!--/elide-->
+<!--/demo-->
+    </div>
+    <div class="mt-6">
+<!--code:presets file="shader-bg · presets"-->
+    </div>
+    <div class="mt-10 rounded-3xl border border-base-content/10 bg-base-100 p-6">
+      <p class="font-heading font-semibold">All 31 presets</p>
+      <ul class="mt-4 flex list-none flex-wrap gap-2 p-0">
+        {{#each (sw-split "mesh-gradient,silk-flow,plasma,halftone-pulse,caustics,marble-ink,sun-rays,lava-lamp,corner-mesh,flow-field,interference,ribbons,brushed-streaks,voronoi-cells,pointer-ripples,liquid-metal,rising-smoke,edge-glow,waterfall,heat-haze,bokeh-drift,contours,starfield,sine-strands,vortex-swirl,ink-bloom,mist-layers,drifting-blobs,glow-orbits,gradient-flow,neuro-noise")}}
+        <li class="rounded-full border border-base-content/10 bg-base-200/60 px-3 py-1 font-code text-xs">{{this}}</li>
+        {{/each}}
+      </ul>
+      <p class="mt-4 text-sm text-base-content/60">Fifteen of them run on this page, and more on the tiles of the <a class="ws-link ws-ink" href="{{sw-url '/showcase'}}">showcase overview</a>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">03 · Colours</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="a3_title">Three slots, any colours.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="a3_lead">Without <code class="font-code text-base">data-colors</code> a shader uses primary, secondary and neutral, read live from the theme. Each of the three slots takes a theme token, a literal CSS colour, or <code class="font-code text-base">auto</code>, which takes the page background of the current theme. Switch the theme in the header and watch the third tile.</p>
+  </div>
+  <div class="mt-10 grid grid-cols-1 gap-4 md:grid-cols-3">
+<!--demo:colors-->
+<div class="relative flex h-48 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="gradient-flow" data-colors="accent,primary,neutral">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">accent,primary,neutral</span>
+</div>
+<div class="relative flex h-48 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="ribbons" data-colors="#F97316,#DB2777,#1E1B4B">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">#F97316,#DB2777,#1E1B4B</span>
+</div>
+<div class="relative flex h-48 items-end overflow-hidden rounded-2xl border border-base-content/10 p-4" data-sw-component="shader-bg" data-preset="mist-layers" data-colors="primary,auto,auto">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">primary,auto,auto</span>
+</div>
+<!--/demo-->
+  </div>
+  <div class="mt-6">
+<!--code:colors file="shader-bg · data-colors"-->
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">04 · Knobs</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="a4_title">Speed, intensity, angle, pointer.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="a4_lead"><code class="font-code text-base">data-speed</code> runs from 0 to 4, and 0 renders one still frame. <code class="font-code text-base">data-intensity</code> runs from 0 to 1; lower is calmer behind text. <code class="font-code text-base">data-angle</code> turns the whole field in degrees. Point at the third tile: Pointer Ripples follows the cursor.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-1 gap-4 md:grid-cols-3">
+<!--demo:knobs-->
+<div class="relative flex h-48 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="sun-rays" data-speed="0" data-angle="135">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">speed 0 · angle 135</span>
+</div>
+<div class="relative flex h-48 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="bokeh-drift" data-speed="1.6" data-intensity="0.9">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">speed 1.6 · intensity 0.9</span>
+</div>
+<div class="relative flex h-48 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="pointer-ripples" data-interactive="true">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">interactive</span>
+</div>
+<!--/demo-->
+    </div>
+    <div class="mt-6">
+<!--code:knobs file="shader-bg · knobs"-->
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">
+      {{sw-icon "pause-circle" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">Paused when unseen</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">A background stops animating when it scrolls out of view or the tab is hidden. Visitors who prefer reduced motion get a single still frame, and the pointer effect is off for them.</p>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="80">
+      {{sw-icon "palette" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">Never a blank box</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">Until the runtime starts, and wherever JavaScript or WebGL is missing, the element shows a still CSS gradient made from the same colour tokens.</p>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="160">
+      {{sw-icon "cpu" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">A few per page</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">Each instance is its own WebGL context, and browsers limit how many a page may run at once. This page runs fifteen; most pages need one or two.</p>
+    </div>
+  </div>
+</section>
+
+{{> showcase-next}}

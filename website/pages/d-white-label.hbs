@@ -1,0 +1,53 @@
+{{!-- META {"path":"white-label","title":"Branding the admin","description":"Give the editor and its sign-in screen your agency's name, colors, logo and background, so clients sign in to your platform.","parent":"self-hosting","order":5,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>An instance admin can rebrand the admin panel: the editor, the project selector and the sign-in screen. These are instance settings, applied as soon as you save, with no restart and no code. They change the platform around the sites, not the sites: each project's own colors and fonts live in its website settings (see <a href="{{sw-url '/docs/concepts/brand-and-themes'}}">Brand, themes and layout</a>).</p>
+
+    <h2 id="branding">Name, colors and logo</h2>
+    <p>Open <strong>System Settings → General</strong>. The <strong>Branding</strong> card holds three things:</p>
+    <table>
+      <thead><tr><th>Setting</th><th>What it changes</th></tr></thead>
+      <tbody>
+        <tr><td>Platform name</td><td>Up to 60 characters. Shown next to the logo on the sign-in screen, as the title of the project selector, in the browser tab, on the invitation page, and as the name shown in authenticator apps and passkey prompts.</td></tr>
+        <tr><td>Primary and Secondary</td><td>The two stops of the gradient that marks buttons, highlights and focus rings across the admin. Defaults <code>#4f46e5</code> and <code>#0ea5e9</code>; the card previews the gradient as you pick.</td></tr>
+        <tr><td>Logo</td><td>A PNG, JPEG or WebP image up to about 512 KB, shown on the sign-in screen and in the editor's header, and used as the browser tab icon. SVG is not accepted, because an SVG file can carry script.</td></tr>
+      </tbody>
+    </table>
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">System Settings · General</span></div>
+      {{> ws-media slot="doc_whitelabel_settings" class="rounded-none"}}
+    </div>
+    <p>Clear the name or remove the logo to go back to the built-in ones. The sign-in screen loads the branding before anyone signs in, so the name, colors, logo and background are public: keep anything confidential out of them.</p>
+
+    <h2 id="background">The platform background</h2>
+    <p>Behind the whole editor and the sign-in screen you can run one of the animated shader backgrounds instead of the default gradient.</p>
+    <ol>
+      <li>In the editor's library rail, open <strong>Builders &amp; Studios → Animated backgrounds</strong>.</li>
+      <li>Pick a preset, set its angle and its three colors, and watch the large preview.</li>
+      <li>Click <strong>Use as platform background</strong>. The button appears for instance admins only.</li>
+    </ol>
+    <p><strong>Clear platform background</strong> in the same place returns to the default. The same picker also copies the background's markup for use on a page, which is how authors use it on sites.</p>
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">sites.example.com</span></div>
+      {{> ws-media slot="doc_whitelabel_signin" class="rounded-none"}}
+    </div>
+
+    <h2 id="embedding">Embed the admin in your portal</h2>
+    <p>By default no other site may show the admin panel in a frame. To embed it in your client portal or intranet, list that origin under <strong>System Settings → Security → Embedding (iframe)</strong>, up to 20 origins. Only the admin panel is affected: published sites keep their own policy.</p>
+
+    <h2 id="address">Your own address</h2>
+    <p>Clients see the address the instance runs on, so run it on your own domain: set <code>SW_PUBLIC_URL</code> to it (see <a href="{{sw-url '/docs/getting-started/install'}}">Install with Docker</a>). To answer on more than one hostname, add the others under <strong>System Settings → Security → Additional hostnames</strong>. Sites published to Local Hosting can be served on <a href="{{sw-url '/docs/guides/custom-domains'}}">their clients' own domains</a>.</p>
+
+    <h2 id="update-banner">The update banner</h2>
+    <p>When a new release is out, signed-in users see a banner that names it as a Sitewright release. If your clients should not see it, set <code>SW_DISABLE_UPDATE_CHECK=true</code> and follow the releases yourself.</p>
+
+    <h2 id="next">Next</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/self-hosting/security'}}">Security and hardening</a></li>
+      <li><a href="{{sw-url '/docs/concepts/brand-and-themes'}}">Brand, themes and layout</a></li>
+      <li><a href="{{sw-url '/docs/self-hosting/environment'}}">Environment variables</a></li>
+    </ul>
+  </article>
+</div>

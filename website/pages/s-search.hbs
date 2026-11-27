@@ -1,0 +1,99 @@
+{{!-- META {"path":"search","title":"Site search","description":"Full-text search over every page, from a static index the build writes next to the sitemap. No search server and no third party: the box below searches this site.","parent":"showcase","order":7,"data":{"icon":"magnifying-glass","preset":"flow-field"}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">01 · One helper</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="s1_title">Search this site.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="s1_lead">The helper writes the input, the results list and the empty state. It searches as you type and fetches the index on first use. Try "deploy", "carousel" or a quoted phrase such as "static files".</p>
+  </div>
+  <div class="mt-10 rounded-3xl border border-base-content/10 bg-base-100 p-6 sm:p-10">
+
+{{sw-search placeholder="Search this site…" limit=8 class="mx-auto max-w-2xl [&_input]:w-full"}}
+
+  </div>
+  <div class="mt-6">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">search · helper</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-hb">\{{sw-search placeholder="Search this site…" limit=8 class="mx-auto max-w-2xl [&amp;_input]:w-full"}}</span></code></pre>
+</div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">02 · Your own layout</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="s2_title">Write the parts, keep every class.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="s2_lead">Hand-write the input, the results container and the empty message when you need the layout. The runtime only fills the results container with links you can style through their <code class="font-code text-base">sw-search-hit</code> classes. <code class="font-code text-base">data-sw-limit</code> caps the list; here, at four.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+      <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6">
+
+<div data-sw-component="search" data-sw-limit="4">
+  <input data-sw-part="input" type="search" class="w-full" aria-label="Search the documentation" placeholder="Search the documentation" autocomplete="off" />
+  <div data-sw-part="results" class="mt-3 [&_.sw-search-hit-title]:font-heading"></div>
+  <p data-sw-part="empty" hidden class="mt-3 text-sm text-base-content/60">Nothing matched. Try fewer words.</p>
+</div>
+
+      </div>
+      <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">search · own layout</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"search"</span> <span class="tk-attr">data-sw-limit</span>=<span class="tk-str">"4"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;input</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"input"</span> <span class="tk-attr">type</span>=<span class="tk-str">"search"</span> <span class="tk-attr">class</span>=<span class="tk-str">"w-full"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Search the documentation"</span> <span class="tk-attr">placeholder</span>=<span class="tk-str">"Search the documentation"</span> <span class="tk-attr">autocomplete</span>=<span class="tk-str">"off"</span> <span class="tk-tag">/&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"results"</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-3 [&amp;_.sw-search-hit-title]:font-heading"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"empty"</span> <span class="tk-attr">hidden</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-3 text-sm text-base-content/60"</span><span class="tk-tag">&gt;</span>Nothing matched. Try fewer words.<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">What gets searched</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-4xl" data-sw-text="s3_title">Pages, ranked.</h2>
+  </div>
+  <div class="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">
+      {{sw-icon "article" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">Whole pages</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">Every word of a page body, plus its title, description and headings, which weigh more. The navigation and footer are left out, or every page would match every menu word.</p>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60">
+      {{sw-icon "sort-descending" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">Ranked</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">Pages that match all your words come first. Each hit shows the title, the description and a snippet with the match highlighted.</p>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120">
+      {{sw-icon "translate" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">One index per language</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">The page's language picks the index, so a German page never lists English results.</p>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="180">
+      {{sw-icon "eye-slash" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">Left out</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">Pages hidden from search engines, menu-only link pages and raw imported pages. Without JavaScript the box stays a plain input.</p>
+    </div>
+  </div>
+</section>
+
+<section class="border-t border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-20">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <h2 class="ws-display text-3xl font-bold sm:text-4xl">More of the showcase</h2>
+      <a class="btn btn-ghost btn-sm" href="{{sw-url '/showcase'}}">All demos {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+    <div class="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {{#each pages.showcase._attributes.children}}
+      {{#unless (eq path @root.page.path)}}
+      <a class="ws-tile rounded-2xl border border-base-content/10 bg-base-100 p-4" href="{{sw-url path}}">
+        <span class="flex items-center gap-2 font-heading font-semibold">{{#if data.icon}}{{sw-icon data.icon "h-4 w-4 ws-ink"}}{{/if}}{{title}}</span>
+      </a>
+      {{/unless}}
+      {{/each}}
+    </div>
+  </div>
+</section>

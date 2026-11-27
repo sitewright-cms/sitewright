@@ -1,0 +1,63 @@
+{{!-- META {"path":"publishing","title":"Publishing & deploy","description":"Static output with no framework, published to your instance or deployed to any server over FTP, FTPS, SFTP or Git. One build per target, and only the files that changed are uploaded.","parent":"features","order":9,"data":{"icon":"rocket-launch","eyebrow":"Publish & deploy","headline":"Publish anywhere. Upload only what changed."}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.15fr]">
+  <div data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">Deploy targets</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl">Set a destination up once, deploy with a click.</h2>
+    <p class="mt-5 text-lg leading-relaxed text-base-content/70">A project can have several deploy targets: Local Hosting on your instance and any number of remote servers. Each deploy builds the site for its own target, and every remote target has a Test connection button that checks the address, the credentials and write access before you deploy.</p>
+  </div>
+  <div class="ws-browser" data-sw-animation="fade-up" data-sw-delay="100">
+    <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Publish · deploy targets</span></div>
+    {{> ws-media slot="feat_publish_targets" class="rounded-none"}}
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+    <h2 class="ws-display max-w-2xl text-3xl font-bold sm:text-4xl" data-sw-animation="fade-up">Six ways out.</h2>
+    <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">{{sw-icon "house-line" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Local Hosting</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Served by the instance itself at a subdomain of your sites domain or under <code class="font-code">/sites/&lt;slug&gt;/</code>, isolated from the editor's origin. Custom domains verify with a TXT record.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "lock-key" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">SFTP</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Password or SSH key, with host-key pinning. Fast paths over rsync or tar through SSH, and an option to delete remote files the build no longer has.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "shield-check" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">FTPS</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Explicit or implicit TLS. A certificate that fails verification on shared hosting is reported, and you can pin it for that one target.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">{{sw-icon "hard-drives" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">FTP</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">For the hosts that only speak FTP. The connection upgrades to TLS whenever the server offers it.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "brand:github" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Git</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">An HTTPS token or an SSH key. Each deploy is one fresh commit, force-pushed to the branch you name, with a <code class="font-code">.nojekyll</code> so GitHub Pages serves it as built.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "file-zip" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Download .zip</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">The whole published site as an archive, to host wherever you like.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1.15fr_1fr]">
+  <div class="ws-browser order-2 lg:order-1" data-sw-animation="fade-up">
+    <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Deploying · progress</span></div>
+    {{> ws-media slot="feat_publish_progress" class="rounded-none"}}
+  </div>
+  <div class="order-1 lg:order-2" data-sw-animation="fade-up" data-sw-delay="100">
+    <p class="ws-index ws-ink">Fast, safe deploys</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl">Only the files that changed travel.</h2>
+    <ul class="mt-6 list-none space-y-4 p-0">
+      <li class="flex gap-3">{{sw-icon "arrows-clockwise" "mt-1 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80"><strong class="text-base-content">Delta uploads.</strong> A content-hash manifest on the server tells each deploy which files are new or changed. Shared scripts and styles carry a version in their address, so caches never serve a stale one.</span></li>
+      <li class="flex gap-3">{{sw-icon "feather" "mt-1 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80"><strong class="text-base-content">Only what a page uses.</strong> Each page loads the CSS and scripts of the components it contains, and no framework ships to the browser.</span></li>
+      <li class="flex gap-3">{{sw-icon "shield-check" "mt-1 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80"><strong class="text-base-content">Safe publishing.</strong> A build that fails leaves the live site exactly as it was.</span></li>
+      <li class="flex gap-3">{{sw-icon "broadcast" "mt-1 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80"><strong class="text-base-content">Live progress.</strong> The editor streams each deploy file by file and says exactly what failed and why.</span></li>
+    </ul>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 pb-20 sm:pb-28">
+  <div class="grid gap-6 lg:grid-cols-2">
+    <div class="sw-border-beam rounded-3xl border border-base-content/10 bg-base-100 p-8 [--sw-beam-width:2px]" data-sw-animation="fade-up">
+      {{sw-icon "eye" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold">Demo copies</h3>
+      <p class="mt-3 leading-relaxed text-base-content/70">Mark a remote target as a demo copy and its deploys keep the forms, cart, checkout and booking working in the browser while nothing is sent anywhere. Built for public showcases. This site's GitHub Pages copy is one.</p>
+      <a class="btn btn-ghost btn-sm mt-4 px-0 hover:bg-transparent" href="{{sw-url '/docs/guides/demo-copies'}}">How demo copies work {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-8" data-sw-animation="fade-up" data-sw-delay="100">
+      {{sw-icon "link" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold">Previews and share links</h3>
+      <p class="mt-3 leading-relaxed text-base-content/70">Every project has an always-on draft preview. Share it with a client through a link that expires on its own and can be revoked at any time. Redirects you define ship as <code class="font-code">.htaccess</code> and Netlify <code class="font-code">_redirects</code> files.</p>
+    </div>
+  </div>
+</section>
+
+{{> feature-next features=pages.features._attributes.children}}

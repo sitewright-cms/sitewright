@@ -1,0 +1,95 @@
+{{!-- META {"path":"import","title":"Import an existing site","description":"Crawl a live website into a project, with its images and fonts self-hosted, then rebuild each page on the platform's own primitives with an agent. AI clone is in beta.","parent":"guides","order":11,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>Moving a client's existing site onto Sitewright happens in two stages. The <strong>import</strong> crawls the live site and stores each page as a faithful copy, with images, documents and fonts downloaded and hosted by the platform. The <strong>rebuild</strong> (called nativizing) then rewrites each page with theme tokens, components, datasets and editable text, keeping the same layout, and checks it against the original. An MCP agent drives both; the editor has no import screen.</p>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>AI clone is in beta.</strong> The automatic rebuild (<code>ai_clone</code>) needs an AI provider configured on the instance and its results need a person's review. An agent working through the pages itself, with the audit tools below, gives you more control.</p></div>
+
+    <h2 id="before">Before you start</h2>
+    <ul>
+      <li><strong>Use a new, empty project.</strong> An import replaces the project's settings (identity, website settings, languages) and overwrites pages with matching ids, and it records no revisions.</li>
+      <li><strong>You must own the project.</strong> Importing is owner-only.</li>
+      <li><strong>Connect an agent</strong> with <code>content:read</code> and <code>content:write</code>; see <a href="{{sw-url '/docs/guides/ai-agents'}}">Connect an AI agent</a>.</li>
+      <li><strong>Only import sites you have the right to copy.</strong> The crawler does not read <code>robots.txt</code>.</li>
+    </ul>
+
+    <h2 id="import">1. Import</h2>
+    <p>Ask the agent to clone the site. It calls <code>import_website</code> with the URL, which returns a job id at once, and polls <code>import_status</code> while the crawl runs, usually for minutes. One import runs per project at a time.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">claude</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-dim">&gt;</span> Clone https://www.client-site.example into this project.
+
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">import_website</span>   <span class="tk-dim">url · maxPages 50</span>
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">import_status</span>    <span class="tk-dim">running · transform 12/18</span>
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">import_status</span>    <span class="tk-dim">done · 18 pages · 143 files hosted</span></code></pre>
+    </div>
+    <table>
+      <thead><tr><th>Option</th><th>Values</th></tr></thead>
+      <tbody>
+        <tr><td><code>url</code></td><td>A public <code>https://</code> address. Private and local addresses are refused, and every redirect is checked again.</td></tr>
+        <tr><td><code>maxPages</code></td><td>1 to 200, default 50. Only pages under the starting URL's directory, on the same origin, are followed.</td></tr>
+        <tr><td><code>maxDepth</code></td><td>0 to 5 links deep, default 3.</td></tr>
+        <tr><td><code>renderMode</code></td><td><code>auto</code> renders a page in a headless browser only when it has no content without JavaScript; <code>always</code> renders every page. Use <code>always</code> when the header or footer is built by a script and comes back missing.</td></tr>
+        <tr><td><code>foundation</code></td><td>On by default for agents: the site's own CSS is dropped, and its palette, fonts and content width become the project's theme, with a native header and footer to rebuild from. Off, the original stylesheet is hosted and linked site-wide, and the site's own header and footer go into the chrome slots.</td></tr>
+        <tr><td><code>inferDatasets</code></td><td>Off by default. Guessing collections from repeated markup produced poor datasets, so the agent authors them during the rebuild.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="result">What an import produces</h2>
+    <ul>
+      <li>One page per crawled page, its source the literal HTML, marked with <code>page.data.swImport</code> (the source URL). Scripts are stripped from the page bodies and forms become inert, to be rebuilt.</li>
+      <li>Images, PDFs and other documents downloaded and hosted under the <code>imported/</code> media folder, duplicates stored once and images scaled to at most 2400 px wide. Fonts declared with <code>@font-face</code> and Google Fonts from the bundled catalog are self-hosted too. Video and audio are not captured.</li>
+      <li>The company identity filled in from the site: name, description, logo, favicon, share image, contact details, address and social links.</li>
+      <li>Languages detected from the site, third-party widgets turned into consent-gated integrations, and the production URL set to the <em>source</em> site's address.</li>
+    </ul>
+    <p>Caps: 15 MB and 12 seconds per fetched file, 200 MB of HTML and CSS per crawl, 500 hosted images and files (the rest keep pointing at the original), 256 KB per page source.</p>
+
+    <h2 id="rebuild">2. Rebuild each page</h2>
+    <p>A faithful copy is not yet a Sitewright page: its classes are the old framework's and nothing in it is editable. The rebuild ports each page to native primitives without changing how it looks. Three ways to run it:</p>
+    <ul>
+      <li><strong>An agent, page by page.</strong> It reads <code>get_guide("import")</code>, the porting checklist, and works through each page. The MCP server also offers a <code>clone_site</code> prompt that lays out the whole loop. Recommended.</li>
+      <li><strong>AI clone (beta).</strong> <code>ai_clone</code> runs the same loop on the server with the instance's AI provider, home page first, up to four rounds per page. It needs the <code>publish</code> capability and an imported project, and it does not deploy.</li>
+      <li><strong>By hand,</strong> in the code editor, using the same checklist.</li>
+    </ul>
+    <table>
+      <thead><tr><th>Tool</th><th>Use it to</th></tr></thead>
+      <tbody>
+        <tr><td><code>compare_to_source</code></td><td>See the build and the original side by side.</td></tr>
+        <tr><td><code>visual_audit</code></td><td>Get both full-page on desktop and mobile with a defect rubric. The agent lists every difference by region and severity; a page is faithful at zero blocker and major differences.</td></tr>
+        <tr><td><code>clone_audit</code></td><td>Check structure and behavior: datasets named, media out of <code>imported/</code>, content editable, sliders working, fonts loading, the mobile menu reachable, nothing cut off. It must pass.</td></tr>
+        <tr><td><code>inspect_source</code></td><td>Measure the original's real computed styles and read markup a script built.</td></tr>
+        <tr><td><code>compare_regions</code></td><td>Zoom on the header and footer at 2×.</td></tr>
+        <tr><td><code>fidelity_check</code></td><td>A computed-style coverage number. Advisory only.</td></tr>
+        <tr><td><code>measure_header</code></td><td>Get the exact header height CSS for every breakpoint.</td></tr>
+      </tbody>
+    </table>
+    <p>The audit tools work on pages that still carry their <code>swImport</code> marker; keep it until a page is done.</p>
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Claude Code and the editor</span></div>
+      {{> ws-media slot="doc_import_clone" class="rounded-none"}}
+    </div>
+
+    <h2 id="verify">Check your work</h2>
+    <ul>
+      <li>Every page passes <code>clone_audit</code> and its <code>visual_audit</code> list is at zero blocker and major differences.</li>
+      <li>Click through the draft preview on desktop and a phone width; open each slider, tab and menu.</li>
+      <li>Share the draft with the client through a preview share link before anything goes live.</li>
+    </ul>
+
+    <h2 id="pitfalls">Pitfalls</h2>
+    <ul>
+      <li><strong>Imported pages are already published.</strong> The next deploy includes them, and deploying to the client's host replaces their live site, often the very site you cloned. Deploy only when the rebuild is done and approved.</li>
+      <li><strong>Change the production URL</strong> in Settings → Website → Site before the first deploy; the import set it to the source site's address.</li>
+      <li><strong>Don't start a second import</strong> while one is running; it is refused for the project anyway.</li>
+      <li><strong>Moving a Sitewright project between instances</strong> is a different feature: export the project as a zip and use <strong>Import zip</strong> in the project selector, which creates a new project (deploy targets and SMTP credentials are not included).</li>
+    </ul>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/reference/limits'}}#import">Import limits</a></li>
+      <li><a href="{{sw-url '/docs/reference/mcp-tools'}}#import">Import and clone tools</a></li>
+      <li><a href="{{sw-url '/docs/concepts/authoring-model'}}">The authoring model</a></li>
+    </ul>
+  </article>
+</div>

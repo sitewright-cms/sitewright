@@ -1,0 +1,120 @@
+{{!-- META {"path":"editor","title":"Editor & code-first authoring","description":"Write pages in Handlebars, HTML, Tailwind v4 and daisyUI 5 over a live preview that follows your typing. Mark what may change, and clients edit it in place on the same page.","parent":"features","order":1,"data":{"icon":"code","eyebrow":"Editor & authoring","headline":"The code is the page. The preview is the editor."}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.2fr]">
+  <div data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">Code Editor</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="code_title">Type, and the page follows.</h2>
+    <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="code_lead">The page editor fills the screen with the live preview. A CodeMirror strip sits on top and opens up while you work in it. The preview renders your unsaved draft a moment after you stop typing, in a sandboxed frame, so you see the real page, not an approximation.</p>
+    <ul class="mt-6 list-none space-y-3 p-0 text-base-content/80">
+      <li class="flex gap-3">{{sw-icon "devices" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Preview at large desktop, laptop, tablet and mobile widths.</span></li>
+      <li class="flex gap-3">{{sw-icon "floppy-disk" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>One save stores the source, the settings and the content together.</span></li>
+      <li class="flex gap-3">{{sw-icon "arrow-counter-clockwise" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Undo and redo in both modes, and a prompt before you close with unsaved changes.</span></li>
+    </ul>
+  </div>
+  <div class="ws-browser" data-sw-animation="fade-up" data-sw-delay="100">
+    <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Pages · home · Code Editor</span></div>
+    {{> ws-media slot="feat_editor_code" class="rounded-none"}}
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+    <div class="grid gap-6 lg:grid-cols-[1fr_1.2fr] lg:items-end" data-sw-animation="fade-up">
+      <h2 class="ws-display text-3xl font-bold sm:text-5xl" data-sw-text="tabs_title">Three tabs on one page.</h2>
+      <p class="max-w-xl text-lg leading-relaxed text-base-content/70" data-sw-text="tabs_lead">Switch between them at any time and nothing is lost. The pages list opens every page in the Content Editor, so the people who only change words land where they should.</p>
+    </div>
+    <div class="mt-10 overflow-x-auto rounded-2xl border border-base-content/10 bg-base-100" data-sw-animation="fade-up">
+      <table class="w-full min-w-[44rem] border-collapse text-left text-sm">
+        <thead>
+          <tr class="bg-base-200/70">
+            <th class="w-40 px-5 py-4"></th>
+            <th class="px-5 py-4 font-heading text-base font-semibold"><span class="inline-flex items-center gap-2">{{sw-icon "code" "h-4 w-4 ws-ink"}} Code Editor</span></th>
+            <th class="px-5 py-4 font-heading text-base font-semibold"><span class="inline-flex items-center gap-2">{{sw-icon "cursor-text" "h-4 w-4 ws-ink"}} Content Editor</span></th>
+            <th class="px-5 py-4 font-heading text-base font-semibold"><span class="inline-flex items-center gap-2">{{sw-icon "gauge" "h-4 w-4 ws-ink"}} Page Audit</span></th>
+          </tr>
+        </thead>
+        <tbody class="align-top text-base-content/80">
+          <tr class="border-t border-base-content/10"><th class="px-5 py-4 font-medium text-base-content">Made for</th><td class="px-5 py-4">Developers</td><td class="px-5 py-4">Clients and content editors</td><td class="px-5 py-4">Anyone before a release</td></tr>
+          <tr class="border-t border-base-content/10"><th class="px-5 py-4 font-medium text-base-content">You work on</th><td class="px-5 py-4">The page source, its settings and its page data</td><td class="px-5 py-4">The text, rich text, links, images and backgrounds you marked editable, and the dataset rows on the page</td><td class="px-5 py-4">A Lighthouse run for performance, accessibility, best practices and SEO, on mobile, desktop or both</td></tr>
+          <tr class="border-t border-base-content/10"><th class="px-5 py-4 font-medium text-base-content">How</th><td class="px-5 py-4">CodeMirror over the live preview</td><td class="px-5 py-4">Click on the preview and type; a toolbar for rich text</td><td class="px-5 py-4">Against a build that matches a real deploy</td></tr>
+          <tr class="border-t border-base-content/10"><th class="px-5 py-4 font-medium text-base-content">On a phone</th><td class="px-5 py-4">{{sw-icon "minus:bold" "h-4 w-4 text-base-content/40"}}</td><td class="px-5 py-4">{{sw-icon "check:bold" "h-4 w-4 text-accent"}}</td><td class="px-5 py-4">{{sw-icon "minus:bold" "h-4 w-4 text-base-content/40"}}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid items-center gap-12 lg:grid-cols-[1.15fr_1fr]">
+    <div class="ws-window overflow-hidden rounded-2xl" data-sw-animation="fade-up">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/home.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;section</span> <span class="tk-attr">data-sw-bg</span>=<span class="tk-str">"hero_bg"</span> <span class="tk-attr">class</span>=<span class="tk-str">"hero min-h-96 bg-cover"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;h1</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-5xl font-bold"</span>
+      <span class="tk-attr">data-sw-text</span>=<span class="tk-str">"headline"</span><span class="tk-tag">&gt;</span>Welcome<span class="tk-tag">&lt;/h1&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"prose"</span> <span class="tk-attr">data-sw-html</span>=<span class="tk-str">"intro"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;p&gt;</span>Default intro.<span class="tk-tag">&lt;/p&gt;</span>
+  <span class="tk-tag">&lt;/div&gt;</span>
+  <span class="tk-tag">&lt;a</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary"</span> <span class="tk-attr">href</span>=<span class="tk-str">"/start"</span>
+     <span class="tk-attr">data-sw-href</span>=<span class="tk-str">"cta_url"</span> <span class="tk-attr">data-sw-text</span>=<span class="tk-str">"cta_label"</span><span class="tk-tag">&gt;</span>Get started<span class="tk-tag">&lt;/a&gt;</span>
+<span class="tk-tag">&lt;/section&gt;</span></code></pre>
+    </div>
+    <div data-sw-animation="fade-up" data-sw-delay="100">
+      <p class="ws-index ws-ink">Editing directives</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="attr_title">One attribute per editable thing.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="attr_lead">You decide what may change. Clients edit exactly that, in place on the preview, without touching the markup around it. The attributes are stripped from the published HTML, and rich text is cleaned when the page renders.</p>
+      <dl class="mt-6 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+        <div><dt class="font-code ws-ink">data-sw-text</dt><dd class="text-base-content/70">Plain text</dd></div>
+        <div><dt class="font-code ws-ink">data-sw-html</dt><dd class="text-base-content/70">Rich text, with a toolbar</dd></div>
+        <div><dt class="font-code ws-ink">data-sw-href</dt><dd class="text-base-content/70">Where a link goes</dd></div>
+        <div><dt class="font-code ws-ink">data-sw-src</dt><dd class="text-base-content/70">An image, from the file picker</dd></div>
+        <div><dt class="font-code ws-ink">data-sw-bg</dt><dd class="text-base-content/70">A background image</dd></div>
+        <div><dt class="font-code ws-ink">data-sw-translate</dt><dd class="text-base-content/70">A string shared by every page</dd></div>
+      </dl>
+      <a class="btn btn-ghost mt-6 px-0 hover:bg-transparent" href="{{sw-url '/docs/reference/editing-attributes'}}">All editing attributes {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.1fr]">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">System Library</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="lib_title">Everything you reach for, one rail away.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="lib_lead">The Library beside the editor holds references to look things up, assets to drop in, and builders that write the markup for you. Your brand colors are utilities too, so <code class="whitespace-nowrap font-code">bg-primary</code> is your client's primary.</p>
+      <div class="mt-8 grid gap-6 sm:grid-cols-3">
+        <div><p class="ws-index text-base-content/60">Reference</p><ul class="mt-3 list-none space-y-1.5 p-0 text-sm text-base-content/80"><li>Template reference</li><li>Sitewright components</li><li>Tailwind CSS classes</li><li>daisyUI components</li></ul></div>
+        <div><p class="ws-index text-base-content/60">Assets</p><ul class="mt-3 list-none space-y-1.5 p-0 text-sm text-base-content/80"><li>Phosphor icons</li><li>Brand logos and flags</li><li>Google Fonts</li><li>Textures</li></ul></div>
+        <div><p class="ws-index text-base-content/60">Builders</p><ul class="mt-3 list-none space-y-1.5 p-0 text-sm text-base-content/80"><li>Animated backgrounds</li><li>Buttons and parallax</li><li>SVG animation studio</li><li>Image editor and image maps</li></ul></div>
+      </div>
+    </div>
+    <div class="ws-browser" data-sw-animation="fade-up" data-sw-delay="100" data-sw-parallax-translate="30,-30">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">System Library · Builders &amp; Studios</span></div>
+      {{> ws-media slot="feat_editor_library" class="rounded-none"}}
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid gap-6 lg:grid-cols-2">
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-8" data-sw-animation="fade-up">
+      {{sw-icon "puzzle-piece" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold" data-sw-text="reuse_title">Write it once, use it everywhere.</h3>
+      <ul class="mt-4 list-none space-y-3 p-0 text-base-content/80">
+        <li><strong class="text-base-content">Snippets</strong> are partials you include with <code class="font-code">\{{&gt; name}}</code>. A cookbook of 32 recipes ships with the platform, from sliders to a cart drawer, to copy and own.</li>
+        <li><strong class="text-base-content">Templates</strong> are whole-page layouts that pages reference. Six come built in: landing, text, blog article, blog overview, thank-you and shop.</li>
+        <li><strong class="text-base-content">Slots</strong> hold the shared chrome: main navigation, left and right sidebars, footer and bottom.</li>
+      </ul>
+      <a class="btn btn-ghost btn-sm mt-4 px-0 hover:bg-transparent" href="{{sw-url '/docs/concepts/templates-and-snippets'}}">Templates and snippets {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+    <div class="sw-border-beam rounded-3xl border border-base-content/10 bg-base-100 p-8 [--sw-beam-width:2px]" data-sw-animation="fade-up" data-sw-delay="100">
+      {{sw-icon "clock-counter-clockwise" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold" data-sw-text="history_title">A history you cannot lose.</h3>
+      <p class="mt-3 leading-relaxed text-base-content/70" data-sw-text="history_lead">Pages, templates, snippets, translations, datasets, entries, forms, image maps, bookings and settings keep their versions: up to 50 per item, for 90 days by default. The History tab shows what changed field by field and line by line.</p>
+      <p class="mt-3 leading-relaxed text-base-content/70">Restoring never destroys anything. It adds a new version on top, and it brings back items that were deleted.</p>
+      <a class="btn btn-ghost btn-sm mt-4 px-0 hover:bg-transparent" href="{{sw-url '/docs/getting-started/editor-tour'}}">Take the editor tour {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+  </div>
+</section>
+
+{{> feature-next features=pages.features._attributes.children}}

@@ -1,0 +1,82 @@
+{{!-- META {"path":"consent","title":"Consent manager","description":"A cookie banner that actually holds third-party embeds and scripts back until the visitor agrees, by category. Switch it on in the website settings: the banner appears on every page and the site's security policy allows exactly the origins it loads.","parent":"showcase","order":15,"data":{"icon":"cookie","preset":"gradient-flow"}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-center">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">01 · The banner</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="cn1_title">Nothing to place in your pages.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="cn1_lead">Turn the manager on and a banner appears on every page: Accept all, Reject all, or Customize per category. Strictly necessary is always on; functional, analytics and marketing are the visitor's choice. The choice is remembered, and raising the version number asks everyone again. Every line of its copy is a translation key.</p>
+      {{#if website.consent.enabled}}
+      <p class="mt-6 text-sm text-base-content/70">The real banner runs on this site. If you have already chosen, reopen it here:</p>
+      <div class="mt-3">{{sw-consent-settings class="btn btn-primary"}}</div>
+      {{/if}}
+    </div>
+    <div class="relative rounded-3xl border border-base-content/10 bg-base-200/60 p-6 sm:p-8" role="img" aria-label="Illustration of the consent banner">
+      <p class="ws-index text-base-content/50">Illustration</p>
+      <div class="mt-4 rounded-2xl border border-base-content/10 bg-base-100 p-5 shadow-xl">
+        <p class="font-heading font-semibold">We use cookies</p>
+        <p class="mt-1 text-sm text-base-content/70">Some content on this site comes from other services. Choose what may load.</p>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <span class="btn btn-primary btn-sm">Accept all</span>
+          <span class="btn btn-outline btn-sm">Reject all</span>
+          <span class="btn btn-ghost btn-sm">Customize</span>
+        </div>
+        <ul class="mt-4 grid list-none gap-2 border-t border-base-content/10 p-0 pt-4 text-sm">
+          <li class="flex items-center justify-between"><span>Strictly necessary</span><span class="text-xs text-base-content/60">always on</span></li>
+          <li class="flex items-center justify-between"><span>Functional</span><span class="h-5 w-9 rounded-full bg-primary" aria-hidden="true"></span></li>
+          <li class="flex items-center justify-between"><span>Analytics</span><span class="h-5 w-9 rounded-full bg-base-300" aria-hidden="true"></span></li>
+          <li class="flex items-center justify-between"><span>Marketing</span><span class="h-5 w-9 rounded-full bg-base-300" aria-hidden="true"></span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">02 · Embeds</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="cn2_title">Paste the iframe. It waits.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="cn2_lead">There is no embed helper: paste the provider's normal iframe. With the manager on, every cross-origin iframe is held behind an "Allow once" or "Always allow" placeholder, and no request reaches the provider before that. It falls into the functional category unless <code class="font-code text-base">data-sw-consent</code> names another; <code class="font-code text-base">data-sw-consent-note</code> changes the placeholder text and <code class="font-code text-base">data-sw-consent-skip</code> opts one out.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+      {{#if website.consent.enabled}}
+      <div class="overflow-hidden rounded-3xl border border-base-content/10 bg-base-100">
+<!--demo:embed-->
+<iframe data-src="https://www.openstreetmap.org/export/embed.html?bbox=-25%2C34%2C45%2C71&amp;layer=mapnik" data-sw-consent="functional" data-sw-consent-note="This map is loaded from OpenStreetMap. Allow it to load?" title="Map of Europe from OpenStreetMap" class="aspect-[4/3] w-full border-0"></iframe>
+<!--/demo-->
+      </div>
+      {{else}}
+      <div class="grid aspect-[4/3] place-items-center rounded-3xl border border-dashed border-base-content/20 bg-base-100 p-8 text-center" role="img" aria-label="Illustration of a held embed">
+        <div>
+          {{sw-icon "map-trifold:duotone" "mx-auto h-10 w-10 ws-ink"}}
+          <p class="mt-4 font-medium">This map is loaded from OpenStreetMap. Allow it to load?</p>
+          <div class="mt-4 flex justify-center gap-2"><span class="btn btn-outline btn-sm">Allow once</span><span class="btn btn-primary btn-sm">Always allow</span></div>
+          <p class="mt-6 ws-index text-base-content/50">Illustration</p>
+        </div>
+      </div>
+      {{/if}}
+      <div class="min-w-0">
+<!--code:embed file="consent · a held embed"-->
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">03 · Scripts</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="cn3_title">Trackers load after the yes.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="cn3_lead">Analytics and other third-party scripts are integrations in the settings, never a script tag in a page. Each loads only once its category is granted, and publishing widens the site's Content Security Policy to exactly their origins. Withdrawing a category deletes its known cookies.</p>
+  </div>
+  <div class="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6"><p class="font-heading font-bold">Google Analytics 4 · Tag Manager</p><p class="mt-2 text-sm leading-relaxed text-base-content/70">Wait for consent, with Google Consent Mode v2 signals: denied by default, then the visitor's choice.</p></div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6"><p class="font-heading font-bold">Plausible · Umami · Matomo · Fathom · Simple Analytics</p><p class="mt-2 text-sm leading-relaxed text-base-content/70">Cookieless presets. They may be set to load without asking, and then need no banner.</p></div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6"><p class="font-heading font-bold">Custom scripts</p><p class="mt-2 text-sm leading-relaxed text-base-content/70">Any https script in a category of your choice, with the extra origins its widget needs.</p></div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6"><p class="font-heading font-bold">Built-in statistics</p><p class="mt-2 text-sm leading-relaxed text-base-content/70">Sitewright's own visit counter sets no cookie and stores nothing on the device, so it is not an integration at all.</p></div>
+  </div>
+  <p class="mt-8 max-w-3xl leading-relaxed text-base-content/70">The editor's draft preview never runs analytics or marketing code, so your own previews are not counted. A "Cookie settings" link for the footer is one helper, <code class="font-code">\{{sw-consent-settings}}</code>, or a plain link to <code class="font-code">#sw-consent</code>. The manager is a tool that helps a site meet GDPR and the ePrivacy rules; a privacy policy and a lawful basis are still yours to provide.</p>
+</section>
+
+{{> showcase-next}}

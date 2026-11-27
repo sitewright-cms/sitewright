@@ -1,0 +1,13 @@
+{{!--
+  The docs sidebar: a sticky column on wide screens, a collapsible menu above the article on small ones.
+    <div class="ws-docs">{{> docs-nav}}<article class="ws-article">…</article></div>
+--}}
+<div class="lg:hidden">
+  <details class="rounded-xl border border-base-content/10 bg-base-100">
+    <summary class="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm font-medium">{{sw-icon "list" "h-4 w-4"}} Documentation menu</summary>
+    <div class="border-t border-base-content/10 p-4">{{> docs-links}}</div>
+  </details>
+</div>
+<div class="hidden lg:block" role="navigation" aria-label="Documentation">
+  <div class="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto pb-8 pr-2">{{> docs-links}}</div>
+</div>

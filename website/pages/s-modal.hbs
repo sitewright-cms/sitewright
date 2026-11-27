@@ -1,0 +1,174 @@
+{{!-- META {"path":"modal","title":"Modal","description":"A native dialog opened by any link or button. The browser traps focus, closes on Escape and dims the page; the component adds the close button, centring, a scroll lock and a blurred backdrop.","parent":"showcase","order":4,"data":{"icon":"app-window","preset":"glow-orbits"}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-start">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">01 · The defaults</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="m1_title">A link and a dialog.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="m1_lead">Point a link at the dialog's id. The close button in the corner is added for you, and Escape, the button or a click on the backdrop dismiss it. A dialog with no classes takes the site's background and text colours, rounded corners and padding.</p>
+      <div class="mt-8">
+
+<a href="#sc-welcome" class="btn btn-primary">Open the dialog</a>
+<dialog id="sc-welcome" data-sw-component="modal" aria-labelledby="sc-welcome-title">
+  <h2 id="sc-welcome-title" class="font-heading text-2xl font-bold">Hello from a native dialog</h2>
+  <p class="mt-3 leading-relaxed text-base-content/70">The browser keeps focus inside, closes it on Escape and makes the page behind it inert. Press Escape to try.</p>
+</dialog>
+
+      </div>
+    </div>
+    <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">modal · defaults</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"#sc-welcome"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary"</span><span class="tk-tag">&gt;</span>Open the dialog<span class="tk-tag">&lt;/a</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;dialog</span> <span class="tk-attr">id</span>=<span class="tk-str">"sc-welcome"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"modal"</span> <span class="tk-attr">aria-labelledby</span>=<span class="tk-str">"sc-welcome-title"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;h2</span> <span class="tk-attr">id</span>=<span class="tk-str">"sc-welcome-title"</span> <span class="tk-attr">class</span>=<span class="tk-str">"font-heading text-2xl font-bold"</span><span class="tk-tag">&gt;</span>Hello from a native dialog<span class="tk-tag">&lt;/h2</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-3 leading-relaxed text-base-content/70"</span><span class="tk-tag">&gt;</span>The browser keeps focus inside, closes it on Escape and makes the page behind it inert. Press Escape to try.<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/dialog</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-start">
+      <div data-sw-animation="fade-up">
+        <p class="ws-index ws-ink">02 · Wider, with rich content</p>
+        <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="m2_title">Size it with one class.</h2>
+        <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="m2_lead">The card is 32rem wide by default. A width utility on the dialog changes it, and every other class paints the card. On a narrow screen it always shrinks to fit, with a margin on both sides.</p>
+        <div class="mt-8">
+
+<a href="#sc-process" class="btn btn-outline">How a page gets published</a>
+<dialog id="sc-process" data-sw-component="modal" class="max-w-2xl rounded-3xl p-8 sm:p-10" aria-labelledby="sc-process-title">
+  <h2 id="sc-process-title" class="font-heading text-2xl font-bold">From draft to live</h2>
+  <ol class="mt-6 list-none space-y-4 p-0">
+    <li class="flex gap-4"><span class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 font-bold ws-ink">1</span><span class="text-base-content/80">Edit the page and check it in the live preview.</span></li>
+    <li class="flex gap-4"><span class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 font-bold ws-ink">2</span><span class="text-base-content/80">Share the preview with a link that expires on its own.</span></li>
+    <li class="flex gap-4"><span class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 font-bold ws-ink">3</span><span class="text-base-content/80">Deploy. Only the files that changed are uploaded.</span></li>
+  </ol>
+</dialog>
+
+        </div>
+      </div>
+      <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">modal · wide</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"#sc-process"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-outline"</span><span class="tk-tag">&gt;</span>How a page gets published<span class="tk-tag">&lt;/a</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;dialog</span> <span class="tk-attr">id</span>=<span class="tk-str">"sc-process"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"modal"</span> <span class="tk-attr">class</span>=<span class="tk-str">"max-w-2xl rounded-3xl p-8 sm:p-10"</span> <span class="tk-attr">aria-labelledby</span>=<span class="tk-str">"sc-process-title"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;h2</span> <span class="tk-attr">id</span>=<span class="tk-str">"sc-process-title"</span> <span class="tk-attr">class</span>=<span class="tk-str">"font-heading text-2xl font-bold"</span><span class="tk-tag">&gt;</span>From draft to live<span class="tk-tag">&lt;/h2</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;ol</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-6 list-none space-y-4 p-0"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;li</span> <span class="tk-attr">class</span>=<span class="tk-str">"flex gap-4"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 font-bold ws-ink"</span><span class="tk-tag">&gt;</span>1<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-base-content/80"</span><span class="tk-tag">&gt;</span>Edit the page and check it in the live preview.<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;/li</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;li</span> <span class="tk-attr">class</span>=<span class="tk-str">"flex gap-4"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 font-bold ws-ink"</span><span class="tk-tag">&gt;</span>2<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-base-content/80"</span><span class="tk-tag">&gt;</span>Share the preview with a link that expires on its own.<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;/li</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;li</span> <span class="tk-attr">class</span>=<span class="tk-str">"flex gap-4"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/10 font-bold ws-ink"</span><span class="tk-tag">&gt;</span>3<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-base-content/80"</span><span class="tk-tag">&gt;</span>Deploy. Only the files that changed are uploaded.<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;/li</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;/ol</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/dialog</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-start">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">03 · A forced choice</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="m3_title">Only your buttons close it.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="m3_lead"><code class="font-code text-base">data-sw-modal</code> opens a dialog from a button. This one drops the corner button and ignores backdrop clicks, so the visitor has to choose. Any element marked <code class="font-code text-base">data-sw-part="close"</code> closes it.</p>
+      <div class="mt-8">
+
+<button type="button" class="btn" data-sw-modal="sc-confirm">Reset the demo</button>
+<dialog id="sc-confirm" data-sw-component="modal" data-closebutton="false" data-backdrop-close="false" aria-labelledby="sc-confirm-title">
+  <h2 id="sc-confirm-title" class="font-heading text-xl font-bold">Reset the demo?</h2>
+  <p class="mt-3 text-base-content/70">Nothing is reset. This dialog only shows the pattern.</p>
+  <div class="mt-6 flex justify-end gap-2">
+    <button type="button" class="btn btn-ghost" data-sw-part="close">Cancel</button>
+    <button type="button" class="btn btn-primary" data-sw-part="close">Reset</button>
+  </div>
+</dialog>
+
+      </div>
+    </div>
+    <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">modal · forced choice</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn"</span> <span class="tk-attr">data-sw-modal</span>=<span class="tk-str">"sc-confirm"</span><span class="tk-tag">&gt;</span>Reset the demo<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;dialog</span> <span class="tk-attr">id</span>=<span class="tk-str">"sc-confirm"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"modal"</span> <span class="tk-attr">data-closebutton</span>=<span class="tk-str">"false"</span> <span class="tk-attr">data-backdrop-close</span>=<span class="tk-str">"false"</span> <span class="tk-attr">aria-labelledby</span>=<span class="tk-str">"sc-confirm-title"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;h2</span> <span class="tk-attr">id</span>=<span class="tk-str">"sc-confirm-title"</span> <span class="tk-attr">class</span>=<span class="tk-str">"font-heading text-xl font-bold"</span><span class="tk-tag">&gt;</span>Reset the demo?<span class="tk-tag">&lt;/h2</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-3 text-base-content/70"</span><span class="tk-tag">&gt;</span>Nothing is reset. This dialog only shows the pattern.<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-6 flex justify-end gap-2"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-ghost"</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"close"</span><span class="tk-tag">&gt;</span>Cancel<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary"</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"close"</span><span class="tk-tag">&gt;</span>Reset<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/dialog</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-start">
+      <div data-sw-animation="fade-up">
+        <p class="ws-index ws-ink">04 · A search dialog</p>
+        <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="m4_title">Components inside components.</h2>
+        <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="m4_lead">A dialog holds any markup, including other components. This one holds the site search, a common pattern for a search button in a header. Try "deploy" or "MCP".</p>
+        <div class="mt-8">
+
+<button type="button" class="btn btn-outline gap-2" data-sw-modal="sc-search">{{sw-icon "magnifying-glass" "h-4 w-4"}} Search this site</button>
+<dialog id="sc-search" data-sw-component="modal" class="max-w-xl" aria-label="Search this site">
+  {{sw-search placeholder="Search this site…" limit=6 class="pr-10 [&_input]:w-full"}}
+</dialog>
+
+        </div>
+      </div>
+      <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">modal · search dialog</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-outline gap-2"</span> <span class="tk-attr">data-sw-modal</span>=<span class="tk-str">"sc-search"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "magnifying-glass" "h-4 w-4"}}</span> Search this site<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;dialog</span> <span class="tk-attr">id</span>=<span class="tk-str">"sc-search"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"modal"</span> <span class="tk-attr">class</span>=<span class="tk-str">"max-w-xl"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Search this site"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-hb">\{{sw-search placeholder="Search this site…" limit=6 class="pr-10 [&amp;_input]:w-full"}}</span>
+<span class="tk-tag">&lt;/dialog</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">
+      {{sw-icon "stack-simple" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">One at a time</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">Opening a modal closes any other open one. Mark a dialog <code class="font-code">data-allow-multiple="true"</code> to let it stack.</p>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="80">
+      {{sw-icon "translate" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">A label per language</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70"><code class="font-code">data-close-label</code> sets the accessible name of the close button. It defaults to "Close".</p>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="160">
+      {{sw-icon "eye-slash" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">Without JavaScript</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">The trigger does nothing and the page stays usable, so keep essential content out of modals.</p>
+    </div>
+  </div>
+</section>
+
+<section class="border-t border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-20">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <h2 class="ws-display text-3xl font-bold sm:text-4xl">More of the showcase</h2>
+      <a class="btn btn-ghost btn-sm" href="{{sw-url '/showcase'}}">All demos {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+    <div class="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {{#each pages.showcase._attributes.children}}
+      {{#unless (eq path @root.page.path)}}
+      <a class="ws-tile rounded-2xl border border-base-content/10 bg-base-100 p-4" href="{{sw-url path}}">
+        <span class="flex items-center gap-2 font-heading font-semibold">{{#if data.icon}}{{sw-icon data.icon "h-4 w-4 ws-ink"}}{{/if}}{{title}}</span>
+      </a>
+      {{/unless}}
+      {{/each}}
+    </div>
+  </div>
+</section>

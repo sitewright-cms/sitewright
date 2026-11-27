@@ -1,0 +1,217 @@
+{
+  "dataset": {
+    "id": "media_slots",
+    "name": "Media slots",
+    "slug": "media_slots",
+    "fields": [
+      {
+        "name": "label",
+        "type": "text",
+        "required": true,
+        "localized": false
+      },
+      {
+        "name": "kind",
+        "type": "select",
+        "required": true,
+        "localized": false,
+        "config": {
+          "options": [
+            "image",
+            "video"
+          ]
+        }
+      },
+      {
+        "name": "ratio",
+        "type": "select",
+        "required": false,
+        "localized": false,
+        "config": {
+          "options": [
+            "16x10",
+            "16x9",
+            "4x3",
+            "3x2",
+            "1x1",
+            "9x16",
+            "3x4",
+            "21x9"
+          ]
+        }
+      },
+      {
+        "name": "image",
+        "type": "image",
+        "required": false,
+        "localized": false
+      },
+      {
+        "name": "video",
+        "type": "file",
+        "required": false,
+        "localized": false
+      },
+      {
+        "name": "poster",
+        "type": "image",
+        "required": false,
+        "localized": false
+      },
+      {
+        "name": "alt",
+        "type": "text",
+        "required": false,
+        "localized": false
+      },
+      {
+        "name": "capture",
+        "type": "text",
+        "required": false,
+        "localized": false
+      }
+    ]
+  },
+  "entries": [
+    {
+      "id": "doc_inline_editing",
+      "values": {
+        "label": "A client clicks a heading in the preview, retypes it, then swaps an image",
+        "kind": "video",
+        "ratio": "16x10",
+        "alt": "A heading edited in place in the preview, then an image replaced from the file picker",
+        "capture": "Content editor on a page with data-sw-text, data-sw-src: click heading, type, click image, pick a file; 10 s, 1440x900"
+      }
+    },
+    {
+      "id": "doc_dataset_schema",
+      "values": {
+        "label": "A dataset's fields: types, a select's choices and a list with child fields",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The dataset schema editor listing fields of several types",
+        "capture": "Data panel, products dataset, schema view: text, prices, image, select with 3 options, a list field expanded with 3 child fields; 1440x900"
+      }
+    },
+    {
+      "id": "doc_deploy_wizard",
+      "values": {
+        "label": "Adding a deploy target: protocol, connection test and the demo copy switch",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The new deploy target form with SFTP chosen, a passed connection test and the Demo copy switch",
+        "capture": "Deploy targets, New target: SFTP selected, host and user filled (fixture server), Test connection passed, Demo copy switch visible; 1440x900"
+      }
+    },
+    {
+      "id": "doc_languages",
+      "values": {
+        "label": "The Languages sheet with English and German, and the pages list switched to German",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "Website settings, Languages: two languages listed beside a pages list filtered to German",
+        "capture": "Settings, Website, Languages sheet open with en (main) and de; behind it the pages list filtered to de showing /de/ and /de/leistungen/; 1440x900"
+      }
+    },
+    {
+      "id": "doc_form_editor",
+      "values": {
+        "label": "A form's settings: fields, delivery mode, captcha and proof of work",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The form editor with four fields, the delivery mode menu and the spam protection switches",
+        "capture": "Forms tab, edit the Contact form: name, email, message, consent checkbox; delivery mode Platform email (global SMTP); captcha off, proof of work on; 1440x900"
+      }
+    },
+    {
+      "id": "doc_shop_channels",
+      "values": {
+        "label": "The shop settings: currency and three order channels",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "Shop settings listing WhatsApp, email and checkout channels",
+        "capture": "Settings, Website, Shop sheet: enabled, EUR after with 2 decimals, channels whatsapp, mailto and checkout (stripe, test mode); 1440x900"
+      }
+    },
+    {
+      "id": "doc_booking_widget",
+      "values": {
+        "label": "A visitor picks a day and a time and books a consultation",
+        "kind": "video",
+        "ratio": "16x10",
+        "alt": "The booking widget: choosing a day, a time, entering a name and email, and the confirmation",
+        "capture": "Live site page with sw-booking consultation: pick next Tuesday, 10:00, fill name and email, book, confirmation shows; 12 s, 1440x900"
+      }
+    },
+    {
+      "id": "doc_custom_domains",
+      "values": {
+        "label": "Two custom domains: the primary verified, the www name waiting for its TXT record",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The custom domains panel with one verified primary domain and one pending, showing the TXT record to publish",
+        "capture": "Deploy targets, Local Hosting, Custom domains: client.com verified and primary, www.client.com pending with its _sitewright TXT record and Check DNS button; 1440x900"
+      }
+    },
+    {
+      "id": "doc_consent_banner",
+      "values": {
+        "label": "The consent banner over a page, with a YouTube embed held behind its placeholder",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "A site with the consent bar at the bottom and a video embed waiting for consent",
+        "capture": "Live demo site, private window: consent bar layout, Accept all / Reject all / Customize; a YouTube iframe below showing the Allow once / Always allow placeholder; 1440x900"
+      }
+    },
+    {
+      "id": "doc_rankings",
+      "values": {
+        "label": "Search rankings: keyword positions over twelve weeks",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The search rankings view with a position chart and a keyword table",
+        "capture": "Statistics, Search rankings with fixture history: 8 keywords, chart of positions over 12 weeks, one featured snippet, one not in the top 100; 1440x900"
+      }
+    },
+    {
+      "id": "doc_agent_consent",
+      "values": {
+        "label": "The consent screen an agent's sign-in opens: project and capabilities",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The authorize screen with a project chosen and capability checkboxes",
+        "capture": "OAuth consent for Claude Code: project selected, content read/write ticked, delete and deploy unticked with the elevated badge; 1440x900"
+      }
+    },
+    {
+      "id": "doc_access_keys",
+      "values": {
+        "label": "Access keys: project tokens and member tokens",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "Account settings, Access keys tab listing project tokens and member tokens",
+        "capture": "Account Settings, Access keys as an admin: two project tokens (CI, staging agent) and one member token, the create form open with capabilities; 1440x900"
+      }
+    },
+    {
+      "id": "doc_demo_toggle",
+      "values": {
+        "label": "A git target for GitHub Pages marked as a demo copy, with the confirmation shown",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "A deploy target form with the Demo copy switch on and the confirmation switch below it",
+        "capture": "Deploy targets, edit a git target (gh-pages) that was deployed before: Demo copy on, the I understand confirmation visible; 1440x900"
+      }
+    },
+    {
+      "id": "doc_import_clone",
+      "values": {
+        "label": "An agent imports a site, then rebuilds its home page while the editor follows",
+        "kind": "video",
+        "ratio": "16x10",
+        "alt": "Claude Code running import_website and visual_audit beside the editor showing the rebuilt page",
+        "capture": "Terminal left (Claude Code: import_website, import_status, put_page, visual_audit), editor right with the home page updating; 15 s, 1440x900"
+      }
+    }
+  ]
+}

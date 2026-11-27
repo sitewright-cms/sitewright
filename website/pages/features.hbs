@@ -1,0 +1,14 @@
+{{!-- META {"path":"features","title":"Features","description":"Everything Sitewright does, one area at a time: authoring, content, components, commerce, publishing, insight, agents and security.","parent":"home","nav":{"title":"Features","slots":["header"],"order":1},"data":{"headline":"Everything a client site needs, in one platform."}} --}}
+{{> page-hero parent=page.parent}}
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    {{#each page.children}}
+    <a class="ws-tile group flex flex-col rounded-3xl border border-base-content/10 bg-base-100 p-7" href="{{sw-url path}}" data-sw-animation="fade-up" data-sw-delay="{{sw-stagger @index 60 420}}">
+      <span class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10">{{#if data.icon}}{{sw-icon data.icon "h-6 w-6 ws-ink"}}{{/if}}</span>
+      <h2 class="mt-6 font-heading text-xl font-bold">{{title}}</h2>
+      <p class="mt-2 flex-1 text-sm leading-relaxed text-base-content/70">{{description}}</p>
+      <span class="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold ws-ink">Learn more {{sw-icon "arrow-right" "h-4 w-4 transition group-hover:translate-x-1"}}</span>
+    </a>
+    {{/each}}
+  </div>
+</section>

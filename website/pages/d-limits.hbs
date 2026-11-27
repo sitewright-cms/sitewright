@@ -1,0 +1,172 @@
+{{!-- META {"path":"limits","title":"Limits","description":"The sizes, counts and rates the platform enforces: uploads, page and data caps, forms, imports, exports, rate limits and retention.","parent":"reference","order":7,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>These are the limits the code enforces today. Sizes in MB and KB are binary (1 MB = 1,048,576 bytes). A limit on a text field counts characters. Rate limits are per minute, counted per signed-in session or IP address, or per token for API and agent calls. Unless a row says otherwise, a limit is fixed in code.</p>
+    <div class="ws-callout"><p class="!mt-0"><strong>Behind a reverse proxy,</strong> set <code>TRUST_PROXY=true</code>, or every visitor shares the proxy's address and therefore one rate-limit bucket. Your proxy's own body limit must also let the largest uploads through: the 200 MB media cap needs about <code>client_max_body_size 210m</code> in nginx, and a large project restore needs more.</p></div>
+
+    <h2 id="uploads">Uploads and media</h2>
+    <table>
+      <thead><tr><th>What</th><th>Limit</th></tr></thead>
+      <tbody>
+        <tr><td>Any file in the media library (video, audio, PDF, documents, archives)</td><td>200 MB, one file per request</td></tr>
+        <tr><td>Raster image</td><td>15 MB, and 50 megapixels decoded</td></tr>
+        <tr><td>SVG</td><td>4 MB, sanitized on upload</td></tr>
+        <tr><td>Font</td><td>5 MB</td></tr>
+        <tr><td>Image width on upload</td><td>New projects scale originals down to 2400 px wide; per site in Settings → Website → Images, blank keeps full resolution. Delivered sizes top out at 2400 px either way.</td></tr>
+        <tr><td>Agent upload inline (<code>upload_media</code>, <code>replace_media</code>)</td><td>256 KB</td></tr>
+        <tr><td>Agent upload tickets (<code>create_media_upload</code>)</td><td>50 per call, 200 unused per project, each valid 10 minutes</td></tr>
+        <tr><td>Import a file by URL (<code>import_media</code>)</td><td>200 MB when the URL names a large-file extension, otherwise 15 MB; images 15 MB</td></tr>
+        <tr><td>Import by URL, time</td><td>10 s without data; the whole download 10 s (15 MB class) or 180 s (200 MB class); 4 redirects</td></tr>
+        <tr><td>Media recycle bin</td><td>90 days, then deleted</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="requests">Request bodies</h2>
+    <table>
+      <thead><tr><th>Request</th><th>Limit</th></tr></thead>
+      <tbody>
+        <tr><td>Content writes (pages, settings, datasets, entries, CSS and text patches)</td><td>4 MB</td></tr>
+        <tr><td>Draft preview of one page</td><td>2 MB</td></tr>
+        <tr><td>JSON project import</td><td>4 MB</td></tr>
+        <tr><td>Routes without a limit of their own, including <code>POST /mcp</code></td><td>1 MB</td></tr>
+        <tr><td>Receiving one request (headers and body)</td><td>5 minutes</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="authoring">Pages and authoring</h2>
+    <table>
+      <thead><tr><th>What</th><th>Limit</th></tr></thead>
+      <tbody>
+        <tr><td>Page, template or snippet <code>source</code></td><td>256 K characters each</td></tr>
+        <tr><td>Page title</td><td>300 characters</td></tr>
+        <tr><td>Page description</td><td>1,000 characters</td></tr>
+        <tr><td><code>website.criticalCss</code>, <code>head</code>, <code>scripts</code>, each chrome slot (<code>mainNav</code>, <code>footer</code>, <code>sidebarLeft</code>, <code>sidebarRight</code>, <code>bottom</code>), custom effect code</td><td>256 K characters each</td></tr>
+        <tr><td><code>page.data</code>, <code>website.data</code></td><td>Depth 12, 5,000 values, 256 K characters per string, keys up to 200 characters</td></tr>
+        <tr><td><code>page.children</code> and <code>._attributes.children</code> listings</td><td>2,000 children and 2 MB serialized, whichever comes first; <code>page.childrenTotal</code> still reports the true count</td></tr>
+        <tr><td><code>\{{sw-json-data}}</code> island</td><td>256 K; over it the helper refuses with an HTML comment rather than cut data</td></tr>
+        <tr><td><code>\{{sw-json}}</code> output</td><td>Truncated at 100,000 characters</td></tr>
+        <tr><td>Translation catalog (<code>website.translations</code>)</td><td>2,000 keys; values up to 2,000 characters</td></tr>
+        <tr><td>Published site, all files</td><td>512 MB; <code>SW_MAX_OUTPUT_MB</code></td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="datasets">Datasets</h2>
+    <table>
+      <thead><tr><th>What</th><th>Limit</th></tr></thead>
+      <tbody>
+        <tr><td>Fields</td><td>500 top-level, 1,000 in the whole tree, nesting depth 4, 100 children per <code>list</code> or <code>object</code></td></tr>
+        <tr><td>Values in one entry</td><td>256 keys</td></tr>
+        <tr><td>Dataset slug, entry id</td><td>64 characters, lowercase with <code>_</code></td></tr>
+        <tr><td>Pages, datasets or entries in a project</td><td>No cap of their own; the export and import caps below apply</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="forms">Forms</h2>
+    <table>
+      <thead><tr><th>What</th><th>Limit</th></tr></thead>
+      <tbody>
+        <tr><td>Fields in a form definition</td><td>50; up to 100 options per field</td></tr>
+        <tr><td>One submission</td><td>60 fields, names up to 100 characters, values up to 10,000 characters; 64 KB stored, 96 KB raw body</td></tr>
+        <tr><td>File uploads</td><td>None: there is no file field</td></tr>
+        <tr><td>Time trap</td><td>A submission sent less than 1.2 s after the form loaded is dropped</td></tr>
+        <tr><td>Proof of work</td><td>A challenge is valid 30 minutes and used once</td></tr>
+        <tr><td>Stored submissions</td><td>10,000 per form; later ones are dropped</td></tr>
+        <tr><td>Retention</td><td>Kept until deleted by hand or with the project</td></tr>
+        <tr><td>Rate</td><td>20 submissions and 30 proof-of-work challenges per minute</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="commerce">Shop and booking</h2>
+    <table>
+      <thead><tr><th>What</th><th>Limit</th></tr></thead>
+      <tbody>
+        <tr><td>Checkout</td><td>10 per minute; 64 KB body; 50 lines; quantity up to 99 per line; 2,000 open payments per project</td></tr>
+        <tr><td>Payment provider webhooks</td><td>120 per minute; 256 KB body</td></tr>
+        <tr><td>Booking requests</td><td>10 per minute; availability 60 per minute; 60 bookings per project per hour; 10 live bookings per email address</td></tr>
+        <tr><td>Booking set-up</td><td>50 resources, 100 offerings, 20 resources per offering, 200 blocks; bookable up to 730 days ahead (90 by default)</td></tr>
+        <tr><td>External calendars</td><td>50 per project</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="import">Website import</h2>
+    <table>
+      <thead><tr><th>What</th><th>Limit</th></tr></thead>
+      <tbody>
+        <tr><td>Pages crawled</td><td>50 by default, up to 200</td></tr>
+        <tr><td>Link depth</td><td>3 by default, up to 5</td></tr>
+        <tr><td>Each page or file fetched</td><td>15 MB, 12 s</td></tr>
+        <tr><td>One crawl</td><td>200 MB of HTML and CSS; 40 stylesheets</td></tr>
+        <tr><td>Images and files self-hosted</td><td>500; the rest keep pointing at the original site</td></tr>
+        <tr><td>Imported page source</td><td>256 KB</td></tr>
+        <tr><td>Uploaded site archive</td><td>50 MB compressed, 200 MB uncompressed, 5,000 entries, 25 MB per entry, 200 HTML pages</td></tr>
+        <tr><td>Running at once</td><td>1 per project, 2 per instance; 5 starts per minute</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="export">Project export, import and duplicate</h2>
+    <table>
+      <thead><tr><th>What</th><th>Limit</th></tr></thead>
+      <tbody>
+        <tr><td>Export or import zip</td><td>32 GB; 500,000 entries; 200 MB per entry; 2 GB of free disk kept in reserve</td></tr>
+        <tr><td>Contents of an export zip</td><td>10,000 pages, 2,000 templates, 5,000 snippets, 2,000 datasets, 200,000 entries, 2,000 forms, 100,000 media files</td></tr>
+        <tr><td>JSON import</td><td>2,000 pages, 500 templates, 500 datasets, 50,000 entries</td></tr>
+        <tr><td>Running at once</td><td>2 exports and 2 imports or duplicates per instance</td></tr>
+        <tr><td>Rate</td><td>Export 5 per minute; zip import and duplicate 10 per minute</td></tr>
+      </tbody>
+    </table>
+    <p>Deploy targets and SMTP credentials are not part of an export.</p>
+
+    <h2 id="rate-limits">Rate limits</h2>
+    <table>
+      <thead><tr><th>Who or what</th><th>Per minute</th></tr></thead>
+      <tbody>
+        <tr><td>All API routes, per session or IP</td><td>200</td></tr>
+        <tr><td>All API routes, per verified API key</td><td>1,500</td></tr>
+        <tr><td><code>POST /mcp</code>, per token</td><td>600 (120 until the token is verified)</td></tr>
+        <tr><td>Authoring routes for a session (content reads 120, writes 60, deletes 60, preview 120)</td><td>Raised to at least 600 for a verified API key</td></tr>
+        <tr><td>Failed sign-ins</td><td>10 per IP address, 50 per account; an instance setting</td></tr>
+        <tr><td>Other sign-in routes</td><td>20</td></tr>
+        <tr><td>Statistics beacon (<code>/a/</code>)</td><td>120 per IP; 1 KB body</td></tr>
+        <tr><td>OAuth client registration</td><td>10; at most 10,000 registered clients, unused ones evicted first</td></tr>
+        <tr><td>Project creation</td><td>30 with a token; a member token also has a daily limit (50 by default, an instance setting up to 1,000)</td></tr>
+        <tr><td>Live-preview connections</td><td>20 open per project</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="tools">Agent tools and audits</h2>
+    <table>
+      <thead><tr><th>What</th><th>Limit</th></tr></thead>
+      <tbody>
+        <tr><td><code>delete_content_bulk</code>, <code>delete_media_bulk</code>, <code>move_media_bulk</code>, <code>set_media_alt</code></td><td>200 items per call</td></tr>
+        <tr><td><code>patch_text</code></td><td>50 edits per call</td></tr>
+        <tr><td><code>list_pages</code>, <code>list_content</code></td><td>Up to 500 per page of results</td></tr>
+        <tr><td><code>list_submissions</code>, <code>list_orders</code></td><td>Up to 200</td></tr>
+        <tr><td>Screenshots (<code>preview_page</code> and the audits)</td><td>2 at once per instance</td></tr>
+        <tr><td>Page-speed audit</td><td>1 at a time, 4 waiting; 150 s per run (<code>SW_PAGESPEED_RUN_TIMEOUT_MS</code>); 3 per minute</td></tr>
+        <tr><td>Custom agent instructions</td><td>32,000 characters</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="retention">Retention</h2>
+    <table>
+      <thead><tr><th>What</th><th>Kept</th></tr></thead>
+      <tbody>
+        <tr><td>Revisions</td><td>50 per page or entity, for 90 days (an instance setting, 1 to 3,650 days)</td></tr>
+        <tr><td>Media recycle bin</td><td>90 days</td></tr>
+        <tr><td>Preview share links</td><td>Expire after 30 days by default (an instance setting; 0 means never); 25 live per project</td></tr>
+        <tr><td>Built-in statistics</td><td>Daily totals for 25 months</td></tr>
+        <tr><td>Form submissions</td><td>Until deleted</td></tr>
+        <tr><td>Website import results</td><td>30 minutes after the job ends</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/self-hosting/environment'}}">Environment variables</a></li>
+      <li><a href="{{sw-url '/docs/self-hosting/security'}}">Security</a></li>
+      <li><a href="{{sw-url '/docs/reference/mcp-tools'}}">MCP tools</a></li>
+    </ul>
+  </article>
+</div>

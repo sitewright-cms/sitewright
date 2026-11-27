@@ -1,0 +1,372 @@
+{{!-- META {"path":"effects","title":"Borders, buttons and nav effects","description":"A travelling light around any box, 28 button hover effects with shapes and accents, and 19 navigation effects, each one class on the element it decorates. They follow the brand colours in both themes.","parent":"showcase","order":13,"data":{"icon":"magic-wand","preset":"edge-glow"}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">01 · Border beam</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="f1_title">A light that travels the edge.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="f1_lead"><code class="font-code text-base">sw-border-beam</code> sends a comet around any box in the brand colour. It laps and, on a second timeline, breathes: it spreads along the edge and narrows back. Custom properties on the same element tune it. It needs no script and never covers the content. It repaints every frame, so keep it to one featured box per page; this page breaks that rule on purpose.</p>
+  </div>
+  <div class="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+
+<div class="sw-border-beam rounded-2xl border border-base-content/10 bg-base-100 p-6">
+  <p class="font-heading font-bold">Default</p>
+  <p class="mt-2 text-sm text-base-content/70">5px, laps in 1.8s, breathes over 7s.</p>
+</div>
+<div class="sw-border-beam rounded-2xl bg-base-100 p-6 [--sw-beam-width:2px] [--sw-beam-track:color-mix(in_oklab,var(--sw-color-primary)_25%,transparent)]">
+  <p class="font-heading font-bold">Fine edge</p>
+  <p class="mt-2 text-sm text-base-content/70">A thin beam over a faint brand track.</p>
+</div>
+<div class="sw-border-beam rounded-2xl border border-base-content/10 bg-base-100 p-6 [--sw-beam-arc:90deg] [--sw-beam-arc-max:90deg]">
+  <p class="font-heading font-bold">Steady comet</p>
+  <p class="mt-2 text-sm text-base-content/70">Equal arcs stop the breathing.</p>
+</div>
+<div class="sw-border-beam rounded-2xl bg-neutral p-6 text-white [--sw-beam-color:var(--sw-color-accent)] [--sw-beam-speed:4s] [--sw-beam-width:3px]">
+  <p class="font-heading font-bold">Accent, slower</p>
+  <p class="mt-2 text-sm text-white/70">Colour and lap time changed.</p>
+</div>
+
+  </div>
+  <div class="mt-6">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">effects · border beam</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"sw-border-beam rounded-2xl border border-base-content/10 bg-base-100 p-6"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"font-heading font-bold"</span><span class="tk-tag">&gt;</span>Default<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-2 text-sm text-base-content/70"</span><span class="tk-tag">&gt;</span>5px, laps in 1.8s, breathes over 7s.<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"sw-border-beam rounded-2xl bg-base-100 p-6 [--sw-beam-width:2px] [--sw-beam-track:color-mix(in_oklab,var(--sw-color-primary)_25%,transparent)]"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"font-heading font-bold"</span><span class="tk-tag">&gt;</span>Fine edge<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-2 text-sm text-base-content/70"</span><span class="tk-tag">&gt;</span>A thin beam over a faint brand track.<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"sw-border-beam rounded-2xl border border-base-content/10 bg-base-100 p-6 [--sw-beam-arc:90deg] [--sw-beam-arc-max:90deg]"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"font-heading font-bold"</span><span class="tk-tag">&gt;</span>Steady comet<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-2 text-sm text-base-content/70"</span><span class="tk-tag">&gt;</span>Equal arcs stop the breathing.<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"sw-border-beam rounded-2xl bg-neutral p-6 text-white [--sw-beam-color:var(--sw-color-accent)] [--sw-beam-speed:4s] [--sw-beam-width:3px]"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"font-heading font-bold"</span><span class="tk-tag">&gt;</span>Accent, slower<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-2 text-sm text-white/70"</span><span class="tk-tag">&gt;</span>Colour and lap time changed.<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">02 · Button effects</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="f2_title">Hover these.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="f2_lead">A button has two separate choices. The face is the daisyUI variant that owns the resting look. The effect is a <code class="font-code text-base">sw-btn-fx-*</code> class for the hover. Motion effects work on any face. Reveal effects rest as your face and bring in the accent on hover, best on an outline or ghost button. Face effects are the look themselves. This site's default is <code class="font-code text-base">lift</code>; a class on a button overrides it.</p>
+    </div>
+    <div class="mt-10 space-y-8">
+      <div>
+        <p class="ws-index text-base-content/60">Motion · 15</p>
+        <div class="mt-4 flex flex-wrap gap-3">
+
+<button type="button" class="btn btn-primary sw-btn-fx-lift">lift</button>
+<button type="button" class="btn btn-primary sw-btn-fx-glow">glow</button>
+<button type="button" class="btn btn-primary sw-btn-fx-pulse">pulse</button>
+<button type="button" class="btn btn-primary sw-btn-fx-ring">ring</button>
+<button type="button" class="btn btn-primary sw-btn-fx-magnetic">magnetic</button>
+<button type="button" class="btn btn-primary sw-btn-fx-arrow">arrow {{sw-icon "arrow-right" "h-4 w-4"}}</button>
+<button type="button" class="btn btn-primary sw-btn-fx-bounce">bounce</button>
+<button type="button" class="btn btn-primary sw-btn-fx-jelly">jelly</button>
+<button type="button" class="btn btn-primary sw-btn-fx-icon-spin">{{sw-icon "gear" "h-4 w-4"}} icon-spin</button>
+<button type="button" class="btn btn-primary sw-btn-fx-long-shadow">long-shadow</button>
+<button type="button" class="btn btn-primary sw-btn-fx-width-expand">width-expand</button>
+<button type="button" class="btn btn-primary sw-btn-fx-sheen">sheen</button>
+<button type="button" class="btn btn-primary sw-btn-fx-spotlight">spotlight</button>
+<button type="button" class="btn btn-primary sw-btn-fx-shine">shine</button>
+<button type="button" class="btn btn-primary sw-btn-fx-sparkle">sparkle</button>
+
+        </div>
+      </div>
+      <div>
+        <p class="ws-index text-base-content/60">Reveal · 9</p>
+        <div class="mt-4 flex flex-wrap gap-3">
+
+<button type="button" class="btn btn-outline sw-btn-fx-fill-center">fill-center</button>
+<button type="button" class="btn btn-outline sw-btn-fx-fill-slide">fill-slide</button>
+<button type="button" class="btn btn-outline sw-btn-fx-fill-up">fill-up</button>
+<button type="button" class="btn btn-outline sw-btn-fx-fill-down">fill-down</button>
+<button type="button" class="btn btn-outline sw-btn-fx-skew-sweep">skew-sweep</button>
+<button type="button" class="btn btn-outline sw-btn-fx-bubble">bubble</button>
+<button type="button" class="btn btn-outline sw-btn-fx-border-draw">border-draw</button>
+<button type="button" class="btn btn-outline sw-btn-fx-outline-fill">outline-fill</button>
+<button type="button" class="btn btn-ghost sw-btn-fx-text-link">text-link</button>
+
+        </div>
+      </div>
+      <div>
+        <p class="ws-index text-base-content/60">Face · 4</p>
+        <div class="mt-4 flex flex-wrap gap-3">
+
+<button type="button" class="btn btn-primary sw-btn-fx-two-tone">two-tone</button>
+<button type="button" class="btn btn-primary sw-btn-fx-gradient-move">gradient-move</button>
+<button type="button" class="btn btn-primary sw-btn-fx-frost">frost</button>
+<button type="button" class="btn btn-primary sw-btn-fx-ghost-gradient">ghost-gradient</button>
+
+        </div>
+      </div>
+    </div>
+    <div class="mt-10 space-y-6">
+      <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">buttons · motion</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-lift"</span><span class="tk-tag">&gt;</span>lift<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-glow"</span><span class="tk-tag">&gt;</span>glow<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-pulse"</span><span class="tk-tag">&gt;</span>pulse<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-ring"</span><span class="tk-tag">&gt;</span>ring<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-magnetic"</span><span class="tk-tag">&gt;</span>magnetic<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-arrow"</span><span class="tk-tag">&gt;</span>arrow <span class="tk-hb">\{{sw-icon "arrow-right" "h-4 w-4"}}</span><span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-bounce"</span><span class="tk-tag">&gt;</span>bounce<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-jelly"</span><span class="tk-tag">&gt;</span>jelly<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-icon-spin"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "gear" "h-4 w-4"}}</span> icon-spin<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-long-shadow"</span><span class="tk-tag">&gt;</span>long-shadow<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-width-expand"</span><span class="tk-tag">&gt;</span>width-expand<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-sheen"</span><span class="tk-tag">&gt;</span>sheen<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-spotlight"</span><span class="tk-tag">&gt;</span>spotlight<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-shine"</span><span class="tk-tag">&gt;</span>shine<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-sparkle"</span><span class="tk-tag">&gt;</span>sparkle<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+      </div>
+      <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">buttons · reveal</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-outline sw-btn-fx-fill-center"</span><span class="tk-tag">&gt;</span>fill-center<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-outline sw-btn-fx-fill-slide"</span><span class="tk-tag">&gt;</span>fill-slide<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-outline sw-btn-fx-fill-up"</span><span class="tk-tag">&gt;</span>fill-up<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-outline sw-btn-fx-fill-down"</span><span class="tk-tag">&gt;</span>fill-down<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-outline sw-btn-fx-skew-sweep"</span><span class="tk-tag">&gt;</span>skew-sweep<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-outline sw-btn-fx-bubble"</span><span class="tk-tag">&gt;</span>bubble<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-outline sw-btn-fx-border-draw"</span><span class="tk-tag">&gt;</span>border-draw<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-outline sw-btn-fx-outline-fill"</span><span class="tk-tag">&gt;</span>outline-fill<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-ghost sw-btn-fx-text-link"</span><span class="tk-tag">&gt;</span>text-link<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+      </div>
+      <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">buttons · face</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-two-tone"</span><span class="tk-tag">&gt;</span>two-tone<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-gradient-move"</span><span class="tk-tag">&gt;</span>gradient-move<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-frost"</span><span class="tk-tag">&gt;</span>frost<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-fx-ghost-gradient"</span><span class="tk-tag">&gt;</span>ghost-gradient<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">03 · Shapes and accents</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="f3_title">Two more axes.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="f3_lead"><code class="font-code text-base">sw-btn-shape-*</code> sets the corners or the silhouette; square and circle are for icon-only buttons. <code class="font-code text-base">sw-btn-accent-*</code> picks the colour the hover fills with. Each axis can also be set once for the whole site in the website settings.</p>
+  </div>
+  <div class="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6">
+      <p class="ws-index text-base-content/60">Shapes · 8</p>
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+
+<button type="button" class="btn btn-primary sw-btn-shape-rounded">rounded</button>
+<button type="button" class="btn btn-primary sw-btn-shape-soft">soft</button>
+<button type="button" class="btn btn-primary sw-btn-shape-sharp">sharp</button>
+<button type="button" class="btn btn-primary sw-btn-shape-pill">pill</button>
+<button type="button" class="btn btn-primary sw-btn-shape-cut">cut</button>
+<button type="button" class="btn btn-primary sw-btn-shape-skewed">skewed</button>
+<button type="button" class="btn btn-primary sw-btn-shape-square" aria-label="Settings">{{sw-icon "gear" "h-5 w-5"}}</button>
+<button type="button" class="btn btn-primary sw-btn-shape-circle" aria-label="Add">{{sw-icon "plus:bold" "h-5 w-5"}}</button>
+
+      </div>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6">
+      <p class="ws-index text-base-content/60">Accents · 4, hover them</p>
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+
+<button type="button" class="btn btn-outline sw-btn-fx-fill-slide sw-btn-accent-primary">primary</button>
+<button type="button" class="btn btn-outline sw-btn-fx-fill-slide sw-btn-accent-secondary">secondary</button>
+<button type="button" class="btn btn-outline sw-btn-fx-fill-slide sw-btn-accent-accent">accent</button>
+<button type="button" class="btn btn-outline sw-btn-fx-fill-slide sw-btn-accent-neutral">neutral</button>
+
+      </div>
+    </div>
+  </div>
+  <div class="mt-6 space-y-6">
+    <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">buttons · shapes</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-shape-rounded"</span><span class="tk-tag">&gt;</span>rounded<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-shape-soft"</span><span class="tk-tag">&gt;</span>soft<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-shape-sharp"</span><span class="tk-tag">&gt;</span>sharp<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-shape-pill"</span><span class="tk-tag">&gt;</span>pill<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-shape-cut"</span><span class="tk-tag">&gt;</span>cut<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-shape-skewed"</span><span class="tk-tag">&gt;</span>skewed<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-shape-square"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Settings"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "gear" "h-5 w-5"}}</span><span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary sw-btn-shape-circle"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Add"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "plus:bold" "h-5 w-5"}}</span><span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+    </div>
+    <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">buttons · accents</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-outline sw-btn-fx-fill-slide sw-btn-accent-primary"</span><span class="tk-tag">&gt;</span>primary<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-outline sw-btn-fx-fill-slide sw-btn-accent-secondary"</span><span class="tk-tag">&gt;</span>secondary<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-outline sw-btn-fx-fill-slide sw-btn-accent-accent"</span><span class="tk-tag">&gt;</span>accent<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-outline sw-btn-fx-fill-slide sw-btn-accent-neutral"</span><span class="tk-tag">&gt;</span>neutral<span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+    </div>
+  </div>
+</section>
+
+<section id="nav-effects" class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">04 · Navigation effects</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="f4_title">Nineteen menus, one class each.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="f4_lead">A <code class="font-code text-base">sw-nav-*</code> class on a daisyUI <code class="font-code text-base">menu</code> styles its hover and active links. Set one for the whole site in the website settings, or put a class on a single menu, which then keeps its own effect. The two sliding effects and the spotlight load a small script; the rest are CSS. Hover the links, or click one to move the active state.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">box-solid</p>
+  <ul class="menu menu-horizontal sw-nav-box-solid"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">box-fill-left</p>
+  <ul class="menu menu-horizontal sw-nav-box-fill-left"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">box-fill-up</p>
+  <ul class="menu menu-horizontal sw-nav-box-fill-up"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">box-draw</p>
+  <ul class="menu menu-horizontal sw-nav-box-draw"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">box-shadow</p>
+  <ul class="menu menu-horizontal sw-nav-box-shadow"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">line-bottom</p>
+  <ul class="menu menu-horizontal sw-nav-line-bottom"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">line-sliding-bottom</p>
+  <ul class="menu menu-horizontal sw-nav-line-sliding-bottom"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">line-top-down</p>
+  <ul class="menu menu-horizontal sw-nav-line-top-down"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">line-squiggle</p>
+  <ul class="menu menu-horizontal sw-nav-line-squiggle"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">sliding-pill</p>
+  <ul class="menu menu-horizontal sw-nav-sliding-pill"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">glass-pill</p>
+  <ul class="menu menu-horizontal sw-nav-glass-pill"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">dot-to-pill</p>
+  <ul class="menu menu-horizontal sw-nav-dot-to-pill"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">highlighter</p>
+  <ul class="menu menu-horizontal sw-nav-highlighter"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">brackets</p>
+  <ul class="menu menu-horizontal sw-nav-brackets"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">brackets-curly</p>
+  <ul class="menu menu-horizontal sw-nav-brackets-curly"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">blob</p>
+  <ul class="menu menu-horizontal sw-nav-blob"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">chevron</p>
+  <ul class="menu menu-horizontal sw-nav-chevron"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">corner-ticks</p>
+  <ul class="menu menu-horizontal sw-nav-corner-ticks"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">spotlight-sliding</p>
+  <ul class="menu menu-horizontal sw-nav-spotlight-sliding"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+
+
+    </div>
+    <div class="mt-6">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">nav effects · per menu</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"rounded-2xl bg-base-100 p-3"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"px-4 pt-1 font-code text-xs text-base-content/60"</span><span class="tk-tag">&gt;</span>box-solid<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;ul</span> <span class="tk-attr">class</span>=<span class="tk-str">"menu menu-horizontal sw-nav-box-solid"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;li</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;a</span> <span class="tk-attr">class</span>=<span class="tk-str">"active"</span> <span class="tk-attr">href</span>=<span class="tk-str">"#nav-effects"</span><span class="tk-tag">&gt;</span>Home<span class="tk-tag">&lt;/a</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;/li</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;li</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"#nav-effects"</span><span class="tk-tag">&gt;</span>Work<span class="tk-tag">&lt;/a</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;/li</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;li</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"#nav-effects"</span><span class="tk-tag">&gt;</span>Contact<span class="tk-tag">&lt;/a</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;/li</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;/ul</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+<span class="tk-com">&lt;!-- one card per effect, the same markup --&gt;</span></code></pre>
+</div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-center">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">05 · Ripple</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="f5_title">A ripple on anything.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="f5_lead">Every <code class="font-code text-base">btn</code> already ripples when pressed. For any other element, add <code class="font-code text-base">waves-effect</code>, and <code class="font-code text-base">waves-light</code> for a white ripple on a dark surface. The default tint follows the theme. Click the cards.</p>
+    </div>
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+
+<a href="#nav-effects" class="waves-effect block rounded-3xl border border-base-content/10 bg-base-100 p-8">
+  <span class="font-heading text-lg font-bold">waves-effect</span>
+  <span class="mt-2 block text-sm text-base-content/70">A tint that follows the theme.</span>
+</a>
+<a href="#nav-effects" class="waves-effect waves-light block rounded-3xl bg-primary p-8 text-primary-content">
+  <span class="font-heading text-lg font-bold">waves-light</span>
+  <span class="mt-2 block text-sm opacity-80">A white ripple on colour.</span>
+</a>
+
+    </div>
+  </div>
+  <div class="mt-6">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">effects · ripple</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"#nav-effects"</span> <span class="tk-attr">class</span>=<span class="tk-str">"waves-effect block rounded-3xl border border-base-content/10 bg-base-100 p-8"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"font-heading text-lg font-bold"</span><span class="tk-tag">&gt;</span>waves-effect<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-2 block text-sm text-base-content/70"</span><span class="tk-tag">&gt;</span>A tint that follows the theme.<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/a</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"#nav-effects"</span> <span class="tk-attr">class</span>=<span class="tk-str">"waves-effect waves-light block rounded-3xl bg-primary p-8 text-primary-content"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"font-heading text-lg font-bold"</span><span class="tk-tag">&gt;</span>waves-light<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-2 block text-sm opacity-80"</span><span class="tk-tag">&gt;</span>A white ripple on colour.<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/a</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+  </div>
+</section>
+
+<section class="border-t border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-20">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <h2 class="ws-display text-3xl font-bold sm:text-4xl">More of the showcase</h2>
+      <a class="btn btn-ghost btn-sm" href="{{sw-url '/showcase'}}">All demos {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+    <div class="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {{#each pages.showcase._attributes.children}}
+      {{#unless (eq path @root.page.path)}}
+      <a class="ws-tile rounded-2xl border border-base-content/10 bg-base-100 p-4" href="{{sw-url path}}">
+        <span class="flex items-center gap-2 font-heading font-semibold">{{#if data.icon}}{{sw-icon data.icon "h-4 w-4 ws-ink"}}{{/if}}{{title}}</span>
+      </a>
+      {{/unless}}
+      {{/each}}
+    </div>
+  </div>
+</section>

@@ -1,0 +1,98 @@
+{{!-- META {"path":"editor-tour","title":"A tour of the editor","description":"Where everything is: the project tabs, the page editor with its code, content and audit modes, the rails at the screen edges, history and settings.","parent":"getting-started","order":3,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>The editor is one web app for every project on the instance. This page names its parts, so the rest of the documentation can point at them.</p>
+    <figure class="ws-browser">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Pages · project tabs and edge rails</span></div>
+      {{> ws-media slot="doc_editor_tour_layout" class="rounded-none"}}
+    </figure>
+
+    <h2 id="header">The header and the project tabs</h2>
+    <p>The header holds the project switcher (the project's mark at the far left), the project's tabs, and the two actions you use most: <strong>Preview</strong> and <strong>Deploy</strong>.</p>
+    <table>
+      <thead><tr><th>Tab</th><th>What it holds</th></tr></thead>
+      <tbody>
+        <tr><td>Corporate Identity</td><td>Name and business details, logos, contact and location, social profiles, brand colours, typography and design tokens.</td></tr>
+        <tr><td>Website Settings</td><td>The document skeleton (header, footer, sidebars, critical CSS), light and dark themes, content width, images, languages and translations, redirects, site search, analytics and consent, shop and booking.</td></tr>
+        <tr><td>Pages</td><td>The page tree. Start here to create, order and open pages.</td></tr>
+        <tr><td>Forms</td><td>Form definitions, each with its submissions.</td></tr>
+        <tr><td>Statistics</td><td>Visitor statistics, rank tracking and search performance. Clients see it only once one of those is set up and switched on.</td></tr>
+        <tr><td>History</td><td>Every saved change in the project, with restore.</td></tr>
+        <tr><td>Orders, Bookings</td><td>Shown only while the project takes payments or bookings.</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Preview</strong> opens the whole site, built from what you have saved, in a new tab; its caret manages share links. <strong>Deploy</strong> sends the site to the default target in one click; its caret lists every target and <strong>Download .zip</strong>. The gear menu holds project actions (settings, publish and deploy options, export, duplicate, members, delete) and, for instance administrators, <strong>System Settings</strong> and <strong>Administrators</strong>.</p>
+
+    <h2 id="pages">The Pages list</h2>
+    <p>The Pages tab shows the page tree: each page under its parent, in its sibling order. Drag a row to reorder it; that order is the order of every menu. <strong>New page</strong> opens the page settings in create mode, and <strong>New Menu Item</strong> adds a menu entry that is only a link or a dropdown label, with no page of its own. A row's menu has the rest:</p>
+    <ul>
+      <li><strong>Open page editor</strong> and <strong>Edit page data</strong>, the page's stored values as a tree or JSON;</li>
+      <li><strong>Preview in new tab</strong>, which renders the page even while it is a draft;</li>
+      <li><strong>Duplicate page</strong>, <strong>Save as template</strong> and <strong>Move to</strong>;</li>
+      <li><strong>Translate into all languages</strong> on a multilingual project, and <strong>Delete page</strong>.</li>
+    </ul>
+
+    <h2 id="page-editor">The page editor</h2>
+    <p>Clicking a page opens it in a large dialog over the list. Its header switches between three modes, picks a preview width (fluid, 1024, 768 or 390 pixels), and holds Undo, Redo, Save, the page's settings and its revision history. <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>S</kbd> saves and keeps the editor open; <kbd>Esc</kbd> closes it and asks first if something is unsaved. Code, content and settings are saved together in one save.</p>
+    <table>
+      <thead><tr><th>Mode</th><th>For</th></tr></thead>
+      <tbody>
+        <tr><td>Code Editor</td><td>Writing the page. The source sits in a strip above the live preview and grows while you hover or type in it. Clicking an element in the preview selects the markup that rendered it, or the <code>\{{#each}}</code> block for a dataset row.</td></tr>
+        <tr><td>Content Editor</td><td>Editing text, links and images in place, on the rendered page. Only the parts marked with <code>data-sw-*</code> attributes are editable, and the <strong>Regions</strong> panel lists every one of them. Clicking a dataset row opens its entry. This is the editor's default mode, and the only one on a phone.</td></tr>
+        <tr><td>Page Audit</td><td>A Lighthouse run against a deploy-equivalent build of the page, on mobile and desktop: the four category scores, lab metrics, ranked recommendations, the heading outline and image sizing.</td></tr>
+      </tbody>
+    </table>
+    <p>A page that uses a template shows its code as locked: the template's source renders, and the page only holds its own content. You can edit the template where it lives, or fork it into the page to make the code the page's own. Hovering the header, footer or a sidebar in the preview shows an edit button for that slot. It opens the slot in its own editor, because those parts belong to the project settings, not to the page.</p>
+    <figure class="ws-browser">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Page editor · Page Audit</span></div>
+      {{> ws-media slot="doc_editor_tour_audit" class="rounded-none"}}
+    </figure>
+    <div class="ws-callout"><p class="!mt-0"><strong>The audit measures what visitors get.</strong> It does not test the draft preview, which is sandboxed and never cached. It builds the page the way a publish does, minified, and serves it with deploy cache headers. Performance numbers are lab numbers and vary with the host; the SEO, accessibility and best-practice checks do not.</p></div>
+
+    <h2 id="rails">The rails at the screen edges</h2>
+    <p>Tabs on the edges of the screen open drawers that stay available while the page editor is open. Each one closes with its ×, <kbd>Esc</kbd> or a click outside.</p>
+    <table>
+      <thead><tr><th>Rail</th><th>Edge</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td>System Library</td><td>left</td><td>References and studios, described below. Available even before you open a project.</td></tr>
+        <tr><td>File Manager</td><td>right</td><td>The project's media: folders, uploads, alt text, replacing and moving files.</td></tr>
+        <tr><td>Datasets</td><td>bottom left</td><td>Dataset fields and entries, in a grid with an entry editor.</td></tr>
+        <tr><td>Snippets</td><td>bottom</td><td>Project snippets and the built-in snippet cookbook, grouped by purpose.</td></tr>
+        <tr><td>Widgets</td><td>bottom</td><td>The built-in widgets, drop-in blocks whose content is edited as data.</td></tr>
+        <tr><td>Templates</td><td>bottom right</td><td>Project templates and the built-in ones.</td></tr>
+      </tbody>
+    </table>
+    <p>On a phone only Datasets and the File Manager remain, in the two bottom corners: editing rows and uploading photos are the jobs a phone does well.</p>
+
+    <h3 id="library">The System Library and its studios</h3>
+    <p>The System Library is reference material you read while writing code, plus builders that produce markup to copy.</p>
+    <ul>
+      <li><strong>Reference:</strong> the template reference (every helper, <code>data-sw-*</code> attribute and binding), the Sitewright components and effects with examples, a searchable Tailwind CSS reference (<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd> or <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd>, from anywhere in the editor) and the daisyUI components in your brand colours.</li>
+      <li><strong>Assets:</strong> icons, brand logos and flags to search and copy; Google Fonts to browse.</li>
+      <li><strong>Builders and studios:</strong> animated backgrounds, textures, a button builder, a parallax builder, an SVG animation studio, an image editor for turning and cropping photos, and an image map studio for clickable hotspots.</li>
+    </ul>
+
+    <h2 id="history">History</h2>
+    <p>Every save of a page, template, snippet, dataset, entry, form, image map, translation, booking set-up or the project settings is recorded as a revision. Restoring is never destructive: it saves the old version as a new revision, so you can undo the restore too. A deleted item keeps a final revision, and restoring it brings it back.</p>
+    <ul>
+      <li>The <strong>History</strong> tab lists all revisions in the project, newest first, searchable and filterable by kind and action.</li>
+      <li>The page editor, the entry editor and the settings each have a revision button for the item in front of you.</li>
+      <li>Changes made by an AI agent are recorded the same way, marked as agent changes.</li>
+    </ul>
+    <p>By default an item keeps its 50 newest revisions, and revisions older than 90 days are removed. An instance administrator can change the retention.</p>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>Not versioned:</strong> media files and credentials (deploy targets, SMTP, captcha and AI keys). Replacing an image cannot be undone from History.</p></div>
+
+    <h2 id="settings">Page settings and project settings</h2>
+    <p>Each page has its own settings dialog, opened from the gear in the page editor: title, path, parent, status (draft or published), menu placement and label, template, description, share image, noindex, and the language options on a multilingual project. Everything that applies to the whole site lives in the Corporate Identity and Website Settings tabs. Instance-wide options are in System Settings, for administrators only, on six tabs: General, Integrations, AI Assistant, Security, Ops and Agents.</p>
+    <p><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd> opens the project's critical CSS from anywhere in the editor, including over the page editor, so you can fix a style while you look at the page it affects.</p>
+
+    <h2 id="next">Next</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/concepts/authoring-model'}}">How a site is built</a></li>
+      <li><a href="{{sw-url '/docs/concepts/pages-and-routes'}}">Pages and routes</a></li>
+      <li><a href="{{sw-url '/docs/concepts/client-editing'}}">Making content editable</a></li>
+    </ul>
+  </article>
+</div>

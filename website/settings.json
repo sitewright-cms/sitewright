@@ -1,0 +1,35 @@
+{
+  "identity": {
+    "name": "Sitewright",
+    "shortName": "Sitewright",
+    "slogan": "Websites, built like software.",
+    "description": "Sitewright is an open-source, self-hosted website platform for web developers: pages in HTML, Handlebars and Tailwind, a safe in-place editor for clients, an MCP server for AI agents, and plain static output you can host anywhere.",
+    "logo": "/media/sitewright/uJJ9cQ-logo-mark.svg",
+    "icon": "/media/sitewright/gaFj7w-favicon.svg",
+    "social": [
+      { "link": "https://github.com/sitewright-cms/sitewright", "name": "GitHub", "icon": "brand:github" }
+    ],
+    "colors": {
+      "primary": "#4F2DD8",
+      "secondary": "#6D5BF5",
+      "accent": "#14B8A6",
+      "neutral": "#0F172A",
+      "base-100": "#FFFFFF",
+      "base-content": "#0F172A"
+    },
+    "typography": {
+      "fontFamilies": {},
+      "heading": { "source": "asset", "family": "Space Grotesk", "weight": 700, "assetId": "LMf8z7" },
+      "body": { "source": "asset", "family": "Inter", "weight": 400, "assetId": "lPCtGB" },
+      "named": {
+        "code": { "source": "asset", "family": "JetBrains Mono", "weight": 400, "assetId": "8uNX3i" }
+      }
+    }
+  },
+  "website": {
+    "siteUrl": "https://sitewright-cms.github.io",
+    "enableThemes": true,
+    "defaultTheme": "light",
+    "effects": { "navEffect": "none", "buttonEffect": "lift", "stickyHeader": "pinned" }
+  }
+}

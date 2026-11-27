@@ -1,0 +1,76 @@
+{{!-- META {"path":"demo-copies","title":"Demo copies","description":"Deploy a copy of a site whose forms, cart, checkout and booking work in the browser while nothing is sent anywhere: for a showcase on GitHub Pages or a template preview for a client.","parent":"guides","order":10,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>A remote deploy target (FTP, FTPS, SFTP or git) can be marked as a demo copy. Its deploys show the site's live features working while every receiver is left out of the build. The same project deployed to Local Hosting, or to any other target, stays fully live, because every deploy builds the site for its own target.</p>
+
+    <h2 id="set-up">1. Mark a target as a demo copy</h2>
+    <ol>
+      <li>Open the project's <strong>Deploy targets</strong> and add an FTP, FTPS, SFTP or git target, for example a GitHub repository's <code>gh-pages</code> branch.</li>
+      <li>Turn on <strong>Demo copy</strong>.</li>
+      <li>If the target has been deployed to before, the form asks you to confirm with <strong>I understand — make it a demo copy</strong>: its next deploy replaces working forms, orders and bookings with ones that send nothing.</li>
+      <li>Deploy.</li>
+    </ol>
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Deploy targets · GitHub Pages showcase</span></div>
+      {{> ws-media slot="doc_demo_toggle" class="rounded-none"}}
+    </div>
+    <p>Over the API the target takes <code>"demo": true</code>; turning an already-deployed target into a demo copy also needs <code>"demoAck": true</code>, or the request is refused with a 400 that says so. Switching back to live asks nothing. The confirmation guards against switching a live target by mistake; it is not a lock. Local Hosting cannot be a demo copy: it is the platform itself.</p>
+
+    <h2 id="works">What still works</h2>
+    <p>A small script, <code>_assets/_sw/sw-demo.js</code>, answers the live features in the page. Only pages that have one of them load it.</p>
+    <table>
+      <thead><tr><th>Feature</th><th>In a demo copy</th></tr></thead>
+      <tbody>
+        <tr><td>Forms</td><td>Show their success message.</td></tr>
+        <tr><td>Cart order form</td><td>The order is "sent".</td></tr>
+        <tr><td>Checkout</td><td>Shows its review, priced as the live checkout would charge it (the site's published prices, shipping and tax per market), then goes to the thank-you page, which reads the order as paid.</td></tr>
+        <tr><td>Booking</td><td>Offers sample times in the offering's time zone (weekdays 9:00 to 17:00, or the set times), takes a booking and shows it on the booking's own page, where it can be cancelled.</td></tr>
+      </tbody>
+    </table>
+    <p>Demo orders and bookings live in the browser tab (<code>sessionStorage</code>) and are gone when it closes.</p>
+
+    <h2 id="left-out">What is left out of the build</h2>
+    <ul>
+      <li>The platform's addresses, and the statistics counter.</li>
+      <li>Form delivery by email, <code>contact.php</code>, third-party endpoints and WhatsApp.</li>
+      <li>The cart's WhatsApp, mailto and payment-link channels (checkout and the order form stay).</li>
+      <li>Captcha providers and proof of work.</li>
+      <li>The consent manager's managed analytics integrations (Google Analytics, Tag Manager, Plausible, Matomo, Umami, pixels and the like), so a demo's visits never reach the live site's accounts. The banner and its categories stay.</li>
+      <li>Search engine verification tags.</li>
+    </ul>
+    <p>The page's content security policy names no platform origin either. A demo deploy never changes what the live checkout charges: only a live deploy sets the project's price list.</p>
+
+    <h2 id="label">Tell visitors it is a demo</h2>
+    <p>Every page of a demo copy carries <code>&lt;html data-sw-demo&gt;</code>, so a note can show only there:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">website.criticalCss and footer</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">.demo-note</span> { <span class="tk-attr">display</span>: none }
+<span class="tk-tag">[data-sw-demo] .demo-note</span> { <span class="tk-attr">display</span>: block }
+
+<span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"demo-note"</span><span class="tk-tag">&gt;</span>This is a demo: forms, orders and bookings send nothing.<span class="tk-tag">&lt;/p&gt;</span></code></pre>
+    </div>
+
+    <h2 id="verify">Check your work</h2>
+    <ul>
+      <li>Submit a form on the demo copy: it shows its success message, and nothing arrives in the project's inbox.</li>
+      <li>Open the browser's network panel while using the cart and the booking widget: no request goes to your instance.</li>
+      <li>Switching a target between demo and live (or turning HTML minification on or off) shows it has changes to deploy, because its destination still holds the other version.</li>
+    </ul>
+
+    <h2 id="limits">Limits</h2>
+    <ul>
+      <li><strong>The thank-you hand-off needs HTTPS.</strong> As on a live site, the cart only goes to an <code>https://</code> thank-you page, so a demo checkout served over plain <code>http://</code> stops at its review.</li>
+      <li><strong>What you wrote yourself stays.</strong> An analytics script, an embed or a link you put into a page is yours and is not removed.</li>
+      <li><strong>Markup your own script adds later is not seen.</strong> The build decides which pages load the demo script from their published markup.</li>
+      <li><strong>A demo copy is indexed like any other site,</strong> on purpose: a showcase is meant to be found. To keep it out of search results, add <code>&lt;meta name="robots" content="noindex"&gt;</code> to its pages' head, or disallow it in the host's <code>robots.txt</code>.</li>
+    </ul>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/reference/deploy-targets'}}#demo-fields">Deploy target fields</a></li>
+      <li><a href="{{sw-url '/features/publishing'}}">Publishing and deploy</a></li>
+    </ul>
+  </article>
+</div>

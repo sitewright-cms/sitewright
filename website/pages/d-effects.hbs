@@ -1,0 +1,160 @@
+{{!-- META {"path":"effects","title":"Motion and effects","description":"Entrance animations, parallax, SVG animation, ripple, nav and button effects, border beam, sticky header, scrollspy, preloader and light/dark themes, with every attribute and setting.","parent":"reference","order":5,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>Every effect here is an attribute, a class or a website setting. The platform notices what a page uses and ships only those small runtimes, from the site's own origin. You never add an animation library, a CDN link or a script. Content stays visible without JavaScript, and motion respects <code>prefers-reduced-motion</code>.</p>
+    <p>The site-wide settings live in <strong>Settings → Website</strong>, in the <strong>Nav, buttons &amp; preloader</strong> and <strong>Light / dark themes</strong> tiles, and are stored under <code>website.effects</code>, <code>website.enableThemes</code> and <code>website.defaultTheme</code>.</p>
+    <p>Each one runs live in the showcase: <a href="{{sw-url '/showcase/motion'}}">entrance and scroll motion</a>, <a href="{{sw-url '/showcase/parallax'}}">parallax</a>, <a href="{{sw-url '/showcase/svg-animation'}}">SVG animation</a>, and <a href="{{sw-url '/showcase/effects'}}">borders, buttons and nav effects</a>.</p>
+
+    <h2 id="animation">Entrance animations</h2>
+    <p>Put <code>data-sw-animation</code> on an element and it reveals as it scrolls into view.</p>
+    <table>
+      <thead><tr><th>Attribute</th><th>Values</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>data-sw-animation</code></td><td>Required. <code>fade</code>, <code>fade-up</code>, <code>fade-down</code>, <code>fade-left</code>, <code>fade-right</code>, <code>zoom-in</code>, <code>zoom-out</code>, <code>slide-up</code>, <code>slide-down</code>, <code>slide-left</code>, <code>slide-right</code>, <code>flip-up</code>, <code>flip-down</code>, <code>flip-left</code>, <code>flip-right</code>.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-delay</code></td><td>Start delay in ms (default 0).</td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-duration</code></td><td>Length in ms (default 450, max 20000).</td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-easing</code></td><td><code>linear</code>, <code>ease</code>, <code>ease-in</code>, <code>ease-out</code>, <code>ease-in-out</code>.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-offset</code></td><td>Moves the reveal line to N px above the bottom of the viewport (default: 20% up from the bottom). The way to tune when things appear.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-threshold</code></td><td>Also require this fraction (0 to 1) of the element to be visible. Default 0. Avoid it on tall sections: one taller than the viewport reveals late, or never.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-once</code></td><td><code>"true"</code> plays once. By default the reveal resets when the element leaves the viewport and plays again on re-entry.</td></tr>
+      </tbody>
+    </table>
+    <p>Stagger a loop with <code>\{{sw-stagger}}</code>, which caps the delay so the last card of a long grid does not wait seconds:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">stagger</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-hb">\{{#each dataset.services}}</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-animation</span>=<span class="tk-str">"fade-up"</span> <span class="tk-attr">data-sw-delay</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-stagger @index 90}}</span>"</span><span class="tk-tag">&gt;</span>…<span class="tk-tag">&lt;/div&gt;</span>
+<span class="tk-hb">\{{/each}}</span></code></pre>
+    </div>
+
+    <h2 id="parallax">Parallax</h2>
+    <p>Scroll-linked movement on any element. Each channel is a <code>from,to</code> pair, and channels combine.</p>
+    <table>
+      <thead><tr><th>Attribute</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>data-sw-parallax-translate="40,-40"</code></td><td>Move, in px.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-parallax-axis</code></td><td><code>y</code> (default) or <code>x</code> for the move.</td></tr>
+        <tr><td><code>data-sw-parallax-opacity="0,1"</code></td><td>Fade.</td></tr>
+        <tr><td><code>data-sw-parallax-scale="0.9,1.05"</code></td><td>Scale.</td></tr>
+        <tr><td><code>data-sw-parallax-blur="8,0"</code></td><td>Blur in px. Heavier than the others; use it sparingly.</td></tr>
+        <tr><td><code>data-sw-parallax-&lt;channel&gt;-range="0,0.5"</code></td><td>The window of the element's pass through the viewport the channel runs over: 0 entering at the bottom, 0.5 centered, 1 leaving at the top. Default: the whole pass. <code>data-sw-parallax-range</code> sets it for every channel.</td></tr>
+        <tr><td><code>data-sw-parallax-&lt;channel&gt;-out="1,0"</code></td><td>A second phase after the range, for in, hold, out (with an optional <code>-out-range</code>).</td></tr>
+        <tr><td><code>data-sw-parallax-scene</code> + <code>data-sw-parallax-layer</code></td><td>A depth scene: the scene clips, each layer moves on its own.</td></tr>
+      </tbody>
+    </table>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>A scene needs one content layer.</strong> A plain layer is absolutely positioned, so a scene made only of plain layers has nothing in flow and collapses to zero height. Mark the layer holding the section's real content <code>data-sw-parallax-layer="content"</code>; keep decorative layers plain.</p></div>
+    <p>Under reduced motion everything stays static and in flow. The editor's Library has a Parallax builder.</p>
+
+    <h2 id="svg">SVG animation</h2>
+    <p>Put <code>data-sw-svg</code> on a path, group or shape inside an <code>&lt;svg&gt;</code>.</p>
+    <table>
+      <thead><tr><th>Attribute</th><th>Values</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>data-sw-svg</code></td><td><code>draw</code> (stroke draw-on; the element needs a stroke and <code>fill="none"</code>), <code>fade</code>, <code>fade-up</code>/<code>-down</code>/<code>-left</code>/<code>-right</code>, <code>zoom-in</code>, <code>zoom-out</code>, <code>flip-x</code>, <code>flip-y</code>, <code>blur</code>, <code>reveal-right</code>/<code>-left</code>/<code>-down</code>/<code>-up</code>/<code>-iris</code>, <code>along-path</code>, <code>morph</code>.</td></tr>
+        <tr><td><code>data-sw-duration</code>, <code>data-sw-delay</code>, <code>data-sw-easing</code>, <code>data-sw-once</code></td><td>Shared with entrance animations; easing adds <code>back</code>, <code>bounce</code>, <code>elastic</code>.</td></tr>
+        <tr><td><code>data-sw-svg-path="M…"</code></td><td>The motion path for <code>along-path</code>; <code>data-sw-svg-rotate="0"</code> stops it turning to face the path.</td></tr>
+        <tr><td><code>data-sw-svg-to="M…"</code></td><td>The target shape for <code>morph</code> (the element's own <code>d</code> is the start).</td></tr>
+        <tr><td><code>data-sw-svg-draw-dir="reverse"</code>, <code>data-sw-svg-fill="true"</code></td><td>Draw backwards; fade the fill in after the stroke.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-svg-origin</code></td><td>Pivot for scale and flip: <code>center</code>, <code>top</code>, <code>bottom left</code>, …</td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-svg-trigger</code></td><td><code>view</code> (default) or <code>load</code>.</td></tr>
+        <tr><td><code>data-sw-svg-scene</code> + <code>data-sw-svg-stagger="80"</code></td><td>Children cascade in DOM order when the scene enters view (<code>data-sw-svg-scene-trigger="load"</code> to start on load).</td></tr>
+      </tbody>
+    </table>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">draw</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;svg</span> <span class="tk-attr">viewBox</span>=<span class="tk-str">"0 0 24 24"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"none"</span> <span class="tk-attr">stroke</span>=<span class="tk-str">"currentColor"</span> <span class="tk-attr">stroke-width</span>=<span class="tk-str">"2"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;path</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"draw"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"1200"</span> <span class="tk-attr">d</span>=<span class="tk-str">"M4 12 L10 18 L20 6"</span><span class="tk-tag">/&gt;</span>
+<span class="tk-tag">&lt;/svg&gt;</span></code></pre>
+    </div>
+    <p>Without JavaScript, or under reduced motion, the finished artwork shows. The Library has an SVG animation builder too.</p>
+
+    <h2 id="ripple">Ripple</h2>
+    <p>Add <code>waves-effect</code> to a button or link for a Material-style press ripple, plus <code>waves-light</code> for a white ripple on a dark or colored button. Every <code>.btn</code> already gets one as part of the button baseline.</p>
+
+    <h2 id="nav">Nav effects</h2>
+    <p>Hover and active treatments for menu links, colored from the brand and legible in dark mode. Set one site-wide (<code>website.effects.navEffect</code>), or put <code>sw-nav-&lt;name&gt;</code> on a specific <code>.menu</code> to override the site-wide one for that menu. The schemes style links inside a <code>.menu</code>.</p>
+    <p><code>box-solid</code>, <code>box-fill-left</code>, <code>box-fill-up</code>, <code>box-draw</code>, <code>box-shadow</code>, <code>line-bottom</code>, <code>line-sliding-bottom</code>, <code>line-top-down</code>, <code>line-squiggle</code>, <code>sliding-pill</code>, <code>glass-pill</code>, <code>dot-to-pill</code>, <code>highlighter</code>, <code>brackets</code>, <code>brackets-curly</code>, <code>blob</code>, <code>chevron</code>, <code>corner-ticks</code>, <code>spotlight-sliding</code>.</p>
+    <p>Three of them (<code>line-sliding-bottom</code>, <code>sliding-pill</code>, <code>spotlight-sliding</code>) load a small script for the sliding indicator; the rest are CSS only.</p>
+
+    <h2 id="buttons">Button effects, accents and shapes</h2>
+    <p>A button has a face, the daisyUI variant you choose (<code>btn-primary</code>, <code>btn-outline</code>, <code>btn-ghost</code>, <code>btn-soft</code>, or a bare <code>.btn</code>), and an effect, the hover layer. Every <code>.btn</code> already has a ripple, a hover lift and shadow, and a fill to the accent color. Each axis is a class on the button or a site-wide default (<code>website.effects.buttonEffect</code>, <code>buttonAccent</code>, <code>buttonShape</code>).</p>
+    <table>
+      <thead><tr><th>Axis</th><th>Class</th><th class="min-w-56">Values</th></tr></thead>
+      <tbody>
+        <tr><td>Effect: motion (any face)</td><td class="whitespace-nowrap"><code>sw-btn-fx-&lt;name&gt;</code></td><td><code>lift</code>, <code>glow</code>, <code>pulse</code>, <code>ring</code>, <code>magnetic</code>, <code>arrow</code>, <code>bounce</code>, <code>jelly</code>, <code>icon-spin</code>, <code>long-shadow</code>, <code>width-expand</code>, <code>sheen</code>, <code>spotlight</code>, <code>shine</code>, <code>sparkle</code></td></tr>
+        <tr><td>Effect: reveal (best on <code>btn-outline</code> or <code>btn-ghost</code>)</td><td class="whitespace-nowrap"><code>sw-btn-fx-&lt;name&gt;</code></td><td><code>fill-center</code>, <code>fill-slide</code>, <code>fill-up</code>, <code>fill-down</code>, <code>skew-sweep</code>, <code>bubble</code>, <code>border-draw</code>, <code>outline-fill</code>, <code>text-link</code></td></tr>
+        <tr><td>Effect: face (defines the look)</td><td class="whitespace-nowrap"><code>sw-btn-fx-&lt;name&gt;</code></td><td><code>two-tone</code>, <code>gradient-move</code>, <code>frost</code>, <code>ghost-gradient</code></td></tr>
+        <tr><td>Accent</td><td class="whitespace-nowrap"><code>sw-btn-accent-&lt;role&gt;</code></td><td><code>primary</code>, <code>secondary</code> (default), <code>accent</code>, <code>neutral</code></td></tr>
+        <tr><td>Shape</td><td class="whitespace-nowrap"><code>sw-btn-shape-&lt;shape&gt;</code></td><td><code>rounded</code> (default), <code>soft</code>, <code>sharp</code>, <code>pill</code>, <code>cut</code>, <code>skewed</code>; per button only: <code>square</code>, <code>circle</code> (icon buttons)</td></tr>
+      </tbody>
+    </table>
+    <p><code>magnetic</code> and <code>spotlight</code> follow the pointer and load a small script.</p>
+
+    <h2 id="border-beam">Border beam</h2>
+    <p><code>sw-border-beam</code> sends a light around the edge of one box: a featured card, a pricing tier, a slider caption. It needs no script, never covers the content and takes the box's radius, so pair it with a <code>rounded-*</code> class. Tune it with custom properties on the same element:</p>
+    <table>
+      <thead><tr><th>Property</th><th>Default</th><th class="min-w-56">Controls</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>--sw-beam-color</code></td><td>primary</td><td>The light's color</td></tr>
+        <tr><td class="whitespace-nowrap"><code>--sw-beam-track</code></td><td><code>transparent</code></td><td>A static ring under the light</td></tr>
+        <tr><td class="whitespace-nowrap"><code>--sw-beam-width</code></td><td><code>5px</code></td><td>Ring thickness</td></tr>
+        <tr><td class="whitespace-nowrap"><code>--sw-beam-speed</code></td><td><code>1.8s</code></td><td>One lap</td></tr>
+        <tr><td class="whitespace-nowrap"><code>--sw-beam-arc</code></td><td><code>40deg</code></td><td>The narrow length of the light</td></tr>
+        <tr><td class="whitespace-nowrap"><code>--sw-beam-arc-max</code></td><td><code>350deg</code></td><td>The length it spreads to; set it equal to <code>--sw-beam-arc</code> to stop the breathing</td></tr>
+        <tr><td class="whitespace-nowrap"><code>--sw-beam-pulse</code></td><td><code>7s</code></td><td>One breath</td></tr>
+      </tbody>
+    </table>
+    <p>For example <code>class="sw-border-beam rounded-2xl [--sw-beam-width:2px]"</code>. It repaints every frame, so use it on one accent, not on every card in a grid. Under reduced motion the light parks and the border stays.</p>
+
+    <h2 id="sticky-header">Sticky header</h2>
+    <p><code>website.effects.stickyHeader</code> fixes the top nav (<code>#main-nav</code>) to the viewport: <code>none</code> (default, a static header), <code>pinned</code> (always visible) or <code>hide-on-scroll</code> (slides away on scroll down, back on scroll up). There is no "shrink" mode: how the bar looks once scrolled is yours to write, keyed on the class the runtime sets.</p>
+    <table>
+      <thead><tr><th>Hook</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>html.sw-scrolled</code></td><td>Set once the page has scrolled, on every site and in every mode.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>html.sw-nav-hidden</code></td><td>The header is slid away (hide-on-scroll only).</td></tr>
+        <tr><td class="whitespace-nowrap"><code>--sw-header-h</code></td><td>The bar's height (4.5rem mobile, 4.75rem desktop by default). Anchors and scrollspy read it. Override it in <code>website.criticalCss</code> for a custom header, at every breakpoint where its height changes.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>--sw-header-offset</code></td><td>The top padding the page content gets under a fixed bar (default: the bar height). Set <code>:root{--sw-header-offset:0}</code> when the hero sits under the header.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-top-padding</code></td><td>A class that adds the header height as top padding on an inner element, so a full-bleed background runs under the bar. Any other padding utility on the same element overrides it.</td></tr>
+      </tbody>
+    </table>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">website.criticalCss</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-kw">@media</span> (prefers-reduced-motion:no-preference) {
+  <span class="tk-tag">#main-nav</span>, <span class="tk-tag">#main-nav .navbar</span> { <span class="tk-attr">transition</span>: min-height .3s ease, padding .3s ease, box-shadow .3s ease }
+}
+<span class="tk-tag">html.sw-scrolled #main-nav</span> { <span class="tk-attr">box-shadow</span>: 0 2px 10px rgba(15,23,42,.08) }
+<span class="tk-tag">html.sw-scrolled #main-nav .navbar</span> { <span class="tk-attr">min-height</span>: 3.25rem }</code></pre>
+    </div>
+    <p>A fixed header sits at <code>z-index</code> 30. The platform's layers above it: back-to-top and the consent banner 9996, banners and the cart tab 9997, the header with the mobile drawer open 99980, the preloader 99990, the lightbox 999999. Keep your own floating elements below 99980 so an open mobile menu covers them.</p>
+
+    <h2 id="back-to-top">Back to top</h2>
+    <p>On by default: a square button bottom right, 1.5rem from the edges, hidden below 640px. <code>website.effects.backToTop: false</code> removes it. Move it with <code>--sw-back-to-top-right</code>, <code>--sw-back-to-top-bottom</code> (both 1.5rem) and <code>--sw-back-to-top-left</code> (auto) on <code>:root</code>, for instance above a chat bubble in the same corner.</p>
+
+    <h2 id="scrollspy">Scrollspy</h2>
+    <p>On a one-page layout, highlights the menu link whose section is in view, using the same <code>.active</code> and <code>aria-current</code> the nav uses (so pair it with a nav effect to see it). <code>website.effects.scrollSpy: true</code> turns it on for the main and mobile nav; <code>data-sw-scrollspy</code> on any other menu, such as an on-page table of contents, turns it on for that one. Links point at sections by id (<code>&lt;a href="#about"&gt;</code>); path-prefixed anchors like <code>/#about</code> work from a shared header. The trigger line accounts for a sticky header.</p>
+
+    <h2 id="preloader">Preloader</h2>
+    <p><code>website.effects.preloaderEffect</code> shows a full-screen overlay on load and while following internal links: <code>spinner</code>, <code>dual</code>, <code>dots</code>, <code>bars</code>, <code>pulse</code>, <code>progress</code>, <code>logo-pulse</code>, <code>logo-draw</code>, <code>logo-sheen</code>. The logo variants use the company logo and fall back to a built-in mark. It is opaque, themed from the brand tokens, clears after the page loads, and gives up after 8 seconds so a hung resource never blocks the page. With scripting off it is hidden.</p>
+    <p>With the effect set to <code>none</code>, <code>website.effects.preloaderCode</code> takes your own markup, wrapped in the platform's overlay so the show-and-hide lifecycle still applies; <code>preloaderBackdrop: true</code> paints the brand background behind it. <code>navCode</code> and <code>buttonCode</code> work the same way for custom nav and button effects.</p>
+
+    <h2 id="themes">Light and dark themes</h2>
+    <p>Off by default. With <code>website.enableThemes: true</code> the site gets a dark variant: the neutral tokens switch to dark ones and the brand colors are tuned for legibility on a dark background. <code>website.defaultTheme</code> is <code>auto</code> (follow the visitor's device, the default), <code>light</code> or <code>dark</code>, rendered onto <code>&lt;html data-sw-theme&gt;</code> so there is no flash.</p>
+    <p><code>\{{sw-theme-toggle}}</code> adds a toggle that remembers the visitor's choice and re-applies it before first paint. It renders nothing while themes are off. Style your own CSS for dark mode with <code>[data-sw-theme="dark"]</code>, or better, use the theme tokens (<code>bg-base-100</code>, <code>text-base-content</code>) and it follows by itself.</p>
+
+    <h2 id="backgrounds">Animated backgrounds</h2>
+    <p>The WebGL backgrounds are a component, <code>data-sw-component="shader-bg"</code>, with 31 presets. See <a href="{{sw-url '/docs/reference/components'}}#shader-bg">Components</a>.</p>
+
+    <h2 id="cost">What effects cost</h2>
+    <p>The page-speed audit renders without a GPU, so WebGL and animations of <code>scale</code>, <code>filter</code>, <code>background-position</code> or <code>box-shadow</code> on large layers cost far more there than on a visitor's device, and show up as blocking time. Prefer animating <code>opacity</code> and <code>transform</code> on small elements. When the score is poor, the audit names the longest main-thread tasks and the animations the compositor refused.</p>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/reference/components'}}">Components</a></li>
+      <li><a href="{{sw-url '/docs/concepts/brand-and-themes'}}">Brand and themes</a></li>
+      <li><a href="{{sw-url '/docs/concepts/header-footer-sidebars'}}">Header, footer and sidebars</a></li>
+    </ul>
+  </article>
+</div>

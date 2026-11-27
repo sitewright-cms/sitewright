@@ -1,0 +1,130 @@
+{{!-- META {"path":"deploy-targets","title":"Deploy targets","description":"Every deploy protocol and every field of a target: Local Hosting, FTP, FTPS, SFTP with rsync, and git, plus demo copies and the confirmation that guards them.","parent":"reference","order":6,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>A deploy target is where a project's site goes when you deploy. A project can have several, and each deploy builds the site for its own target, so one project can be live on its own server and a demo copy on GitHub Pages at the same time. Targets are managed in the editor's <strong>Deploy targets</strong> panel or through the API, and an agent deploys them with <code>deploy_project</code>.</p>
+
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Deploy targets · New target</span></div>
+      {{> ws-media slot="doc_deploy_wizard" class="rounded-none"}}
+    </div>
+
+    <h2 id="protocols">Protocols</h2>
+    <table>
+      <thead><tr><th>Protocol</th><th>What it does</th><th>Credentials</th><th class="min-w-56">Default port</th></tr></thead>
+      <tbody>
+        <tr><td><code>local</code></td><td>Local Hosting: the platform serves the site itself, at <code>&lt;slug&gt;.&lt;SW_SITES_DOMAIN&gt;</code> when a sites domain is set (otherwise at <code>/sites/&lt;slug&gt;/</code>) and at the project's verified custom domains.</td><td>None</td><td>–</td></tr>
+        <tr><td><code>ftp</code></td><td>Uploads over FTP. Starts in the clear and upgrades to TLS when the server offers <code>AUTH TLS</code>, falling back to plain FTP if the upgrade fails.</td><td>Password</td><td>21</td></tr>
+        <tr><td><code>ftps</code></td><td>Uploads over FTP with TLS, verified strictly. <code>explicit</code> (default) or <code>implicit</code>.</td><td>Password</td><td>21, or 990 implicit</td></tr>
+        <tr><td><code>sftp</code></td><td>Uploads over SSH, file by file, or with rsync over SSH.</td><td>Password or private key</td><td>22</td></tr>
+        <tr><td><code>git</code></td><td>Commits the built site as one fresh commit and force-pushes it to a branch (gh-pages style).</td><td>Token (https remote) or private key (ssh remote)</td><td>443, or 22 for ssh</td></tr>
+      </tbody>
+    </table>
+    <p>A target's protocol cannot be changed after it is created: delete it and create a new one.</p>
+
+    <h2 id="fields">Fields</h2>
+    <h3 id="common">Every target</h3>
+    <table>
+      <thead><tr><th>Field</th><th>Rule</th></tr></thead>
+      <tbody>
+        <tr><td><code>name</code></td><td>1 to 120 characters.</td></tr>
+        <tr><td><code>protocol</code></td><td><code>local</code>, <code>ftp</code>, <code>ftps</code>, <code>sftp</code> or <code>git</code>. Set on create only.</td></tr>
+        <tr><td><code>minifyHtml</code></td><td>Minify each page's HTML at build (whitespace, comments). Off by default.</td></tr>
+        <tr><td><code>lastDeployedAt</code></td><td>Read only: the last successful deploy to this target. The editor uses it to say whether this destination has changes waiting.</td></tr>
+      </tbody>
+    </table>
+
+    <h3 id="local-fields">Local Hosting</h3>
+    <table>
+      <thead><tr><th>Field</th><th>Rule</th></tr></thead>
+      <tbody>
+        <tr><td><code>previewToken</code></td><td>16 to 64 URL-safe characters. When set, the hosted site answers only with a matching <code>?token=</code>: a soft "unlisted" gate, not access control.</td></tr>
+        <tr><td><code>clearPreviewToken</code></td><td>Update only: <code>true</code> removes the token. Do not send it together with <code>previewToken</code>.</td></tr>
+      </tbody>
+    </table>
+    <p>A Local Hosting target takes no host, credentials, remote directory or repository, and cannot be a demo copy. Custom domains are set on this target; see <a href="{{sw-url '/docs/guides/custom-domains'}}">Custom domains</a>.</p>
+
+    <h3 id="remote-fields">FTP, FTPS and SFTP</h3>
+    <table>
+      <thead><tr><th>Field</th><th>Rule</th></tr></thead>
+      <tbody>
+        <tr><td><code>host</code></td><td>Required. A hostname or IP address, up to 255 characters; may not start with <code>-</code>.</td></tr>
+        <tr><td><code>port</code></td><td>1 to 65535. Defaults as in the table above.</td></tr>
+        <tr><td><code>user</code></td><td>Required, up to 255 characters.</td></tr>
+        <tr><td><code>password</code></td><td>Write only, up to 1024 characters. A password or a private key is required.</td></tr>
+        <tr><td><code>privateKey</code>, <code>passphrase</code></td><td>Write only. SFTP and git over SSH: the key's contents (PEM or OpenSSH), up to 16384 characters.</td></tr>
+        <tr><td><code>remoteDir</code></td><td>The directory to deploy into, up to 1024 characters, no <code>..</code> segments. Absent means <code>/</code>.</td></tr>
+        <tr><td><code>hostFingerprint</code></td><td>SFTP: the server's host-key fingerprint to pin. Leave it empty and the key is not checked. With rsync it must be a full <code>known_hosts</code> line (<code>host keytype key</code>).</td></tr>
+        <tr><td><code>ftpsMode</code></td><td>FTPS only: <code>explicit</code> (default) or <code>implicit</code>.</td></tr>
+        <tr><td><code>certFingerprint</code></td><td>FTPS only: the SHA-256 of a server certificate that fails strict verification, typically shared hosting presenting the hoster's certificate for your hostname. Pins that one certificate for this target; a different one fails closed and is reported. <code>clearCertFingerprint: true</code> removes the pin.</td></tr>
+        <tr><td><code>useRsync</code></td><td>SFTP only: transfer with rsync over SSH (delta and compression, one connection), for servers that refuse remote commands but allow rsync. Off by default.</td></tr>
+        <tr><td><code>rsyncDelete</code></td><td>With rsync: delete remote files the build no longer has. On by default. <code>.well-known/</code> is never deleted.</td></tr>
+        <tr><td><code>rsyncRootDeleteAck</code></td><td>Required as <code>true</code> to combine rsync, <code>rsyncDelete</code> and a root <code>remoteDir</code>, the one combination that can wipe a whole account's files.</td></tr>
+      </tbody>
+    </table>
+
+    <h3 id="git-fields">git</h3>
+    <table>
+      <thead><tr><th>Field</th><th>Rule</th></tr></thead>
+      <tbody>
+        <tr><td><code>repoUrl</code></td><td>Required. <code>https://…</code> (token auth), <code>ssh://…</code> or <code>user@host:path</code> (key auth). No credentials in the URL; up to 2048 characters.</td></tr>
+        <tr><td><code>branch</code></td><td>Required. Letters, digits, <code>.</code>, <code>_</code>, <code>/</code>, <code>-</code>; no <code>..</code> segments.</td></tr>
+        <tr><td><code>token</code></td><td>Write only. A personal access token for an https remote, sent as the basic-auth user name (the form GitHub accepts).</td></tr>
+        <tr><td><code>privateKey</code>, <code>hostFingerprint</code></td><td>For an ssh remote: the deploy key, and optionally a <code>known_hosts</code> line to pin the host.</td></tr>
+      </tbody>
+    </table>
+    <p>Every push replaces the branch with a single commit of the latest build. The build gets an empty <code>.nojekyll</code> at its root so GitHub Pages serves the <code>_assets/</code> folder; other hosts ignore it. Nothing else on the branch survives a deploy.</p>
+
+    <h3 id="demo-fields">Demo copies</h3>
+    <table>
+      <thead><tr><th>Field</th><th>Rule</th></tr></thead>
+      <tbody>
+        <tr><td><code>demo</code></td><td>FTP, FTPS, SFTP and git only. The build shows forms, the cart, checkout, the thank-you page and booking working in the browser while nothing is sent anywhere. Off by default.</td></tr>
+        <tr><td><code>demoAck</code></td><td>Update only. Required as <code>true</code> to turn a target that has already been deployed into a demo copy, since its next deploy replaces a working site with one that sends nothing. Switching back to live needs nothing.</td></tr>
+      </tbody>
+    </table>
+    <p>Everything a demo copy leaves out and keeps: <a href="{{sw-url '/docs/guides/demo-copies'}}">Demo copies</a>.</p>
+
+    <h2 id="behavior">How a deploy runs</h2>
+    <ul>
+      <li><strong>Incremental.</strong> FTP, FTPS and file-by-file SFTP targets keep a manifest of paths, sizes and hashes in the remote directory (<code>.sw-deploy-manifest.json</code>). A deploy uploads what changed, removes files the build no longer contains, and writes the new manifest last. A missing or unreadable manifest means a full upload. rsync compares the files itself.</li>
+      <li><strong>Streamed.</strong> The editor shows each file as it goes; the API offers the same as a stream.</li>
+      <li><strong>Secrets stay encrypted.</strong> Passwords, keys and tokens are stored encrypted with <code>SW_ENCRYPTION_KEY</code> and never returned by the API. On an edit, leave a credential out to keep the stored one.</li>
+      <li><strong>Test before saving.</strong> The connection test works on a target being typed for the first time and on a saved one, where any field you send overrides the stored value.</li>
+      <li><strong>Remote sites need a public URL for live features.</strong> A form the platform delivers posts back to the instance from another host. Without <code>SW_PUBLIC_URL</code>, a remote deploy of a site with such a form is refused, and the statistics counter is left out of remote builds.</li>
+    </ul>
+    <div class="ws-callout"><p class="!mt-0"><strong>Restrict destinations on a shared instance.</strong> <code>SW_DEPLOY_ALLOWED_HOSTS</code> (comma-separated, unset by default) limits saved targets to those exact hostnames. See <a href="{{sw-url '/docs/self-hosting/environment'}}">Environment</a>.</p></div>
+
+    <h2 id="api">API</h2>
+    <p>All routes need the <code>deploy</code> capability on a token, or a signed-in project member with write access.</p>
+    <table>
+      <thead><tr><th>Route</th><th>Does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>GET /projects/:id/deploy-targets</code></td><td>List targets (never with secrets).</td></tr>
+        <tr><td class="whitespace-nowrap"><code>POST /projects/:id/deploy-targets</code></td><td>Create a target. 20 per minute.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>PUT /projects/:id/deploy-targets/:target</code></td><td>Update; omitted fields keep their value. 20 per minute.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>DELETE /projects/:id/deploy-targets/:target</code></td><td>Delete a target.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>POST /projects/:id/deploy-targets/test</code></td><td>Test a connection. 10 per minute.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>POST /projects/:id/deploy-targets/:target/deploy</code></td><td>Deploy. <code>…/deploy/stream</code> streams the progress.</td></tr>
+      </tbody>
+    </table>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">terminal</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-com"># Turn a target that already serves a site into a demo copy</span>
+<span class="tk-ok">$</span> curl -X PUT https://sites.example.com/projects/$PROJECT/deploy-targets/$TARGET \
+    -H "Authorization: Bearer $SW_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"demo": true, "demoAck": true}'</code></pre>
+    </div>
+    <p>Without <code>demoAck</code> that request is refused with a 400 that names it. Agents deploy with <code>deploy_project</code>: Local Hosting needs the <code>publish</code> capability, the other targets need <code>deploy</code>.</p>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/guides/demo-copies'}}">Demo copies</a></li>
+      <li><a href="{{sw-url '/docs/guides/custom-domains'}}">Custom domains</a></li>
+      <li><a href="{{sw-url '/docs/guides/api-keys'}}">API keys and member tokens</a></li>
+      <li><a href="{{sw-url '/features/publishing'}}">Publishing and deploy</a></li>
+    </ul>
+  </article>
+</div>

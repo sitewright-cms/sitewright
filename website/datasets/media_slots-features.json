@@ -1,0 +1,337 @@
+{
+  "dataset": {
+    "id": "media_slots",
+    "name": "Media slots",
+    "slug": "media_slots",
+    "fields": [
+      {
+        "name": "label",
+        "type": "text",
+        "required": true,
+        "localized": false
+      },
+      {
+        "name": "kind",
+        "type": "select",
+        "required": true,
+        "localized": false,
+        "config": {
+          "options": [
+            "image",
+            "video"
+          ]
+        }
+      },
+      {
+        "name": "ratio",
+        "type": "select",
+        "required": false,
+        "localized": false,
+        "config": {
+          "options": [
+            "16x10",
+            "16x9",
+            "4x3",
+            "3x2",
+            "1x1",
+            "9x16",
+            "3x4",
+            "21x9"
+          ]
+        }
+      },
+      {
+        "name": "image",
+        "type": "image",
+        "required": false,
+        "localized": false
+      },
+      {
+        "name": "video",
+        "type": "file",
+        "required": false,
+        "localized": false
+      },
+      {
+        "name": "poster",
+        "type": "image",
+        "required": false,
+        "localized": false
+      },
+      {
+        "name": "alt",
+        "type": "text",
+        "required": false,
+        "localized": false
+      },
+      {
+        "name": "capture",
+        "type": "text",
+        "required": false,
+        "localized": false
+      }
+    ]
+  },
+  "entries": [
+    {
+      "id": "feat_stats_dashboard",
+      "values": {
+        "label": "The Statistics tab: visitors, pageviews, sources and the country map",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The Statistics dashboard with daily pageviews, top pages, sources and a world map of countries",
+        "capture": "Project → Statistics → Visits, 30 days, fixture data with bots and two goals; 1440×900"
+      }
+    },
+    {
+      "id": "feat_consent_banner",
+      "values": {
+        "label": "The consent banner with its preferences panel open",
+        "kind": "image",
+        "ratio": "16x9",
+        "alt": "A site with the consent banner open on its Customize panel showing four categories",
+        "capture": "A fixture site with consent on (layout bar), click Customize; crop to the banner and a held-back YouTube placeholder"
+      }
+    },
+    {
+      "id": "feat_rank_table",
+      "values": {
+        "label": "Search rankings: keywords with position, change, best and trend",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The Search rankings view listing keywords with their position, change, best position, trend line and ranking page",
+        "capture": "Statistics → Search rankings, 90 days, a fixture project with 8 keywords (mixed desktop/mobile, one featured snippet); 1440×900"
+      }
+    },
+    {
+      "id": "feat_search_performance",
+      "values": {
+        "label": "Search performance: clicks, impressions, top searches and pages",
+        "kind": "image",
+        "ratio": "4x3",
+        "alt": "The search performance view with clicks, impressions, click-through rate, average position and the top searches",
+        "capture": "Statistics → Search performance (Google, 28 days) with fixture data; crop to the tiles and the Top searches table"
+      }
+    },
+    {
+      "id": "feat_editor_code",
+      "values": {
+        "label": "The Code Editor over the live preview: a change typed, the page updates",
+        "kind": "video",
+        "ratio": "16x10",
+        "alt": "The page editor with the CodeMirror strip open over the live preview, which updates after a heading is retyped",
+        "capture": "Pages → home → Code Editor: hover the strip so it opens, change a heading and a Tailwind class, wait for the preview to update; 10–12 s loop at 1440×900"
+      }
+    },
+    {
+      "id": "feat_editor_library",
+      "values": {
+        "label": "The System Library rail open on Builders & Studios",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The editor with the System Library rail open, listing references, assets and builders",
+        "capture": "Code Editor with the Library rail open, Builders & Studios group expanded; 1440×900"
+      }
+    },
+    {
+      "id": "feat_templating_click",
+      "values": {
+        "label": "Clicking a team card on the preview opens its entry",
+        "kind": "video",
+        "ratio": "16x10",
+        "alt": "A card in a dataset loop clicked on the preview, opening its entry editor; the edited name appears on the page",
+        "capture": "Content Editor on a team page: click the second card, change the role in the entry editor, save, see the card update; 8–10 s"
+      }
+    },
+    {
+      "id": "feat_templating_entry",
+      "values": {
+        "label": "An events entry: date, rich text, image and page fields",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The entry editor of an events dataset with date, rich text, image and page fields and language tabs",
+        "capture": "Datasets → events → open an entry with a German translation tab; 1440×900"
+      }
+    },
+    {
+      "id": "feat_components_studio",
+      "values": {
+        "label": "The SVG animation studio drawing a logo, then morphing a shape",
+        "kind": "video",
+        "ratio": "16x10",
+        "alt": "The SVG animation studio playing a draw-on effect on a logo and a morph between two shapes",
+        "capture": "Library → SVG animation studio: pick draw on a line logo, replay, then switch to morph; 10–12 s"
+      }
+    },
+    {
+      "id": "feat_media_library",
+      "values": {
+        "label": "The File Manager with folders, alt text and the Replace action",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The File Manager showing image folders, a selected image with its alt text field and the Replace file action",
+        "capture": "File Manager → images/team with ~12 fixture photos, one selected with its details panel open; 1440×900"
+      }
+    },
+    {
+      "id": "feat_media_audit",
+      "values": {
+        "label": "Page Audit: oversized images listed beside the Lighthouse scores",
+        "kind": "image",
+        "ratio": "16x9",
+        "alt": "The Page Audit tab listing background images served larger than they display",
+        "capture": "Page editor → Page Audit on a fixture page with two oversized CSS backgrounds; crop to the oversized-images list"
+      }
+    },
+    {
+      "id": "feat_languages_add",
+      "values": {
+        "label": "Adding German: every page appears under /de/ with an inherited badge",
+        "kind": "video",
+        "ratio": "21x9",
+        "alt": "A language being added, after which the pages list shows a German version of each page marked inherited",
+        "capture": "Website Settings → Languages → Add language → German, then the pages list with the new /de/ pages and their inherited badges; 10 s, 1680×720"
+      }
+    },
+    {
+      "id": "feat_languages_coverage",
+      "values": {
+        "label": "Translations & Labels: keys by language, with the coverage per language",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The Translations and Labels grid showing keys in English, German and French with one language incomplete",
+        "capture": "Website Settings → Translations with en/de/fr and ~20 keys, a few French cells empty; 1440×900"
+      }
+    },
+    {
+      "id": "feat_forms_editor",
+      "values": {
+        "label": "The form editor: fields, messages, delivery mode and spam switches",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The form editor with a contact form’s fields, its success message, the delivery mode and the proof-of-work and captcha switches",
+        "capture": "Forms → Edit form contact (name, email, topic radio, message, consent checkbox), scrolled so delivery and spam switches show; 1440×900"
+      }
+    },
+    {
+      "id": "feat_forms_inbox",
+      "values": {
+        "label": "The submissions inbox with one message expanded",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The submissions inbox listing enquiries, one expanded to show every field, and a filtered count",
+        "capture": "Forms → contact → Show submissions with 8 fixture rows, one expanded, the filtered badge visible; 1440×900"
+      }
+    },
+    {
+      "id": "feat_shop_checkout",
+      "values": {
+        "label": "Add to cart, the cart drawer, the hosted checkout and the thank-you page",
+        "kind": "video",
+        "ratio": "16x10",
+        "alt": "A product added to the cart, the cart drawer opened and a test-mode checkout completed, ending on the order status page",
+        "capture": "Fixture shop with Stripe in test mode: add two products, open the cart, check out with a test card, land on the thank-you page; 15 s"
+      }
+    },
+    {
+      "id": "feat_shop_orders",
+      "values": {
+        "label": "The Orders tab with payment status and fulfilment",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The Orders tab listing paid orders with their fulfilment step and one order opened with its items and emails",
+        "capture": "Orders with 6 fixture orders (paid, pending, refunded), one open showing items, buyer fields, emails and the fulfilment steps; 1440×900"
+      }
+    },
+    {
+      "id": "feat_booking_widget",
+      "values": {
+        "label": "The booking widget: pick a service, a day and a time, then confirm",
+        "kind": "video",
+        "ratio": "16x10",
+        "alt": "A visitor choosing a haircut, a day and a free time in the booking widget and confirming the booking",
+        "capture": "Fixture salon site with two people and a busy Google calendar: pick Haircut, a day, a time, fill name and email, confirm; 12 s"
+      }
+    },
+    {
+      "id": "feat_booking_requests",
+      "values": {
+        "label": "The Bookings tab with a request waiting for an answer",
+        "kind": "image",
+        "ratio": "16x9",
+        "alt": "The Bookings tab listing upcoming bookings and one request with Accept and Decline buttons",
+        "capture": "Bookings → Requests with one paid request and three upcoming bookings; crop to the list"
+      }
+    },
+    {
+      "id": "feat_hosting_domains",
+      "values": {
+        "label": "Custom domains: a verified primary, a www alias and one waiting for DNS",
+        "kind": "image",
+        "ratio": "21x9",
+        "alt": "The Custom domains panel with a verified primary domain, a redirecting www alias and a domain waiting for its TXT record",
+        "capture": "Deploy targets → Local Hosting → Custom domains with three fixture domains in the three states; crop to the panel, 1680×720"
+      }
+    },
+    {
+      "id": "feat_hosting_share",
+      "values": {
+        "label": "Preview share links with their expiry and Revoke",
+        "kind": "image",
+        "ratio": "16x9",
+        "alt": "The share links list with labels, expiry dates and revoke buttons",
+        "capture": "Preview share links with three fixture links (one expiring soon); crop to the list"
+      }
+    },
+    {
+      "id": "feat_seo_audit",
+      "values": {
+        "label": "Page Audit: Lighthouse scores for mobile and desktop",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The Page Audit tab with performance, accessibility, best practices and SEO scores for mobile and desktop and the list of findings",
+        "capture": "Page editor → Page Audit on the fixture services page, Both run finished, findings list visible; 1440×900"
+      }
+    },
+    {
+      "id": "feat_agents_consent",
+      "values": {
+        "label": "The Authorize page: choose a project, tick the permissions",
+        "kind": "image",
+        "ratio": "16x9",
+        "alt": "The Authorize page for an MCP client with project cards and permission checkboxes, two marked elevated",
+        "capture": "Run claude mcp add against :2003, follow the sign-in; screenshot the Authorize page with two projects and the permission list; crop to the card"
+      }
+    },
+    {
+      "id": "feat_agents_assistant",
+      "values": {
+        "label": "The AI Assistant building a section beside the live preview",
+        "kind": "video",
+        "ratio": "16x10",
+        "alt": "The site preview with the AI Assistant panel open while it adds a testimonials section to the page",
+        "capture": "Preview → AI Assistant: ask for a testimonials section from a dataset; show tool calls streaming and the page updating; 15 s"
+      }
+    },
+    {
+      "id": "feat_import_compare",
+      "values": {
+        "label": "visual_audit: the rebuilt page and the live original side by side",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "Full-page screenshots of a rebuilt home page and the original site side by side at desktop width",
+        "capture": "Import a small fixture site, nativize its home page, run visual_audit and lay the fullhd pair side by side; 1440×900"
+      }
+    },
+    {
+      "id": "feat_security_branding",
+      "values": {
+        "label": "A white-labeled sign-in screen with an agency name, logo and passkey button",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The sign-in screen branded with an agency name, logo and colors, offering a passkey sign-in",
+        "capture": "System Settings → Branding: set a fixture agency name, logo and gradient; sign out and capture the sign-in screen; 1440×900"
+      }
+    }
+  ]
+}

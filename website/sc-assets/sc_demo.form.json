@@ -1,0 +1,49 @@
+{
+  "id": "sc_demo",
+  "name": "Showcase demo form",
+  "fields": [
+    {
+      "name": "name",
+      "label": "Your name",
+      "type": "text",
+      "required": true,
+      "placeholder": "Ada Lovelace"
+    },
+    {
+      "name": "email",
+      "label": "Email",
+      "type": "email",
+      "required": true,
+      "placeholder": "you@example.com"
+    },
+    {
+      "name": "topic",
+      "label": "Topic",
+      "type": "select",
+      "required": true,
+      "options": [
+        "A question about Sitewright",
+        "A bug report",
+        "Something else"
+      ]
+    },
+    {
+      "name": "call_date",
+      "label": "Preferred call date",
+      "type": "date"
+    },
+    {
+      "name": "message",
+      "label": "Message",
+      "type": "textarea",
+      "required": true
+    }
+  ],
+  "submitLabel": "Send",
+  "successMessage": "Thanks. Your message reached the project inbox.",
+  "errorMessage": "Sorry, something went wrong. Please try again.",
+  "recipient": "hello@example.com",
+  "mode": "globalSmtp",
+  "pow": true,
+  "captcha": false
+}

@@ -1,0 +1,113 @@
+{{!-- META {"path":"motion","title":"Entrance and scroll motion","description":"Reveal any element as it scrolls into view with one attribute: fifteen effects, with delay, duration, easing and a stagger helper for lists. Plus a logo marquee that runs on CSS alone.","parent":"showcase","order":12,"data":{"icon":"person-simple-run","preset":"sine-strands"}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="overflow-x-clip">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">01 · Effects</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="e1_title">Fifteen ways in.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="e1_lead">Each tile below carries <code class="font-code text-base">data-sw-animation</code> with its effect name. By default a reveal replays: scroll the tiles out of view and back to see them again. <code class="font-code text-base">data-sw-once="true"</code> plays it a single time.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+<!--demo:effects-->
+{{#each (sw-split "fade,fade-up,fade-down,fade-left,fade-right,zoom-in,zoom-out,slide-up,slide-down,slide-left,slide-right,flip-up,flip-down,flip-left,flip-right")}}
+<div data-sw-animation="{{this}}" data-sw-duration="700" class="grid h-28 place-items-center rounded-2xl border border-base-content/10 bg-base-100 font-code text-sm">{{this}}</div>
+{{/each}}
+<!--/demo-->
+    </div>
+    <div class="mt-6">
+<!--code:effects file="motion · every effect"-->
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">02 · Stagger</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="e2_title">A list that arrives in order.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="e2_lead">Stagger a loop with <code class="font-code text-base">\{{sw-stagger @index}}</code>: it multiplies the index by a step and caps the total, so the last card of a long grid does not wait seconds. Here the step is 60 ms and the cap 480 ms.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+<!--demo:stagger-->
+{{#each (sw-split "Pages,Snippets,Templates,Datasets,Media,Forms,Languages,Shop,Booking,Statistics,Deploys,Agents")}}
+<div data-sw-animation="zoom-in" data-sw-delay="{{sw-stagger @index 60 480}}" class="rounded-2xl bg-base-100 p-4 text-center font-heading font-semibold shadow-sm">{{this}}</div>
+{{/each}}
+<!--/demo-->
+    </div>
+    <div class="mt-6">
+<!--code:stagger file="motion · stagger"-->
+    </div>
+  </div>
+</section>
+
+<section class="overflow-x-clip">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">03 · Timing</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="e3_title">Duration and easing.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="e3_lead"><code class="font-code text-base">data-sw-duration</code> is in milliseconds, 450 by default. <code class="font-code text-base">data-sw-easing</code> takes linear, ease, ease-in, ease-out or ease-in-out. The three bars share an effect and differ only in timing.</p>
+    </div>
+    <div class="mt-10 space-y-4">
+<!--demo:timing-->
+<div data-sw-animation="slide-right" data-sw-duration="400" data-sw-easing="linear" class="rounded-2xl bg-primary px-5 py-4 font-code text-sm text-primary-content">400 ms · linear</div>
+<div data-sw-animation="slide-right" data-sw-duration="1200" data-sw-easing="ease-out" class="rounded-2xl bg-secondary px-5 py-4 font-code text-sm text-secondary-content">1200 ms · ease-out</div>
+<div data-sw-animation="slide-right" data-sw-duration="2400" data-sw-easing="ease-in-out" class="rounded-2xl bg-neutral px-5 py-4 font-code text-sm text-white">2400 ms · ease-in-out</div>
+<!--/demo-->
+    </div>
+    <div class="mt-6">
+<!--code:timing file="motion · timing"-->
+    </div>
+  </div>
+</section>
+
+<section class="bg-neutral text-white">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index text-accent">04 · Marquee</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="e4_title">A logo strip with no JavaScript.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-white/70" data-sw-text="e4_lead"><code class="font-code text-base">data-sw-marquee</code> scrolls its track endlessly with CSS alone. The track holds the items twice, so the loop has no seam; the second set is hidden from screen readers. It pauses on hover, and with reduced motion it stops and wraps into a still row without the copies. <code class="font-code text-base">data-speed="Slow"</code> or <code class="font-code text-base">"Fast"</code> changes the pace.</p>
+    </div>
+    <div class="mt-10">
+<!--demo:marquee-->
+<div data-sw-marquee data-speed="Slow" aria-label="Built with">
+  <div class="sw-marquee-track">
+    {{#each (sw-split "typescript,nodedotjs,react,tailwindcss,docker,github,html5,css")}}
+    <div class="sw-marquee-item rounded-2xl border border-white/10 bg-white/5 px-8 py-5">{{sw-icon (sw-concat "brand:" this) "h-9 w-9 text-white/80"}}</div>
+    {{/each}}
+    {{#each (sw-split "typescript,nodedotjs,react,tailwindcss,docker,github,html5,css")}}
+    <div class="sw-marquee-item rounded-2xl border border-white/10 bg-white/5 px-8 py-5" data-sw-marquee-dup aria-hidden="true">{{sw-icon (sw-concat "brand:" this) "h-9 w-9 text-white/80"}}</div>
+    {{/each}}
+  </div>
+</div>
+<!--/demo-->
+    </div>
+    <div class="mt-10">
+<!--code:marquee file="motion · marquee"-->
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">Reference</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-4xl" data-sw-text="ref_title">The reveal attributes.</h2>
+  </div>
+  <div class="mt-8 overflow-x-auto rounded-2xl border border-base-content/10 bg-base-100">
+    <table class="table">
+      <thead><tr><th>Attribute</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-sw-animation</td><td>The effect, and the switch that turns the reveal on.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-sw-delay</td><td>Wait before starting, in ms. Default 0.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-sw-duration</td><td>Length in ms. Default 450, at most 20000.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-sw-easing</td><td>linear, ease, ease-in, ease-out or ease-in-out.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-sw-offset</td><td>Moves the line an element must cross to reveal, in px from the bottom of the window. The default line sits 20% up.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-sw-threshold</td><td>Also requires this fraction of the element, 0 to 1, to be visible. Off by default; prefer the offset.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-sw-once</td><td><code class="font-code text-sm">true</code> plays once. By default the reveal resets when the element leaves the view and plays again on return.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="mt-8 max-w-3xl leading-relaxed text-base-content/70">The runtime ships only to pages that use it. Content stays visible without JavaScript, and visitors who prefer reduced motion see it without the movement.</p>
+</section>
+
+{{> showcase-next}}

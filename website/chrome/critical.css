@@ -1,0 +1,111 @@
+:root{scroll-behavior:smooth}
+
+/* Links in running text and the footer: an underline that draws in on hover. */
+.ws-link{background-image:linear-gradient(currentColor,currentColor);background-size:0% 1px;background-position:0 100%;background-repeat:no-repeat;transition:background-size .25s,color .2s}
+.ws-link:hover{background-size:100% 1px;color:var(--sw-color-primary)}
+
+/* Sticky header: a hairline shadow once the page scrolls (the platform toggles html.sw-scrolled). */
+@media (prefers-reduced-motion:no-preference){#main-nav .ws-bar{transition:box-shadow .3s ease}}
+html.sw-scrolled #main-nav .ws-bar{box-shadow:0 1px 12px rgba(15,23,42,.08)}
+
+/* Indigo text and icons on the page background. The dark theme lifts primary for surfaces and buttons, but small
+   indigo text on the dark base still reads too dark, so it takes the lighter brand indigo there. */
+.ws-ink{color:var(--sw-color-primary)}
+[data-sw-theme="dark"] .ws-ink{color:#A99CFF}
+
+/* Display headings: Space Grotesk, set tight. */
+.ws-display{font-family:var(--sw-font-heading);letter-spacing:-.035em;line-height:1.02}
+.ws-gradient-text{background:linear-gradient(100deg,#8B7BFF 0%,#2DD4BF 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* The hero sits on a dark shader in BOTH themes; a faint grid gives it structure. */
+.ws-grid{background-image:linear-gradient(rgba(255,255,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.06) 1px,transparent 1px);background-size:64px 64px;-webkit-mask-image:radial-gradient(ellipse at 50% 40%,#000 30%,transparent 75%);mask-image:radial-gradient(ellipse at 50% 40%,#000 30%,transparent 75%)}
+
+/* Code and terminal windows are always dark, so their token colours are fixed. */
+.ws-window{background:#0B1020;color:#E2E8F0;border:1px solid rgba(148,163,184,.18);box-shadow:0 30px 80px -30px rgba(15,23,42,.55)}
+.ws-window pre,.ws-window code{background:transparent;color:inherit;border:0;padding:0;margin:0}
+.ws-window pre{padding:1.25rem;font-family:var(--sw-font-code),ui-monospace,monospace;font-size:.8125rem;line-height:1.7}
+.ws-dots i{display:inline-block;width:.65rem;height:.65rem;border-radius:999px;background:#334155}
+.ws-dots i:nth-child(1){background:#F87171}.ws-dots i:nth-child(2){background:#FBBF24}.ws-dots i:nth-child(3){background:#34D399}
+.tk-tag{color:#93C5FD}.tk-attr{color:#C4B5FD}.tk-str{color:#86EFAC}.tk-hb{color:#2DD4BF}.tk-kw{color:#F9A8D4}.tk-com{color:#64748B}.tk-ok{color:#34D399}.tk-dim{color:#94A3B8}
+
+/* Feature tiles: lift and glow on hover. */
+.ws-tile{transition:transform .35s cubic-bezier(.22,1,.36,1),border-color .35s,box-shadow .35s}
+.ws-tile:hover{transform:translateY(-4px);border-color:color-mix(in oklab,var(--sw-color-primary) 45%,transparent);box-shadow:0 18px 40px -22px color-mix(in oklab,var(--sw-color-primary) 60%,transparent)}
+@media (prefers-reduced-motion:reduce){.ws-tile,.ws-tile:hover{transition:none;transform:none}}
+
+/* ---- Media slots (snippet ws-media): a real screenshot/video once its slot is filled, a labelled placeholder until. */
+.ws-media{position:relative;overflow:hidden;border-radius:1rem;margin:0}
+.ws-media>img,.ws-media>video{display:block;width:100%;height:100%;object-fit:cover}
+.ws-r-16x10{aspect-ratio:16/10}.ws-r-16x9{aspect-ratio:16/9}.ws-r-4x3{aspect-ratio:4/3}.ws-r-3x2{aspect-ratio:3/2}
+.ws-r-1x1{aspect-ratio:1/1}.ws-r-9x16{aspect-ratio:9/16}.ws-r-3x4{aspect-ratio:3/4}.ws-r-21x9{aspect-ratio:21/9}
+.ws-ph{position:absolute;inset:0;display:grid;place-items:center;align-content:center;gap:.6rem;padding:1.25rem;text-align:center;
+  color:color-mix(in oklab,currentColor 70%,transparent);
+  background:
+    repeating-linear-gradient(135deg,color-mix(in oklab,currentColor 5%,transparent) 0 1px,transparent 1px 14px),
+    radial-gradient(120% 90% at 20% 0%,color-mix(in oklab,var(--sw-color-primary) 16%,transparent),transparent 60%),
+    radial-gradient(90% 80% at 100% 100%,color-mix(in oklab,var(--sw-color-accent) 14%,transparent),transparent 60%);
+  border:1.5px dashed color-mix(in oklab,currentColor 22%,transparent);border-radius:inherit}
+.ws-ph-icon{display:inline-grid;place-items:center;width:3rem;height:3rem;border-radius:999px;background:color-mix(in oklab,currentColor 10%,transparent)}
+.ws-ph-label{font-family:var(--sw-font-heading);font-weight:600;font-size:.95rem;max-width:28ch;line-height:1.3}
+.ws-ph-meta{font-family:var(--sw-font-code),ui-monospace,monospace;font-size:.7rem;opacity:.75;letter-spacing:.02em}
+
+/* ---- Frames around media: a browser window and phone/tablet bezels. */
+.ws-browser{border-radius:1rem;overflow:hidden;border:1px solid color-mix(in oklab,currentColor 14%,transparent);background:color-mix(in oklab,var(--sw-color-base-100) 92%,transparent);box-shadow:0 40px 100px -40px rgba(15,23,42,.6)}
+.ws-browser-bar{display:flex;align-items:center;gap:.4rem;padding:.6rem .9rem;border-bottom:1px solid color-mix(in oklab,currentColor 10%,transparent)}
+.ws-browser-bar i{width:.6rem;height:.6rem;border-radius:999px;background:color-mix(in oklab,currentColor 22%,transparent)}
+.ws-browser-url{margin-left:.6rem;flex:1;max-width:22rem;border-radius:999px;padding:.15rem .75rem;font-size:.7rem;font-family:var(--sw-font-code),monospace;background:color-mix(in oklab,currentColor 7%,transparent);opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ws-device{border-radius:1.6rem;padding:.45rem;background:#0B1020;color:#CBD5E1;box-shadow:0 30px 60px -30px rgba(15,23,42,.6)}
+.ws-device>.ws-media{border-radius:1.2rem}
+
+/* ---- Hero: the product frame tilts back in 3D and straightens on hover. */
+.ws-tilt{transform:perspective(1800px) rotateX(10deg) scale(.96);transform-origin:50% 0;transition:transform .8s cubic-bezier(.22,1,.36,1)}
+.ws-tilt:hover{transform:perspective(1800px) rotateX(2deg) scale(.985)}
+.ws-glow{position:absolute;inset:8% 10% auto;height:70%;filter:blur(70px);opacity:.55;background:radial-gradient(closest-side,#6D5BF5,transparent),radial-gradient(closest-side at 70% 60%,#14B8A6,transparent);pointer-events:none}
+.ws-chip{display:inline-flex;align-items:center;gap:.45rem;border-radius:999px;padding:.4rem .8rem;font-size:.78rem;font-weight:500;color:#E2E8F0;background:rgba(11,16,32,.72);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(10px);box-shadow:0 10px 30px -12px rgba(0,0,0,.5)}
+@keyframes ws-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@media (prefers-reduced-motion:no-preference){.ws-bob{animation:ws-bob 6s ease-in-out infinite}.ws-bob-2{animation:ws-bob 7s ease-in-out -2s infinite}}
+.ws-hero-copy{text-shadow:0 2px 24px rgba(5,8,20,.55)}
+
+/* ---- Marquee: an endless ticker of capabilities (CSS only; pauses on hover and for reduced motion). */
+.ws-marquee{overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
+.ws-marquee-track{display:flex;width:max-content;gap:.75rem}
+@keyframes ws-marquee{to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:no-preference){.ws-marquee-track{animation:ws-marquee 48s linear infinite}.ws-marquee:hover .ws-marquee-track{animation-play-state:paused}}
+
+/* ---- Editorial type: section numbers, oversized numerals, eyebrow rule. */
+.ws-index{font-family:var(--sw-font-code),monospace;font-size:.8rem;letter-spacing:.12em;text-transform:uppercase}
+.ws-numeral{font-family:var(--sw-font-heading);font-weight:700;letter-spacing:-.05em;line-height:.85;background:linear-gradient(180deg,var(--sw-color-base-content),color-mix(in oklab,var(--sw-color-base-content) 35%,transparent));-webkit-background-clip:text;background-clip:text;color:transparent}
+.ws-rule{height:1px;background:linear-gradient(90deg,color-mix(in oklab,var(--sw-color-base-content) 18%,transparent),transparent)}
+
+/* ---- Deploy diagram: lines draw in (data-sw-svg="draw"); nodes are cards. */
+.ws-node{border-radius:.9rem;border:1px solid color-mix(in oklab,var(--sw-color-base-content) 12%,transparent);background:var(--sw-color-base-100);padding:.7rem .9rem;box-shadow:0 10px 30px -18px rgba(15,23,42,.35)}
+.ws-wire{stroke:color-mix(in oklab,var(--sw-color-primary) 55%,transparent);stroke-width:1.5;fill:none;stroke-dasharray:4 5}
+
+/* ---- Inner pages: a faint ink grid behind page headers; the docs layout and article typography. */
+.ws-grid-ink{background-image:linear-gradient(color-mix(in oklab,var(--sw-color-base-content) 6%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in oklab,var(--sw-color-base-content) 6%,transparent) 1px,transparent 1px);background-size:56px 56px;-webkit-mask-image:radial-gradient(ellipse at 70% 0%,#000 20%,transparent 70%);mask-image:radial-gradient(ellipse at 70% 0%,#000 20%,transparent 70%)}
+.ws-docs{display:grid;gap:2.5rem;max-width:80rem;margin:0 auto;padding:3rem 1.5rem 6rem}
+@media (min-width:1024px){.ws-docs{grid-template-columns:15rem minmax(0,1fr);gap:4rem}}
+.ws-article{max-width:48rem;min-width:0}
+.ws-article h2{font-family:var(--sw-font-heading);font-size:1.75rem;font-weight:700;letter-spacing:-.02em;margin-top:3rem;scroll-margin-top:6rem}
+.ws-article h3{font-family:var(--sw-font-heading);font-size:1.2rem;font-weight:700;margin-top:2rem;scroll-margin-top:6rem}
+.ws-article p,.ws-article ul,.ws-article ol,.ws-article table,.ws-article .ws-window,.ws-article .ws-callout,.ws-article figure{margin-top:1rem}
+.ws-article p,.ws-article li{line-height:1.75;color:color-mix(in oklab,var(--sw-color-base-content) 85%,transparent)}
+.ws-article ul{list-style:disc;padding-left:1.25rem}.ws-article ol{list-style:decimal;padding-left:1.25rem}
+.ws-article li+li{margin-top:.35rem}
+.ws-article a:not(.btn){color:var(--sw-color-primary);text-decoration:underline;text-underline-offset:3px}
+[data-sw-theme="dark"] .ws-article a:not(.btn){color:#A99CFF}
+.ws-article :not(pre)>code{font-family:var(--sw-font-code),monospace;font-size:.875em;padding:.1rem .35rem;border-radius:.35rem;background:color-mix(in oklab,var(--sw-color-base-content) 8%,transparent)}
+.ws-article table{width:100%;border-collapse:collapse;font-size:.9rem;display:block;overflow-x:auto}
+.ws-article th,.ws-article td{text-align:left;padding:.55rem .75rem;border-bottom:1px solid color-mix(in oklab,var(--sw-color-base-content) 12%,transparent);vertical-align:top}
+.ws-article th{font-weight:600;white-space:nowrap}
+.ws-callout{border-radius:.9rem;padding:1rem 1.15rem;border:1px solid color-mix(in oklab,var(--sw-color-primary) 30%,transparent);background:color-mix(in oklab,var(--sw-color-primary) 7%,transparent)}
+.ws-callout-warn{border-color:color-mix(in oklab,#F59E0B 45%,transparent);background:color-mix(in oklab,#F59E0B 9%,transparent)}
+
+/* ---- Showcase overview tiles: layered brand gradients, no WebGL (a page holds at most 16 live contexts). */
+.ws-sc-tile{background:radial-gradient(120% 95% at 0% 0%,color-mix(in oklab,var(--sw-color-primary) 85%,transparent),transparent 62%),radial-gradient(110% 90% at 100% 100%,color-mix(in oklab,var(--sw-color-accent) 70%,transparent),transparent 58%),#0B1020}
+.ws-sc-tile-2{background:radial-gradient(120% 95% at 100% 0%,color-mix(in oklab,var(--sw-color-secondary) 85%,transparent),transparent 62%),radial-gradient(110% 90% at 0% 100%,color-mix(in oklab,var(--sw-color-primary) 60%,transparent),transparent 58%),#0B1020}
+.ws-sc-tile-3{background:radial-gradient(120% 95% at 50% 120%,color-mix(in oklab,var(--sw-color-accent) 80%,transparent),transparent 62%),radial-gradient(90% 80% at 0% 0%,color-mix(in oklab,var(--sw-color-secondary) 55%,transparent),transparent 58%),#0B1020}
+/* Inside articles: card lists stay unbulleted, cards are not underlined, frames get room above. */
+.ws-article ul.list-none{list-style:none;padding-left:0}
+.ws-article a.ws-tile{text-decoration:none;color:inherit}
+.ws-article .ws-browser{margin-top:1.5rem}

@@ -1,0 +1,187 @@
+{
+  "dataset": {
+    "id": "media_slots",
+    "name": "Media slots",
+    "slug": "media_slots",
+    "fields": [
+      {
+        "name": "label",
+        "type": "text",
+        "required": true,
+        "localized": false
+      },
+      {
+        "name": "kind",
+        "type": "select",
+        "required": true,
+        "localized": false,
+        "config": {
+          "options": [
+            "image",
+            "video"
+          ]
+        }
+      },
+      {
+        "name": "ratio",
+        "type": "select",
+        "required": false,
+        "localized": false,
+        "config": {
+          "options": [
+            "16x10",
+            "16x9",
+            "4x3",
+            "3x2",
+            "1x1",
+            "9x16",
+            "3x4",
+            "21x9"
+          ]
+        }
+      },
+      {
+        "name": "image",
+        "type": "image",
+        "required": false,
+        "localized": false
+      },
+      {
+        "name": "video",
+        "type": "file",
+        "required": false,
+        "localized": false
+      },
+      {
+        "name": "poster",
+        "type": "image",
+        "required": false,
+        "localized": false
+      },
+      {
+        "name": "alt",
+        "type": "text",
+        "required": false,
+        "localized": false
+      },
+      {
+        "name": "capture",
+        "type": "text",
+        "required": false,
+        "localized": false
+      }
+    ]
+  },
+  "entries": [
+    {
+      "id": "hero_product",
+      "values": {
+        "label": "The editor: a page's code and its live preview",
+        "kind": "video",
+        "ratio": "16x10",
+        "alt": "The Sitewright editor showing a page's code and its live preview",
+        "capture": "Editor, page home: type a heading change in CodeMirror, the preview updates; 12–15 s loop, 1440×900"
+      }
+    },
+    {
+      "id": "way_developer",
+      "values": {
+        "label": "Writing a page in the code editor while the preview follows",
+        "kind": "video",
+        "ratio": "16x10",
+        "alt": "A page being written in the code editor while its preview updates",
+        "capture": "Code tab: add a dataset loop, preview shows the cards; 10 s"
+      }
+    },
+    {
+      "id": "way_client",
+      "values": {
+        "label": "A client edits a heading in place on the live preview",
+        "kind": "video",
+        "ratio": "16x10",
+        "alt": "A client clicking a heading on the live preview and retyping it",
+        "capture": "Content editor as a client: click heading, retype, save; 8–10 s"
+      }
+    },
+    {
+      "id": "way_agent",
+      "values": {
+        "label": "Claude builds a page through MCP while the editor refreshes",
+        "kind": "video",
+        "ratio": "16x10",
+        "alt": "Claude Code calling Sitewright tools while the editor shows the page appear",
+        "capture": "Terminal (Claude Code) left, editor right; put_page then preview_page; 15 s"
+      }
+    },
+    {
+      "id": "tile_forms",
+      "values": {
+        "label": "The form submissions inbox",
+        "kind": "image",
+        "ratio": "4x3",
+        "alt": "The form submissions inbox listing recent enquiries",
+        "capture": "Forms → Submissions with 6 fixture rows"
+      }
+    },
+    {
+      "id": "tile_stats",
+      "values": {
+        "label": "The statistics dashboard with its visitor map",
+        "kind": "image",
+        "ratio": "4x3",
+        "alt": "The statistics dashboard: visits, sources and a country map",
+        "capture": "Statistics tab, 30 days, fixture data"
+      }
+    },
+    {
+      "id": "agent_mobile",
+      "values": {
+        "label": "Agent preview · mobile",
+        "kind": "image",
+        "ratio": "9x16",
+        "alt": "A page preview at mobile width, as an agent receives it",
+        "capture": "preview_page mobile of the pricing demo page"
+      }
+    },
+    {
+      "id": "agent_tablet",
+      "values": {
+        "label": "Agent preview · tablet",
+        "kind": "image",
+        "ratio": "3x4",
+        "alt": "A page preview at tablet width, as an agent receives it",
+        "capture": "preview_page tablet"
+      }
+    },
+    {
+      "id": "agent_desktop",
+      "values": {
+        "label": "Agent preview · full HD",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "A page preview at full HD width, as an agent receives it",
+        "capture": "preview_page fullhd"
+      }
+    },
+    {
+      "id": "feat_publish_targets",
+      "values": {
+        "label": "Deploy targets: Local Hosting, an SFTP server and a GitHub Pages repository",
+        "kind": "image",
+        "ratio": "16x10",
+        "alt": "The deploy targets list with Local Hosting, SFTP and Git targets",
+        "capture": "Publish → Deploy targets with three fixture targets, one marked demo copy"
+      }
+    },
+    {
+      "id": "feat_publish_progress",
+      "values": {
+        "label": "A deploy streaming its progress file by file",
+        "kind": "video",
+        "ratio": "16x10",
+        "alt": "A deploy in progress, listing each uploaded file",
+        "capture": "Deploy to the SFTP fixture target; 8–10 s"
+      }
+    }
+  ]
+}

@@ -1,0 +1,227 @@
+{{!-- META {"path":"components","title":"Components","description":"The ten interactive components: the marker that turns each one on, its parts, every data-* option, and what a visitor gets without JavaScript.","parent":"reference","order":4,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>A component is plain markup with a marker: <code>data-sw-component="&lt;name&gt;"</code> on the root, <code>data-sw-part="&lt;role&gt;"</code> on the pieces the runtime needs, and <code>data-*</code> attributes for options. The platform sees the marker when it renders and ships that component's script with the page; a page without one ships none. Every component works, or degrades to readable content, without JavaScript.</p>
+    <p>You never add a library, a CDN link or a script for these. Agents get the same contracts from the <code>get_components</code> tool, and each one is running live in the <a href="{{sw-url '/showcase'}}">showcase</a>.</p>
+
+    <table>
+      <thead><tr><th>Component</th><th>Marker</th><th>Use it for</th><th class="min-w-56">Live</th></tr></thead>
+      <tbody>
+        <tr><td><a href="#carousel">Carousel</a></td><td class="whitespace-nowrap"><code>carousel</code></td><td>Sliders, hero slideshows, card rows with a peek, logo tickers</td><td><a href="{{sw-url '/showcase/carousel'}}">Showcase</a></td></tr>
+        <tr><td><a href="#tabs">Tabs</a></td><td class="whitespace-nowrap"><code>tabs</code></td><td>Content panels behind an accessible tab list</td><td><a href="{{sw-url '/showcase/tabs'}}">Showcase</a></td></tr>
+        <tr><td><a href="#lightbox">Lightbox</a></td><td class="whitespace-nowrap"><code>lightbox</code></td><td>Full-screen image viewer and galleries</td><td><a href="{{sw-url '/showcase/lightbox'}}">Showcase</a></td></tr>
+        <tr><td><a href="#modal">Modal</a></td><td class="whitespace-nowrap"><code>modal</code></td><td>Dialogs on the native <code>&lt;dialog&gt;</code></td><td><a href="{{sw-url '/showcase/modal'}}">Showcase</a></td></tr>
+        <tr><td><a href="#banner">Banner</a></td><td class="whitespace-nowrap"><code>banner</code></td><td>Dismissible announcements and promos</td><td><a href="{{sw-url '/showcase/banner'}}">Showcase</a></td></tr>
+        <tr><td><a href="#form">Form</a></td><td class="whitespace-nowrap"><code>form</code></td><td>Stored forms with spam protection (embedded, never hand-written)</td><td><a href="{{sw-url '/showcase/forms'}}">Showcase</a></td></tr>
+        <tr><td><a href="#datetimepicker">DateTimePicker</a></td><td class="whitespace-nowrap"><code>datetimepicker</code></td><td>Date, range, date-and-time and time pickers</td><td><a href="{{sw-url '/showcase/date-picker'}}">Showcase</a></td></tr>
+        <tr><td><a href="#shader-bg">ShaderBg</a></td><td class="whitespace-nowrap"><code>shader-bg</code></td><td>Animated WebGL backgrounds in the brand colors</td><td><a href="{{sw-url '/showcase/animated-backgrounds'}}">Showcase</a></td></tr>
+        <tr><td><a href="#image-map">ImageMap</a></td><td class="whitespace-nowrap"><code>image-map</code></td><td>Floor plans, venue maps and diagrams with hotspots</td><td><a href="{{sw-url '/showcase/image-maps'}}">Showcase</a></td></tr>
+        <tr><td><a href="#search">Search</a></td><td class="whitespace-nowrap"><code>search</code></td><td>Full-text site search over a static index</td><td><a href="{{sw-url '/showcase/search'}}">Showcase</a></td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="carousel">Carousel</h2>
+    <p>A slider built on Embla: crossfade (default) or slide, arrows, dots, keyboard and swipe, looping, autoplay or a continuous ticker, wheel gestures and auto height. Slides per view is the <code>--sw-items</code> CSS variable on the root: <code>class="[--sw-items:1.15] md:[--sw-items:3]"</code> shows a peek on phones and three across from <code>md</code>. Multi-item layouts need <code>data-effect="slide"</code>.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">carousel</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"relative"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"carousel"</span> <span class="tk-attr">data-sw-block</span>=<span class="tk-str">"Carousel"</span> <span class="tk-attr">data-autoplay</span>=<span class="tk-str">"true"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Highlights"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"track"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span><span class="tk-tag">&gt;</span>Slide one<span class="tk-tag">&lt;/figure&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span><span class="tk-tag">&gt;</span>Slide two<span class="tk-tag">&lt;/figure&gt;</span>
+  <span class="tk-tag">&lt;/div&gt;</span>
+  <span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"prev"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Previous slide"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "caret-double-left:bold" ""}}</span><span class="tk-tag">&lt;/button&gt;</span>
+  <span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"next"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Next slide"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "caret-double-right:bold" ""}}</span><span class="tk-tag">&lt;/button&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"dots"</span> <span class="tk-attr">aria-hidden</span>=<span class="tk-str">"true"</span><span class="tk-tag">&gt;&lt;/div&gt;</span>
+<span class="tk-tag">&lt;/div&gt;</span></code></pre>
+    </div>
+    <p>Parts: <code>track</code> and at least two <code>slide</code>s (required); <code>prev</code>, <code>next</code>, <code>dots</code> (optional, leave one out to drop it).</p>
+    <table>
+      <thead><tr><th>Attribute (root)</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>data-effect</code></td><td><code>fade</code> (default) or <code>slide</code>. <code>slide</code> is required for <code>--sw-items</code> layouts and auto height.</td></tr>
+        <tr><td><code>data-loop</code></td><td>Looping is on by default; <code>"false"</code> stops at the ends and disables the arrow there.</td></tr>
+        <tr><td><code>data-autoplay</code></td><td><code>"true"</code> advances in steps; pauses on hover and focus, off under reduced motion.</td></tr>
+        <tr><td><code>data-interval</code></td><td>Autoplay step in ms (default 5000).</td></tr>
+        <tr><td><code>data-autoscroll</code></td><td><code>"true"</code> scrolls continuously, for a ticker or logo wall. Wins over autoplay.</td></tr>
+        <tr><td><code>data-autoscroll-speed</code></td><td>Ticker speed in px per frame (default 2).</td></tr>
+        <tr><td><code>data-wheel</code></td><td><code>"true"</code> navigates with the mouse wheel or trackpad.</td></tr>
+        <tr><td><code>data-autoheight</code></td><td><code>"true"</code> animates the height to the current slide. Needs <code>data-effect="slide"</code>.</td></tr>
+        <tr><td><code>data-item-align</code></td><td><code>center</code> (default), <code>start</code> or <code>end</code>; also aligns a row with fewer slides than <code>--sw-items</code>.</td></tr>
+        <tr><td><code>data-align</code></td><td>Fallback snap alignment; prefer <code>data-item-align</code>.</td></tr>
+        <tr><td><code>data-arrows</code></td><td><code>edge</code> (full-height gradient arrows, the default for one slide per view) or <code>circle</code> (the default for multi-item rows).</td></tr>
+        <tr><td><code>data-kenburns</code></td><td>Slow pan and zoom on each slide's <code>.sw-kenburns</code> layer, with a rising <code>.sw-caption</code>. <code>="off"</code> keeps the layout without the zoom.</td></tr>
+        <tr><td><code>data-click-next</code></td><td>Clicking a slide advances. On by default for single full-width sliders, opt-in (<code>"true"</code>) elsewhere.</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Without JavaScript:</strong> the track is a CSS scroll-snap row you can swipe; arrows and dots stay hidden.</p>
+    <div class="ws-callout"><p class="!mt-0"><strong>Two things the runtime adds.</strong> It wraps the track in a clipping <code>[data-sw-part="container"]</code>, so content meant to overhang the slider is cut unless that wrapper gets <code>overflow:visible</code> too. And the default edge arrows carry a dark <code>::before</code> gradient that fades in on hover; hide it with <code>[data-sw-part="prev"]::before,[data-sw-part="next"]::before{display:none}</code> when you recolor them.</p></div>
+
+    <h2 id="tabs">Tabs</h2>
+    <p>Panels behind an accessible tab list with roving focus and arrow keys. The runtime builds the tab buttons from each panel's title and slides a highlight to the active one. You write the panels only.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">tabs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"tabs"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"panel"</span> <span class="tk-attr">data-sw-title</span>=<span class="tk-str">"Overview"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;span</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"tabtitle"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "sparkle" "size-4"}}</span> Overview<span class="tk-tag">&lt;/span&gt;</span>
+    First panel
+  <span class="tk-tag">&lt;/div&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"panel"</span> <span class="tk-attr">data-sw-title</span>=<span class="tk-str">"Pricing"</span><span class="tk-tag">&gt;</span>Second panel<span class="tk-tag">&lt;/div&gt;</span>
+<span class="tk-tag">&lt;/div&gt;</span></code></pre>
+    </div>
+    <table>
+      <thead><tr><th>Part or attribute</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>panel</code> (required)</td><td>One tab's content.</td></tr>
+        <tr><td><code>data-sw-title</code> (on a panel)</td><td>The tab label as plain text. With a <code>tabtitle</code> it becomes the accessible name.</td></tr>
+        <tr><td><code>tabtitle</code> (optional)</td><td>A rich label: a direct child of the panel with non-interactive markup (an icon, bold text, a badge). Its nodes move into the tab button. Rich and plain tabs can be mixed.</td></tr>
+        <tr><td><code>tablist</code> (optional)</td><td>Your own mount for the tab bar, only to position or style it. Without it the runtime creates one.</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Without JavaScript:</strong> every panel renders, stacked.</p>
+
+    <h2 id="lightbox">Lightbox</h2>
+    <p>A full-screen viewer with a thumbnail strip, an open animation from the thumbnail, a caption and counter, swipe, pinch-zoom and keyboard navigation. It has three forms: one <code>&lt;img&gt;</code> with the marker, a container of <code>&lt;img&gt;</code> or <code>&lt;a href&gt;&lt;img&gt;&lt;/a&gt;</code> children, or the styled grid with <code>grid</code> and <code>item</code> parts.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">lightbox</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"lightbox"</span> <span class="tk-attr">class</span>=<span class="tk-str">"grid grid-cols-2 gap-3 md:grid-cols-4"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Studio"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-hb">\{{#sw-folder "Studio" kind="image"}}</span>
+  <span class="tk-tag">&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-url url}}</span>"</span> <span class="tk-attr">data-caption</span>=<span class="tk-str">"<span class="tk-hb">\{{alt}}</span>"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;img</span> <span class="tk-attr">src</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-url url}}</span>"</span> <span class="tk-attr">alt</span>=<span class="tk-str">"<span class="tk-hb">\{{alt}}</span>"</span> <span class="tk-attr">loading</span>=<span class="tk-str">"lazy"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;/a&gt;</span>
+  <span class="tk-hb">\{{/sw-folder}}</span>
+<span class="tk-tag">&lt;/div&gt;</span></code></pre>
+    </div>
+    <table>
+      <thead><tr><th>Attribute</th><th>On</th><th class="min-w-56">Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>data-caption</code></td><td>item or <code>&lt;img&gt;</code></td><td>Caption in the viewer's header bar.</td></tr>
+        <tr><td><code>data-full</code></td><td><code>&lt;img&gt;</code></td><td>The full-size URL to open; the <code>src</code> stays the thumbnail.</td></tr>
+        <tr><td><code>data-gallery</code></td><td>root</td><td>Merges every lightbox with the same name on the page into one gallery.</td></tr>
+        <tr><td><code>data-thumbnails</code></td><td>root</td><td><code>"false"</code> hides the thumbnail strip.</td></tr>
+        <tr><td><code>data-arrows</code></td><td>root</td><td><code>"false"</code> hides the arrows.</td></tr>
+        <tr><td><code>data-animation</code></td><td>root</td><td><code>"false"</code> drops the open animation (off under reduced motion anyway).</td></tr>
+        <tr><td><code>data-fit</code></td><td>root</td><td><code>fit</code> (default, whole image) or <code>fill</code>.</td></tr>
+        <tr><td><code>data-tilt</code></td><td>root</td><td><code>"true"</code> pans a zoomed image with the phone's motion sensor.</td></tr>
+        <tr><td><code>data-history</code></td><td>root</td><td><code>"true"</code> puts the open image in the URL hash.</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Without JavaScript:</strong> each thumbnail is a link to the full image. A bare <code>&lt;img&gt;</code> still shows but does not open. Tiles appended later (a "load more") join the gallery on their own.</p>
+
+    <h2 id="modal">Modal</h2>
+    <p>A trigger that opens a native <code>&lt;dialog&gt;</code>: focus trap, Escape and the backdrop come from the browser; the runtime centers it, locks page scroll and adds a close button. Open it from any <code>&lt;a href="#id"&gt;</code> or any element with <code>data-sw-modal="id"</code>. Only one modal is open at a time unless you allow stacking.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">modal</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"#welcome"</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn"</span><span class="tk-tag">&gt;</span>What happens next?<span class="tk-tag">&lt;/a&gt;</span>
+<span class="tk-tag">&lt;dialog</span> <span class="tk-attr">id</span>=<span class="tk-str">"welcome"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"modal"</span> <span class="tk-attr">class</span>=<span class="tk-str">"max-w-lg"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;h2&gt;</span>Dialog title<span class="tk-tag">&lt;/h2&gt;</span>
+  <span class="tk-tag">&lt;p&gt;</span>Dialog body.<span class="tk-tag">&lt;/p&gt;</span>
+<span class="tk-tag">&lt;/dialog&gt;</span></code></pre>
+    </div>
+    <table>
+      <thead><tr><th>Attribute (on the dialog)</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>data-closebutton</code></td><td><code>"false"</code> hides the added close button.</td></tr>
+        <tr><td><code>data-backdrop-close</code></td><td><code>"false"</code> keeps it open on a backdrop click, for a forced choice.</td></tr>
+        <tr><td><code>data-close-label</code></td><td>Accessible label of the close button (default "Close").</td></tr>
+        <tr><td><code>data-allow-multiple</code></td><td><code>"true"</code> lets it stack with other modals.</td></tr>
+        <tr><td><code>data-sw-part="close"</code></td><td>An extra close control inside the dialog.</td></tr>
+      </tbody>
+    </table>
+    <p>Width is a utility on the dialog itself (<code>max-w-3xl</code>, <code>w-11/12 max-w-5xl</code>); the card is 32rem by default and always shrinks to fit a narrow screen. <strong>Without JavaScript:</strong> the trigger does nothing, so never put essential content only in a modal.</p>
+
+    <h2 id="banner">Banner</h2>
+    <p>A dismissible announcement you write yourself. It ships <code>hidden</code>; the runtime reveals it and remembers the dismissal in the visitor's browser. It is not the cookie banner: that one comes from the consent manager.</p>
+    <table>
+      <thead><tr><th>Part or attribute</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>hidden</code> (required)</td><td>Keeps it out of view without JavaScript and once dismissed.</td></tr>
+        <tr><td><code>data-sw-banner-id</code></td><td>Storage key for the dismissal (default <code>default</code>). Give every banner its own.</td></tr>
+        <tr><td><code>data-frequency</code></td><td><code>once</code> (default), <code>session</code>, <code>days:N</code> or <code>always</code>.</td></tr>
+        <tr><td><code>data-position</code></td><td><code>bottom</code>, <code>top</code>, <code>bottom-left</code>, <code>bottom-right</code> (default), <code>top-left</code>, <code>top-right</code>, <code>center</code>, <code>inline</code>.</td></tr>
+        <tr><td><code>data-delay</code></td><td>Milliseconds before it shows, or <code>scroll</code> to show after the first scroll.</td></tr>
+        <tr><td><code>data-remind-days</code></td><td>Days the <code>remind</code> button snoozes it (default 1).</td></tr>
+        <tr><td><code>data-sw-animation</code></td><td>An entrance effect instead of the built-in fade and rise; dismissing reverses it.</td></tr>
+        <tr><td><code>dismiss</code> / <code>dismiss-forever</code> / <code>remind</code></td><td>Buttons: dismiss for the configured frequency, for good, or snooze.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="form">Form</h2>
+    <p>The form runtime: JSON submission to the platform, honeypot, time trap, optional proof of work and captcha, inline success and error messages or a redirect. Never write <code>data-sw-component="form"</code> yourself. Create the form, then embed it with <code>\{{sw-form "contact"}}</code>, or write your own <code>&lt;form data-sw-form="contact"&gt;</code> fields and let the render add the rest. <strong>Without JavaScript:</strong> the form has no <code>action</code>, so it cannot submit. Details: <a href="{{sw-url '/docs/guides/forms'}}">Forms and spam protection</a>.</p>
+
+    <h2 id="datetimepicker">DateTimePicker</h2>
+    <p>A themed calendar popup on a text <code>&lt;input&gt;</code>, or an always-open calendar on a block element. The chosen value is written back into the input, so it submits with a form.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">datetimepicker</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;input</span> <span class="tk-attr">type</span>=<span class="tk-str">"text"</span> <span class="tk-attr">name</span>=<span class="tk-str">"stay"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"datetimepicker"</span>
+  <span class="tk-attr">data-mode</span>=<span class="tk-str">"range"</span> <span class="tk-attr">data-min</span>=<span class="tk-str">"2026-06-01"</span> <span class="tk-attr">placeholder</span>=<span class="tk-str">"Check-in – Check-out"</span><span class="tk-tag">&gt;</span></code></pre>
+    </div>
+    <table>
+      <thead><tr><th>Attribute</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>data-mode</code></td><td><code>date</code> (default), <code>range</code> (two months side by side), <code>datetime</code> or <code>time</code>.</td></tr>
+        <tr><td><code>data-months</code></td><td>Months shown, 2 to 12 (default 2 for a range, else 1).</td></tr>
+        <tr><td><code>data-time-format</code></td><td><code>HH:mm</code> (24-hour, default) or an am/pm format such as <code>hh:mm aa</code>.</td></tr>
+        <tr><td><code>data-time-step</code></td><td>Minute step of the time slider.</td></tr>
+        <tr><td><code>data-min</code> / <code>data-max</code></td><td>Earliest and latest selectable date.</td></tr>
+        <tr><td><code>data-locale</code></td><td><code>en</code>, <code>de</code> or <code>es</code>. Otherwise it follows the page's <code>&lt;html lang&gt;</code>.</td></tr>
+        <tr><td><code>data-first-day</code></td><td>First weekday column, 0 (Sunday) to 6.</td></tr>
+        <tr><td><code>data-multiple</code></td><td><code>"true"</code> allows several separate dates. Not with <code>range</code>.</td></tr>
+        <tr><td><code>data-position</code></td><td>Where the popup opens, e.g. <code>bottom left</code>, <code>top center</code>, <code>auto</code>.</td></tr>
+      </tbody>
+    </table>
+    <p>Use <code>type="text"</code>, not <code>date</code> or <code>time</code>, or the browser's own picker opens too. <strong>Without JavaScript:</strong> a plain text input that still submits.</p>
+
+    <h2 id="shader-bg">ShaderBg</h2>
+    <p>An animated WebGL background behind a section's content, colored from the brand tokens and re-themed on a light/dark switch. It pauses off-screen and renders one still frame under reduced motion. Give the section a height; content sits above the canvas on its own.</p>
+    <table>
+      <thead><tr><th>Part or attribute</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>data-preset</code></td><td>One of 31: <code>mesh-gradient</code> (default), <code>silk-flow</code>, <code>plasma</code>, <code>halftone-pulse</code>, <code>caustics</code>, <code>marble-ink</code>, <code>sun-rays</code>, <code>lava-lamp</code>, <code>corner-mesh</code>, <code>flow-field</code>, <code>interference</code>, <code>ribbons</code>, <code>brushed-streaks</code>, <code>voronoi-cells</code>, <code>pointer-ripples</code>, <code>liquid-metal</code>, <code>rising-smoke</code>, <code>edge-glow</code>, <code>waterfall</code>, <code>heat-haze</code>, <code>bokeh-drift</code>, <code>contours</code>, <code>starfield</code>, <code>sine-strands</code>, <code>vortex-swirl</code>, <code>ink-bloom</code>, <code>mist-layers</code>, <code>drifting-blobs</code>, <code>glow-orbits</code>, <code>gradient-flow</code>, <code>neuro-noise</code>.</td></tr>
+        <tr><td><code>data-speed</code></td><td>0 to 4 (default 1); <code>"0"</code> renders one still frame.</td></tr>
+        <tr><td><code>data-intensity</code></td><td>0 to 1 (default 0.5); lower is quieter behind text.</td></tr>
+        <tr><td><code>data-angle</code></td><td>Rotation in degrees, −360 to 360 (default 0).</td></tr>
+        <tr><td><code>data-interactive</code></td><td><code>"true"</code> lets the pointer bend the effect.</td></tr>
+        <tr><td><code>data-colors</code></td><td>Three comma-separated slots: token names (<code>accent,primary,base-content</code>), CSS colors, or <code>auto</code>. Default <code>primary,secondary,neutral</code>.</td></tr>
+        <tr><td><code>data-sw-part="overlay"</code></td><td>An optional scrim between the canvas and your content, e.g. <code>class="bg-black/30"</code>.</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Without JavaScript or WebGL:</strong> a static gradient from the same tokens.</p>
+
+    <h2 id="image-map">ImageMap</h2>
+    <p>An image or SVG with hotspots (rectangles, ovals, polygons, pins, text, SVG regions), each with a tooltip and an optional link; several artboards (floors, layers) with a switcher, zoom, fullscreen and a searchable list. Store a map and embed it with <code>\{{sw-imagemap "id"}}</code>, or write the marker with a <code>&lt;script type="application/json" data-sw-part="config"&gt;</code> child and a fallback <code>&lt;img&gt;</code>. Hotspot positions are percentages of the artboard, so a map holds at every width. Hotspots run no JavaScript: links are followed only for http(s), <code>mailto:</code> and <code>tel:</code>.</p>
+    <table>
+      <thead><tr><th>Attribute (on any element)</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>data-sw-imap-map</code></td><td>Which map a trigger targets, by its name. Not needed with one map on the page.</td></tr>
+        <tr><td><code>data-sw-imap-highlight-object-on-mouseover</code> / <code>-on-click</code></td><td>Highlights the hotspot with that title.</td></tr>
+        <tr><td><code>data-sw-imap-trigger-object-on-mouseover</code> / <code>-on-click</code></td><td>Highlights it and opens its tooltip; the usual choice for a list beside the map.</td></tr>
+        <tr><td><code>data-sw-imap-unhighlight-object-…</code> / <code>-untrigger-object-…</code></td><td>The reverse.</td></tr>
+        <tr><td><code>data-sw-imap-show-tooltip-…</code> / <code>-hide-tooltip-…</code></td><td>Opens or closes just the tooltip.</td></tr>
+        <tr><td><code>data-sw-imap-focus-object-on-mouseover</code> / <code>-on-click</code></td><td>Zooms and pans to the hotspot (zoom must be enabled in the config).</td></tr>
+        <tr><td><code>data-sw-imap-change-artboard</code></td><td>Switches to the artboard with that title.</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Without JavaScript, or with a broken config:</strong> the fallback image.</p>
+
+    <h2 id="search">Search</h2>
+    <p>Full-text search over the index the publish build writes next to <code>sitemap.xml</code>: page bodies, titles, descriptions and headings, one index per language. Results are pages, ranked; quoted phrases match exactly. Header, footer and sidebars are not indexed, and neither are <code>noindex</code> pages. Write <code>\{{sw-search}}</code> for the common case, or the parts when you want your own layout:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">search</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"search"</span> <span class="tk-attr">data-sw-limit</span>=<span class="tk-str">"6"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;input</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"input"</span> <span class="tk-attr">type</span>=<span class="tk-str">"search"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Search"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"results"</span><span class="tk-tag">&gt;&lt;/div&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"empty"</span> <span class="tk-attr">hidden</span><span class="tk-tag">&gt;</span>Nothing matched that.<span class="tk-tag">&lt;/p&gt;</span>
+<span class="tk-tag">&lt;/div&gt;</span></code></pre>
+    </div>
+    <p><code>data-sw-limit</code> caps the results (default 10, at most 50). The runtime fills <code>results</code> with <code>a.sw-search-hit</code> links; style <code>.sw-search-hit</code>, <code>-title</code>, <code>-desc</code> and <code>-snippet</code>. <strong>Without JavaScript:</strong> an inert input.</p>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/reference/effects'}}">Motion and effects</a></li>
+      <li><a href="{{sw-url '/showcase'}}">Showcase</a>: every component running, with its markup</li>
+      <li><a href="{{sw-url '/docs/reference/helpers'}}">Template helpers</a></li>
+    </ul>
+  </article>
+</div>

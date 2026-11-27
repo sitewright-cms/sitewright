@@ -1,0 +1,87 @@
+{{!-- META {"path":"languages","title":"Add a language","description":"Add a second language to a site: every page gets a variant that inherits its layout, and you translate the text, the shared strings and the dataset rows.","parent":"guides","order":1,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>Each language version of a page is a page of its own, with its own address, title, description and text. By default it has no code of its own: it inherits the layout of the main-language page, so a layout change made once reaches every language. Translating means supplying text, never copying markup.</p>
+
+    <h2 id="before">Before you start</h2>
+    <p>Only text that carries a directive can be translated: <code>data-sw-text</code> or <code>data-sw-html</code> for page copy, <code>data-sw-translate</code> or <code>\{{sw-translate}}</code> for strings shared across pages. Text written straight into the markup shows through every language untranslated. Go through the main-language pages first and mark every string. See <a href="{{sw-url '/docs/reference/editing-attributes'}}">Editing attributes</a>.</p>
+
+    <h2 id="add">1. Add the language</h2>
+    <p>Open <strong>Settings → Website → Languages</strong> and choose <strong>+ Add language</strong>. In one step this registers the language and creates a variant of every existing page under <code>/&lt;locale&gt;/</code>, for example <code>/de/</code> and <code>/de/services/</code>. The main language keeps its unprefixed addresses.</p>
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Settings · Website · Languages</span></div>
+      {{> ws-media slot="doc_languages" class="rounded-none"}}
+    </div>
+    <p>Pages you create later in the main language can be made available in every language from the editor. An agent uses <code>add_language</code> with <code>{ "locale": "de" }</code>; calling it again after adding pages fills in the missing variants.</p>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>Never add a language by editing <code>settings.locales</code> directly.</strong> That registers the language with no pages at all. Use the Languages sheet or <code>add_language</code>.</p></div>
+
+    <h2 id="pages">2. Translate the pages</h2>
+    <ol>
+      <li>Switch the pages list to the new language and open a page.</li>
+      <li>Click each piece of text in the preview and type the translation. It is stored in that variant's own <code>page.data</code>; the main page is untouched.</li>
+      <li>In the page's settings, set its title, description, share image and its own address segment (<code>/de/leistungen/</code> rather than <code>/de/services/</code>).</li>
+    </ol>
+    <p>The page's <strong>Code source</strong> setting stays on <strong>Inherit</strong>. Choose <strong>Fork</strong> only when this language needs a different layout: a fork copies the current layout in and stops following the main page.</p>
+
+    <h2 id="strings">3. Translate shared strings</h2>
+    <p>Button labels, menu captions, a tagline in the footer: strings that repeat across pages live in one catalog, <code>website.translations</code>, keyed by name and then by language. Edit them in place where they carry <code>data-sw-translate</code>, or all at once in the <strong>Translations &amp; Labels</strong> grid (one column per language). The platform's own labels for the cart, the consent banner and booking are reserved keys in the same catalog.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">footer</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-page-url "contact"}}</span>"</span> <span class="tk-attr">data-sw-translate</span>=<span class="tk-str">"cta_contact"</span><span class="tk-tag">&gt;</span>Get in touch<span class="tk-tag">&lt;/a&gt;</span>
+<span class="tk-tag">&lt;input</span> <span class="tk-attr">type</span>=<span class="tk-str">"search"</span> <span class="tk-attr">placeholder</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-translate "search_placeholder" default="Search"}}</span>"</span><span class="tk-tag">&gt;</span></code></pre>
+    </div>
+    <p>A missing translation falls back to the main language, then to the authored text or <code>default=</code>.</p>
+
+    <h2 id="data">4. Translate dataset rows</h2>
+    <p>Open an entry in the dataset editor and add its version in the new language. Only the fields that differ are stored, any field, a photo as much as a title. Everything left out follows the main language, so a price is entered once. On a German page every loop, <code>item.&lt;dataset&gt;</code> lookup and <code>sw-pick-entry</code> reads the German version where there is one.</p>
+    <p>Over the API, the row's other languages go under <code>translations</code>:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">entry: web_design (dataset services)</span></div>
+<pre class="overflow-x-auto"><code>{ <span class="tk-attr">"values"</span>: { <span class="tk-attr">"title"</span>: <span class="tk-str">"Web design"</span>, <span class="tk-attr">"price"</span>: <span class="tk-kw">1200</span> },
+  <span class="tk-attr">"translations"</span>: { <span class="tk-attr">"de"</span>: { <span class="tk-attr">"title"</span>: <span class="tk-str">"Webdesign"</span> } } }</code></pre>
+    </div>
+
+    <h2 id="links">5. Link between pages by id</h2>
+    <p>A translated page runs the main page's code, so every link written there runs in every language. <code>\{{sw-page-url "contact"}}</code> links to the page with id <code>contact</code> in the reader's language: <code>/contact/</code> in English, <code>/de/kontakt/</code> in German. A literal <code>\{{sw-url "/contact"}}</code> sends every language to the English page. A dataset <code>page</code> field resolves the same way.</p>
+
+    <h2 id="switcher">6. Add a language switcher</h2>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">mainNav</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-hb">\{{#if page.translations}}</span>
+  <span class="tk-tag">&lt;ul</span> <span class="tk-attr">class</span>=<span class="tk-str">"flex gap-3"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Language"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-hb">\{{#each page.translations}}</span>
+      <span class="tk-tag">&lt;li&gt;&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-url path}}</span>"</span> <span class="tk-attr">hreflang</span>=<span class="tk-str">"<span class="tk-hb">\{{locale}}</span>"</span> <span class="tk-attr">lang</span>=<span class="tk-str">"<span class="tk-hb">\{{locale}}</span>"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{locale}}</span><span class="tk-tag">&lt;/a&gt;&lt;/li&gt;</span>
+    <span class="tk-hb">\{{/each}}</span>
+  <span class="tk-tag">&lt;/ul&gt;</span>
+<span class="tk-hb">\{{/if}}</span></code></pre>
+    </div>
+    <p>For flags, keep a language-to-country map in <code>website.data</code> and reach it from inside the loop with <code>@root</code>: <code>\{{sw-flag (lookup @root.website.data.locale_flags locale)}}</code>. A flag stands for a country, not a language.</p>
+
+    <h2 id="seo">7. Set the site URL</h2>
+    <p>The <code>hreflang</code> alternates, the canonical link and <code>og:url</code> are absolute URLs, so they are only emitted once <strong>Settings → Website → Site → Production URL</strong> (<code>website.siteUrl</code>) is set. Set it before launch; the domain does not have to be live yet.</p>
+
+    <h2 id="verify">Check your work</h2>
+    <ul>
+      <li>Open <code>/de/</code> in the draft preview and click through: every heading, button and menu item should be German. Anything still in English has no directive, or its key has no German value.</li>
+      <li>View the page source of a German page on the draft site: <code>&lt;html lang="de"&gt;</code> and one <code>&lt;link rel="alternate" hreflang&gt;</code> per language.</li>
+      <li>Change a layout detail on the main-language page and confirm the German page follows.</li>
+    </ul>
+
+    <h2 id="pitfalls">Pitfalls</h2>
+    <ul>
+      <li><strong>Hard-coded text.</strong> It cannot be translated without forking; mark it first.</li>
+      <li><strong>Forking to translate.</strong> A forked page no longer receives layout changes. Fork only for a genuinely different layout.</li>
+      <li><strong>Shop prices.</strong> Translate a product's text, not its price: a shop that takes payments refuses to publish a SKU at two prices.</li>
+      <li><strong>Removing a language</strong> deletes its pages and takes its version out of every entry. The pages go to the history and each entry keeps the removed version in its own history. The main language cannot be removed.</li>
+    </ul>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/concepts/pages-and-routes'}}">Pages and routes</a></li>
+      <li><a href="{{sw-url '/docs/concepts/datasets'}}">Datasets</a></li>
+      <li><a href="{{sw-url '/features/languages'}}">Languages</a></li>
+    </ul>
+  </article>
+</div>

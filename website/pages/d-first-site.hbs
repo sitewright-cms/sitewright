@@ -1,0 +1,101 @@
+{{!-- META {"path":"first-site","title":"Build your first site","description":"Create a project, write a page in code, mark text a client may edit, fill a list from a dataset, preview it and publish it to Local Hosting.","parent":"getting-started","order":2,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>This walk-through takes about fifteen minutes. You need a running instance and an account that can create projects (an administrator or a developer). If you have not installed Sitewright yet, start with <a href="{{sw-url '/docs/getting-started/install'}}">Install with Docker</a>.</p>
+
+    <h2 id="project">1. Create a project</h2>
+    <p>A project is one website: its pages, data, media, settings and deploy targets. Open the project picker, choose <strong>New project</strong> and give it a name. The slug is filled in from the name. It is the site's URL-safe identifier and becomes part of its Local Hosting address, so pick it with care.</p>
+    <p>A new project is not empty. It starts with:</p>
+    <ul>
+      <li>a <strong>Home</strong> page at <code>/</code>, already in the main menu;</li>
+      <li>a working header (desktop bar and mobile drawer) and a footer, copied from the built-in navigation recipes;</li>
+      <li>the project name and a default primary colour in <strong>Corporate Identity</strong>.</li>
+    </ul>
+    <p>Set your own colours, fonts and logo in the <strong>Corporate Identity</strong> tab before you write much markup: every page reads them as theme tokens. <a href="{{sw-url '/docs/concepts/brand-and-themes'}}">Brand, themes and layout</a> explains how.</p>
+
+    <h2 id="page">2. Write the page in code</h2>
+    <p>Open the <strong>Pages</strong> tab and click <strong>Home</strong>. The page editor opens in the Content Editor; switch to <strong>Code Editor</strong>. The code sits in a strip above the live preview and grows while you hover or type in it. Replace the starter source with this:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">Home · source</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;section</span> <span class="tk-attr">class</span>=<span class="tk-str">"mx-auto max-w-5xl px-6 py-20"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-sm font-semibold uppercase tracking-wider text-primary"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{ company.name }}</span><span class="tk-tag">&lt;/p&gt;</span>
+  <span class="tk-tag">&lt;h1</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-3 text-5xl font-bold tracking-tight"</span> <span class="tk-attr">data-sw-text</span>=<span class="tk-str">"headline"</span><span class="tk-tag">&gt;</span>
+    Websites that load fast.
+  <span class="tk-tag">&lt;/h1&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-4 max-w-2xl text-lg text-base-content/70"</span> <span class="tk-attr">data-sw-text</span>=<span class="tk-str">"lead"</span><span class="tk-tag">&gt;</span>
+    A small studio for design, build and care.
+  <span class="tk-tag">&lt;/p&gt;</span>
+  <span class="tk-tag">&lt;a</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary mt-8"</span> <span class="tk-attr">href</span>=<span class="tk-str">"#services"</span> <span class="tk-attr">data-sw-text</span>=<span class="tk-str">"cta"</span><span class="tk-tag">&gt;</span>See what we do<span class="tk-tag">&lt;/a&gt;</span>
+<span class="tk-tag">&lt;/section&gt;</span></code></pre>
+    </div>
+    <p>A page is Handlebars, HTML, Tailwind CSS v4 and daisyUI 5. A few rules apply from the start:</p>
+    <ul>
+      <li>Use the theme tokens (<code>bg-base-100</code>, <code>text-base-content</code>, <code>bg-primary</code>) for surfaces and text, not fixed palette colours. That is what lets the site switch to a dark theme later.</li>
+      <li>Don't write <code>&lt;nav&gt;</code>, <code>&lt;main&gt;</code>, <code>&lt;footer&gt;</code> or <code>&lt;aside&gt;</code>. Every page is already wrapped in <code>&lt;main id="page-content"&gt;</code>, and the header and footer live in their own slots. Use <code>&lt;section&gt;</code> and <code>&lt;div&gt;</code>.</li>
+      <li>The platform zeroes the browser's default margins on headings, paragraphs and lists, so set spacing with utilities such as <code>mt-4</code>.</li>
+    </ul>
+    <p>The preview re-renders a moment after you stop typing. Click an element in the preview and its markup is selected in the code. <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>S</kbd> saves without closing the editor.</p>
+    <figure class="ws-browser">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Home · Code Editor</span></div>
+      {{> ws-media slot="doc_first_site_code" class="rounded-none"}}
+    </figure>
+
+    <h2 id="editable">3. Mark what a client may edit</h2>
+    <p>The three <code>data-sw-text</code> attributes above are the editable parts of the page. Switch to <strong>Content Editor</strong>: those elements are outlined, and clicking one lets you retype it in place. The new text is saved on the page as <code>page.data.headline</code>, <code>page.data.lead</code> and <code>page.data.cta</code>; the text in your source stays as the default. Nothing else on the page can be changed from the Content Editor, so the layout stays as you wrote it.</p>
+    <p>There are attributes for rich text, links, images and backgrounds as well. <a href="{{sw-url '/docs/concepts/client-editing'}}">Making content editable</a> covers all of them.</p>
+
+    <h2 id="dataset">4. Fill a list from a dataset</h2>
+    <p>Repeated content belongs in a dataset, not in copied markup. Open the <strong>Datasets</strong> rail at the bottom-left edge of the screen and create a dataset named <strong>Services</strong>. Its slug, <code>services</code>, is what the page loops over. Add three fields:</p>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th></tr></thead>
+      <tbody>
+        <tr><td><code>title</code></td><td><code>text</code></td></tr>
+        <tr><td><code>summary</code></td><td><code>text</code></td></tr>
+        <tr><td><code>icon</code></td><td><code>icon</code> (a Phosphor icon name, picked from the icon library)</td></tr>
+      </tbody>
+    </table>
+    <p>Then add three entries with <strong>New entry</strong>, for example "Design", "Build" and "Care", each with a short summary and an icon. Back in the Code Editor, add the loop below the first section:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">Home · source</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;section</span> <span class="tk-attr">id</span>=<span class="tk-str">"services"</span> <span class="tk-attr">class</span>=<span class="tk-str">"mx-auto max-w-5xl px-6 pb-20"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"grid gap-4 sm:grid-cols-3"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-hb">\{{#each dataset.services}}</span>
+    <span class="tk-tag">&lt;article</span> <span class="tk-attr">class</span>=<span class="tk-str">"rounded-box bg-base-200 p-6"</span><span class="tk-tag">&gt;</span>
+      <span class="tk-hb">\{{sw-icon icon "h-7 w-7 text-primary"}}</span>
+      <span class="tk-tag">&lt;h2</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-4 text-lg font-semibold"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{title}}</span><span class="tk-tag">&lt;/h2&gt;</span>
+      <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-2 text-sm text-base-content/70"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{summary}}</span><span class="tk-tag">&lt;/p&gt;</span>
+    <span class="tk-tag">&lt;/article&gt;</span>
+    <span class="tk-hb">\{{/each}}</span>
+  <span class="tk-tag">&lt;/div&gt;</span>
+<span class="tk-tag">&lt;/section&gt;</span></code></pre>
+    </div>
+    <p>Inside the loop you read each entry's fields by name: <code>\{{title}}</code>, not <code>\{{values.title}}</code>. In the Content Editor, clicking a card opens that entry for editing. A client can add, reorder and edit services without touching the page.</p>
+    <div class="ws-callout"><p class="!mt-0"><strong>Draft entries.</strong> Entries you create with <strong>New entry</strong> start as published. An entry set to Draft still shows in the preview but is left out of every publish and deploy.</p></div>
+
+    <h2 id="preview">5. Preview the site</h2>
+    <p>Save the page. <strong>Preview</strong> in the header opens the whole site in a new tab, built from everything you have saved, with no publish needed. The menu, the footer and every published page are there, so you can click through it the way a visitor will. The caret next to Preview creates share links for people who are not signed in.</p>
+    <p>Pages set to <strong>Draft</strong> are not part of that site preview: they have no route, no menu entry and no sitemap line until you publish them. To look at a draft, open it in the page editor, or choose <strong>Preview in new tab</strong> from its row menu in the Pages list. <a href="{{sw-url '/docs/concepts/pages-and-routes'}}">Pages and routes</a> explains the difference.</p>
+
+    <h2 id="publish">6. Publish to Local Hosting</h2>
+    <p>Click <strong>Deploy</strong> in the header. A project without deploy targets opens the set-up dialog; choose <strong>Local Hosting</strong> and save it. Deploy again and the instance builds the site and serves it itself. The dialog shows the address when the build is done:</p>
+    <table>
+      <thead><tr><th>Your instance</th><th>The site's address</th></tr></thead>
+      <tbody>
+        <tr><td><code>SW_SITES_DOMAIN</code> set, with wildcard DNS</td><td><code>https://&lt;slug&gt;.&lt;SW_SITES_DOMAIN&gt;/</code></td></tr>
+        <tr><td>no sites domain</td><td><code>https://&lt;your instance&gt;/sites/&lt;slug&gt;/</code></td></tr>
+        <tr><td>a verified custom domain</td><td>that domain; the other addresses redirect to it</td></tr>
+      </tbody>
+    </table>
+    <p>The output is plain static HTML, CSS and only the JavaScript the page uses. The Deploy menu can also send the site to your own server over FTP, FTPS or SFTP, or to a Git branch; each deploy builds the site for its own target. <strong>View live site</strong> opens the published address once Local Hosting is up to date.</p>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>Changes are not live until you deploy.</strong> Saving updates the preview only. The Deploy button shows when there are saved changes a target has not received yet.</p></div>
+
+    <h2 id="next">Next</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/getting-started/editor-tour'}}">A tour of the editor</a></li>
+      <li><a href="{{sw-url '/docs/concepts/authoring-model'}}">How a site is built</a></li>
+      <li><a href="{{sw-url '/docs/concepts/header-footer-sidebars'}}">Header, footer and sidebars</a></li>
+    </ul>
+  </article>
+</div>

@@ -1,0 +1,63 @@
+<div>
+  {{!-- DESKTOP bar (>=lg). The mark is inline SVG so its square takes the text colour in both themes. --}}
+  <div class="ws-bar hidden border-b border-base-content/10 bg-base-100/80 backdrop-blur-xl lg:block">
+    <div class="navbar mx-auto max-w-7xl px-6">
+      <div class="navbar-start">
+        <a class="flex items-center gap-2.5 rounded-lg font-heading text-xl font-bold tracking-tight" href="{{sw-url '/'}}">
+          <svg class="h-8 w-8" viewBox="0 0 96 96" fill="none" aria-hidden="true"><path d="M30 18 V72 H78" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" /><rect x="40" y="52" width="26" height="14" rx="3" class="fill-accent" /><rect x="40" y="35" width="26" height="14" rx="3" class="fill-primary" /></svg>
+          {{ company.name }}
+        </a>
+      </div>
+      <div class="navbar-center">
+        <ul class="menu menu-horizontal gap-1 px-1 text-[0.95rem] font-medium">
+          {{#each nav.header}}
+          {{#if children}}
+          <li class="dropdown dropdown-hover">
+            <a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}} {{sw-icon "caret-down" "h-3.5 w-3.5 opacity-60"}}</a>
+            <ul class="dropdown-content menu z-30 w-56 rounded-xl border border-base-content/10 bg-base-100 p-2 shadow-xl">{{#each children}}<li><a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a></li>{{/each}}</ul>
+          </li>
+          {{else}}
+          <li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a></li>
+          {{/if}}
+          {{/each}}
+        </ul>
+      </div>
+      <div class="navbar-end gap-1">
+        <a class="btn btn-ghost btn-square btn-sm" href="https://github.com/sitewright-cms/sitewright" target="_blank" rel="noopener" aria-label="Sitewright on GitHub">{{sw-icon "brand:github" "h-5 w-5"}}</a>
+        {{sw-theme-toggle}}
+        <a class="btn btn-primary btn-sm ml-2" href="{{sw-url '/docs/getting-started'}}">Get started</a>
+      </div>
+    </div>
+  </div>
+
+  {{!-- MOBILE bar + slide-in DRAWER (<lg). The peer-checkbox MUST be the first sibling. --}}
+  <div class="navbar relative border-b border-base-content/10 bg-base-100/90 px-3 backdrop-blur-xl lg:hidden">
+    <input type="checkbox" id="sw-nav-drawer" class="peer sr-only" aria-label="Menu" />
+    <div class="navbar-start">
+      <label for="sw-nav-drawer" class="btn btn-ghost btn-square" aria-hidden="true">{{sw-icon "list" "h-6 w-6"}}</label>
+      <a class="flex items-center gap-2 font-heading text-lg font-bold tracking-tight" href="{{sw-url '/'}}">
+        <svg class="h-7 w-7" viewBox="0 0 96 96" fill="none" aria-hidden="true"><path d="M30 18 V72 H78" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" /><rect x="40" y="52" width="26" height="14" rx="3" class="fill-accent" /><rect x="40" y="35" width="26" height="14" rx="3" class="fill-primary" /></svg>
+        {{ company.name }}
+      </a>
+    </div>
+    <div class="navbar-end">{{sw-theme-toggle}}</div>
+    {{!-- backdrop (closes on click); h-dvh pins it to the viewport under a transformed #main-nav --}}
+    <label for="sw-nav-drawer" class="pointer-events-none fixed inset-0 z-40 h-dvh bg-black/40 opacity-0 transition-opacity duration-300 peer-checked:pointer-events-auto peer-checked:opacity-100" aria-hidden="true"></label>
+    <div class="fixed inset-y-0 left-0 z-50 flex h-dvh w-72 max-w-[85%] -translate-x-full flex-col bg-base-100 shadow-2xl transition-transform duration-300 peer-checked:translate-x-0">
+      <div class="flex items-center justify-between border-b border-base-content/10 p-4">
+        <a class="flex items-center gap-2 font-heading text-base font-bold tracking-tight" href="{{sw-url '/'}}">
+          <svg class="h-7 w-7" viewBox="0 0 96 96" fill="none" aria-hidden="true"><path d="M30 18 V72 H78" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" /><rect x="40" y="52" width="26" height="14" rx="3" class="fill-accent" /><rect x="40" y="35" width="26" height="14" rx="3" class="fill-primary" /></svg>
+          {{ company.name }}
+        </a>
+        <label for="sw-nav-drawer" class="btn btn-ghost btn-square btn-sm" aria-label="Close">{{sw-icon "x" "h-5 w-5"}}</label>
+      </div>
+      <ul class="menu w-full flex-1 overflow-y-auto overflow-x-hidden p-3 text-base">
+        {{#each nav.header}}{{#if children}}<li><details><summary>{{sw-label}}</summary><ul><li><a href="{{sw-url path}}" class="{{#if (sw-active path exact=true)}}active{{/if}}">Overview</a></li>{{#each children}}<li><a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a></li>{{/each}}</ul></details></li>{{else}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a></li>{{/if}}{{/each}}
+      </ul>
+      <div class="flex flex-col gap-2 border-t border-base-content/10 p-4">
+        <a class="btn btn-primary" href="{{sw-url '/docs/getting-started'}}">Get started</a>
+        <a class="btn btn-ghost gap-2" href="https://github.com/sitewright-cms/sitewright" target="_blank" rel="noopener">{{sw-icon "brand:github" "h-5 w-5"}} GitHub</a>
+      </div>
+    </div>
+  </div>
+</div>

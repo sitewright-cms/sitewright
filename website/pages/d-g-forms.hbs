@@ -1,0 +1,101 @@
+{{!-- META {"path":"forms","title":"Forms and spam protection","description":"Create a contact form, choose how its submissions are delivered, embed it on a page, and turn on the spam protection it needs.","parent":"guides","order":2,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>A form is stored once, as a definition with fields, messages and a delivery mode, and embedded by id wherever it is needed. You never wire an endpoint by hand: the render adds it, along with the spam traps and the captcha.</p>
+
+    <h2 id="modes">1. Pick a delivery mode</h2>
+    <p>An instance admin decides which modes projects may use, in <strong>System Settings → Web-form mail modes</strong>. All are off on a new instance; turn on at least one and configure SMTP for it.</p>
+    <table>
+      <thead><tr><th>Mode</th><th>Where a submission goes</th><th class="min-w-56">Inbox</th></tr></thead>
+      <tbody>
+        <tr><td>Platform email (global SMTP)</td><td>Stored, then emailed through the instance's SMTP server</td><td>Yes</td></tr>
+        <tr><td>Platform email (project SMTP)</td><td>Stored, then emailed through the project's own SMTP server</td><td>Yes</td></tr>
+        <tr><td>contact.php (host mail)</td><td>A <code>contact.php</code> deployed with the site sends it with the web host's mail function</td><td>No</td></tr>
+        <tr><td>contact.php (SMTP)</td><td>The same, through SMTP; FTP, FTPS and SFTP targets only, never git</td><td>No</td></tr>
+        <tr><td>Third-party endpoint</td><td>The browser posts it to an https URL you name</td><td>No</td></tr>
+        <tr><td>WhatsApp</td><td>The browser opens a WhatsApp chat with the message filled in; nothing reaches a server</td><td>No</td></tr>
+      </tbody>
+    </table>
+    <p>With the two platform modes, a submission is stored in the inbox first and then mailed, with the visitor's <code>email</code> field as Reply-To. A failed mail is retried after 1, 5 and 15 minutes, 1, 6 and 24 hours, then marked failed and can be resent from the inbox.</p>
+
+    <h2 id="create">2. Create the form</h2>
+    <p>Open the project's <strong>Forms</strong> tab and add a form: a name, the recipient address (kept on the server, never in the page), the fields, the submit label, the success and error messages, and optionally a redirect URL to send the visitor to after a successful submission.</p>
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Forms · Contact</span></div>
+      {{> ws-media slot="doc_form_editor" class="rounded-none"}}
+    </div>
+    <table>
+      <thead><tr><th>Field type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>text</code>, <code>textarea</code></td><td>Free text.</td></tr>
+        <tr><td><code>email</code>, <code>tel</code>, <code>url</code>, <code>number</code></td><td>Checked on the server too: a valid address, an http(s) URL, a decimal number.</td></tr>
+        <tr><td><code>select</code>, <code>radio</code></td><td>Up to 100 options; the server accepts only listed values.</td></tr>
+        <tr><td><code>checkbox</code></td><td>With options, a group whose ticked values are joined with commas. Without options, a single box that submits "Yes": the one to use for a consent line.</td></tr>
+        <tr><td><code>date</code>, <code>time</code>, <code>datetime</code></td><td>Rendered with the date picker.</td></tr>
+      </tbody>
+    </table>
+    <p>A form has up to 50 fields. There is no file upload field.</p>
+
+    <h2 id="embed">3. Put it on a page</h2>
+    <p>One helper renders the whole form:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/contact.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-hb">\{{sw-form "contact" class="mx-auto max-w-xl"}}</span></code></pre>
+    </div>
+    <p>To lay the fields out yourself, write the <code>&lt;form&gt;</code> with <code>data-sw-form</code> and inputs named like the definition's fields. The render adds the endpoint, the honeypot, the captcha and the success and error messages:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/contact.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;form</span> <span class="tk-attr">data-sw-form</span>=<span class="tk-str">"contact"</span> <span class="tk-attr">class</span>=<span class="tk-str">"grid gap-4 sm:grid-cols-2"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;label&gt;</span>Name <span class="tk-tag">&lt;input</span> <span class="tk-attr">name</span>=<span class="tk-str">"name"</span> <span class="tk-attr">required</span> <span class="tk-attr">class</span>=<span class="tk-str">"input w-full"</span><span class="tk-tag">&gt;&lt;/label&gt;</span>
+  <span class="tk-tag">&lt;label&gt;</span>Email <span class="tk-tag">&lt;input</span> <span class="tk-attr">name</span>=<span class="tk-str">"email"</span> <span class="tk-attr">type</span>=<span class="tk-str">"email"</span> <span class="tk-attr">required</span> <span class="tk-attr">class</span>=<span class="tk-str">"input w-full"</span><span class="tk-tag">&gt;&lt;/label&gt;</span>
+  <span class="tk-tag">&lt;label</span> <span class="tk-attr">class</span>=<span class="tk-str">"sm:col-span-2"</span><span class="tk-tag">&gt;</span>Message <span class="tk-tag">&lt;textarea</span> <span class="tk-attr">name</span>=<span class="tk-str">"message"</span> <span class="tk-attr">class</span>=<span class="tk-str">"textarea w-full"</span><span class="tk-tag">&gt;&lt;/textarea&gt;&lt;/label&gt;</span>
+  <span class="tk-tag">&lt;button</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary"</span><span class="tk-tag">&gt;</span>Send<span class="tk-tag">&lt;/button&gt;</span>
+<span class="tk-tag">&lt;/form&gt;</span></code></pre>
+    </div>
+    <p>An unknown form id fails the render, so a typo shows up in the preview rather than on the live site. On a page in another language, <code>\{{sw-form "contact"}}</code> uses the form <code>contact-de</code> when one exists, so each language can have its own labels and messages.</p>
+
+    <h2 id="spam">4. Spam protection</h2>
+    <p>For the two platform modes every submission passes these checks, in order. The first three answer the bot with a normal "thank you" and count the submission as filtered, so a bot learns nothing.</p>
+    <table>
+      <thead><tr><th>Layer</th><th>On by default</th><th class="min-w-56">What it does</th></tr></thead>
+      <tbody>
+        <tr><td>Honeypot</td><td>Yes</td><td>A hidden field people never fill in.</td></tr>
+        <tr><td>Time trap</td><td>Yes</td><td>Drops a form sent less than 1.2 seconds after it loaded.</td></tr>
+        <tr><td>Interaction check</td><td>Yes</td><td>Drops a submission with no pointer or keyboard activity behind it.</td></tr>
+        <tr><td>Field validation</td><td>Yes</td><td>Required fields, formats and allowed options, checked on the server.</td></tr>
+        <tr><td>Rate limit</td><td>Yes</td><td>20 submissions per minute per address.</td></tr>
+        <tr><td>Proof of work</td><td>No</td><td>The visitor's browser solves a small puzzle before sending: no third party, no keys, no cookie. Needs HTTPS.</td></tr>
+        <tr><td>Captcha</td><td>No</td><td>hCaptcha, reCAPTCHA v2 or reCAPTCHA v3 (with a minimum score, 0.5 by default), one provider per project.</td></tr>
+      </tbody>
+    </table>
+    <p>Turn proof of work or the captcha on per form, in the form's settings. The captcha provider and its keys are set once per project, in the <strong>Captcha</strong> section of the Forms tab.</p>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>A captcha with no keys rejects everything.</strong> A form that requires a captcha in a project without a working captcha configuration refuses every submission. The form editor warns you; heed it. Start with the default layers, and add proof of work only when the inbox's filtered count says you need it.</p></div>
+
+    <h2 id="inbox">5. Read submissions</h2>
+    <p>The Forms tab opens each form's submissions, newest first, with each one's delivery state. Agents read them with <code>list_submissions</code>. A form keeps up to 10,000 submissions; they stay until you delete them. With built-in statistics on, each stored submission also counts as a goal.</p>
+
+    <h2 id="verify">Check your work</h2>
+    <ul>
+      <li>Submit the form from the draft preview. There it is a dry run: the fields are validated and proof of work is checked, but nothing is stored or sent.</li>
+      <li>After a deploy, submit it on the live site and confirm both the inbox entry and the email.</li>
+      <li>If mail does not arrive, the submission's delivery state in the inbox says whether it is pending, failed or sent.</li>
+    </ul>
+
+    <h2 id="pitfalls">Pitfalls</h2>
+    <ul>
+      <li><strong>Sites on other hosts need <code>SW_PUBLIC_URL</code>.</strong> A form in one of the platform email modes, deployed to FTP, SFTP or git, posts back to the instance. Without a public URL the deploy is refused rather than shipping a form that cannot submit.</li>
+      <li><strong>contact.php has only the honeypot and the time trap.</strong> No captcha, no proof of work, no rate limit, and its submissions never reach the inbox. Add rate limiting on the web server.</li>
+      <li><strong>No JavaScript, no submission.</strong> The form posts JSON and has no <code>action</code>, by design.</li>
+      <li><strong>Demo copies send nothing.</strong> On a target marked as a demo copy the form shows its success message and sends nothing. See <a href="{{sw-url '/docs/guides/demo-copies'}}">Demo copies</a>.</li>
+    </ul>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/reference/components'}}#form">The Form component</a></li>
+      <li><a href="{{sw-url '/docs/reference/limits'}}#forms">Form limits</a></li>
+      <li><a href="{{sw-url '/features/forms'}}">Forms</a></li>
+    </ul>
+  </article>
+</div>

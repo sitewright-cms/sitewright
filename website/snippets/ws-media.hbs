@@ -1,0 +1,22 @@
+{{!--
+  A screenshot or screen video for one MEDIA SLOT of the media_slots dataset:
+    {{> ws-media slot="hero_product"}}                 (optional: class="…" extra classes; sizes="…" for a filled image, default 100vw)
+  The slot's entry holds its label, kind, aspect ratio and, once captured, the image or the video and its poster.
+  Until then a labelled placeholder holds the space at the final size, so replacing it moves nothing.
+  The loop matches by id instead of sw-pick-entry, which falls back to the FIRST entry for an unknown id.
+--}}
+{{#each @root.dataset.media_slots}}{{#if (eq @entry.id ../slot)}}
+<figure class="ws-media ws-r-{{#if ratio}}{{ratio}}{{else}}16x10{{/if}} {{../class}}">
+  {{#if video}}
+  <video class="h-full w-full object-cover" data-src="{{sw-url video}}"{{#if poster}} poster="{{sw-url poster}}"{{/if}} data-autoplay muted loop playsinline preload="none" aria-label="{{alt}}"></video>
+  {{else if image}}
+  {{#if ../sizes}}{{sw-image image alt=alt class="h-full w-full object-cover" sizes=../sizes}}{{else}}{{sw-image image alt=alt class="h-full w-full object-cover" sizes="100vw"}}{{/if}}
+  {{else}}
+  <div class="ws-ph" role="img" aria-label="{{label}} (placeholder)">
+    <span class="ws-ph-icon">{{#if (eq kind "video")}}{{sw-icon "play" "h-5 w-5"}}{{else}}{{sw-icon "image" "h-5 w-5"}}{{/if}}</span>
+    <span class="ws-ph-label">{{label}}</span>
+    <span class="ws-ph-meta">{{#if (eq kind "video")}}screen video{{else}}screenshot{{/if}} · {{@entry.id}}</span>
+  </div>
+  {{/if}}
+</figure>
+{{/if}}{{/each}}

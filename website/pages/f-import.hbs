@@ -1,0 +1,93 @@
+{{!-- META {"path":"import","title":"Import & clone","description":"Bring an existing site in by crawling it or from a static export, with its images and fonts self-hosted and its brand colors and fonts extracted. Then rebuild it natively, checked against the original. AI clone is in beta.","parent":"features","order":15,"data":{"icon":"download-simple","eyebrow":"Import & clone","headline":"Bring the old site in. Rebuild it properly."}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid gap-6 lg:grid-cols-[1fr_1.2fr] lg:items-end" data-sw-animation="fade-up">
+    <h2 class="ws-display text-3xl font-bold sm:text-5xl" data-sw-text="flow_title">Import, rebuild, compare.</h2>
+    <p class="max-w-xl text-lg leading-relaxed text-base-content/70" data-sw-text="flow_lead">An import is a starting point, not a copy to live with. Pages arrive as drafts and nothing is published until a person, or an agent you asked, says so.</p>
+  </div>
+  <div class="mt-12 grid items-stretch gap-4 lg:grid-cols-[1fr_auto_1fr_auto_1fr]">
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-7" data-sw-animation="fade-up">
+      <div class="flex items-center gap-3">{{sw-icon "download-simple" "h-6 w-6 ws-ink"}}<span class="ws-index text-base-content/60">01 · Import</span></div>
+      <h3 class="mt-5 font-heading text-xl font-bold">Crawl it or upload it</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">Crawl a public https address, up to 200 pages and five links deep. Sites built as JavaScript apps are rendered in a headless browser first. Or upload a static export as a .zip, or a single HTML file, through the API.</p>
+    </div>
+    <div class="hidden items-center lg:flex" aria-hidden="true">{{sw-icon "caret-right:bold" "h-6 w-6 text-base-content/30"}}</div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-7" data-sw-animation="fade-up" data-sw-delay="80">
+      <div class="flex items-center gap-3">{{sw-icon "wrench" "h-6 w-6 ws-ink"}}<span class="ws-index text-base-content/60">02 · Nativize</span></div>
+      <h3 class="mt-5 font-heading text-xl font-bold">Rebuild from native parts</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">Each page is ported to the project's theme tokens, components, datasets and editable fields, so clients can edit it. A faithful port, not a redesign.</p>
+    </div>
+    <div class="hidden items-center lg:flex" aria-hidden="true">{{sw-icon "caret-right:bold" "h-6 w-6 text-base-content/30"}}</div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-7" data-sw-animation="fade-up" data-sw-delay="160">
+      <div class="flex items-center gap-3">{{sw-icon "columns" "h-6 w-6 ws-ink"}}<span class="ws-index text-base-content/60">03 · Compare</span></div>
+      <h3 class="mt-5 font-heading text-xl font-bold">Check it against the original</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">Full-page screenshots of the rebuild and the live original side by side, at three widths, and a gate that tests structure and behavior before a page counts as done.</p>
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.1fr]">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">What comes over</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="over_title">The content and the brand. Not the dependencies.</h2>
+      <ul class="mt-6 list-none space-y-4 p-0">
+        <li class="flex gap-3">{{sw-icon "image" "mt-1 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80"><strong class="text-base-content">Images and files, self-hosted.</strong> Images are stored once each, at up to 2400 pixels, in an imported folder. SVGs are sanitized; PDFs become downloads.</span></li>
+        <li class="flex gap-3">{{sw-icon "text-aa" "mt-1 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80"><strong class="text-base-content">Fonts, self-hosted.</strong> Web fonts and Google Fonts are downloaded and served with the new site.</span></li>
+        <li class="flex gap-3">{{sw-icon "palette" "mt-1 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80"><strong class="text-base-content">The brand.</strong> Name, logo, favicon and share image, plus the color palette, heading and body fonts and content width.</span></li>
+        <li class="flex gap-3">{{sw-icon "shield-check" "mt-1 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80"><strong class="text-base-content">No scripts in pages.</strong> Page content is always script-free. The crawler refuses private network addresses and checks every redirect.</span></li>
+      </ul>
+    </div>
+    <div class="ws-window overflow-hidden rounded-2xl" data-sw-animation="fade-up" data-sw-delay="100">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">claude</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-dim">&gt;</span> Import example-bakery.com and rebuild
+  the home page with our components.
+
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">import_website</span>  <span class="tk-dim">20 pages</span>
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">import_status</span>   <span class="tk-dim">waiting for changes</span>
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">get_guide</span>       <span class="tk-dim">import</span>
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">inspect_source</span>  <span class="tk-dim">home · header nav, .hero h1</span>
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">put_page</span>        <span class="tk-dim">home</span>
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">visual_audit</span>    <span class="tk-dim">home</span>
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">clone_audit</span>     <span class="tk-dim">home</span>
+<span class="tk-ok">✓</span> Home passes the gate. Nineteen imported
+  pages are still drafts.</code></pre>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid items-center gap-12 lg:grid-cols-[1.15fr_1fr]">
+    <div class="ws-browser order-2 lg:order-1" data-sw-animation="fade-up">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">visual_audit · rebuild and original</span></div>
+      {{> ws-media slot="feat_import_compare" class="rounded-none"}}
+    </div>
+    <div class="sw-border-beam order-1 rounded-3xl border border-base-content/10 bg-base-100 p-8 lg:order-2 [--sw-beam-width:2px]" data-sw-animation="fade-up" data-sw-delay="100">
+      <div class="flex items-center gap-3">{{sw-icon "sparkle" "h-6 w-6 ws-ink"}}<span class="rounded-full border border-base-content/20 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider text-base-content/70">Beta</span></div>
+      <h3 class="mt-4 font-heading text-2xl font-bold" data-sw-text="clone_title">AI clone runs the loop for you.</h3>
+      <p class="mt-3 leading-relaxed text-base-content/70" data-sw-text="clone_lead">With an AI provider configured, the <code class="whitespace-nowrap font-code">ai_clone</code> tool rebuilds the imported pages on your server: up to four rounds of writing and checking per page. A page passes only when the structure and behavior gate passes, whatever the model claims.</p>
+      <p class="mt-3 text-sm leading-relaxed text-base-content/60">It is in beta: expect to review and finish pages by hand. It can publish to Local Hosting, never deploy elsewhere. Prefer your own agent? The same workflow ships as an MCP prompt that needs no AI on the server.</p>
+      <a class="btn btn-ghost btn-sm mt-4 px-0 hover:bg-transparent" href="{{sw-url '/docs/guides/import'}}">The import guide {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+  </div>
+</section>
+
+<section class="border-t border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+    <div class="grid gap-6 lg:grid-cols-[1fr_1.2fr] lg:items-end" data-sw-animation="fade-up">
+      <div>
+        <p class="ws-index ws-ink">Whole projects</p>
+        <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="proj_title">Export, import, duplicate.</h2>
+      </div>
+      <p class="max-w-xl text-lg leading-relaxed text-base-content/70" data-sw-text="proj_lead">A project packs into one .zip: pages, templates, snippets, datasets and entries, translations, forms, image maps, media, the booking setup and the settings. Archives can be as large as 32 GiB.</p>
+    </div>
+    <div class="mt-10 grid gap-4 md:grid-cols-3">
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">{{sw-icon "export" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Export</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Any member can take a copy. Secrets stay behind: deploy credentials, passwords, captcha keys, API keys, and the domains, members, submissions and history.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "archive" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Import a project</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Always creates a new project, on this instance or another one, with the media addresses rewritten for it.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "copy" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Duplicate project</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">A copy next to the original, ready to become the next client's starting point.</p></div>
+    </div>
+  </div>
+</section>
+
+{{> feature-next features=pages.features._attributes.children}}

@@ -1,0 +1,123 @@
+{{!-- META {"path":"field-types","title":"Dataset field types","description":"The 18 field types a dataset schema can use: what each stores, which editor a client gets, its configuration, and how a template reads it.","parent":"reference","order":3,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>A dataset is a schema (its fields) plus entries (its rows). Each field has a type, and the type decides two things: the input a client gets in the entry editor, and the value a template reads. Pick the most specific type: a typo in a hand-typed icon name renders nothing, a <code>page</code> field keeps working after the page is renamed, a hand-typed path does not.</p>
+
+    <h2 id="types">All 18 types</h2>
+    <table>
+      <thead><tr><th>Type</th><th>Stores</th><th>Entry editor</th><th class="min-w-56">Read it with</th></tr></thead>
+      <tbody>
+        <tr><td><code>text</code></td><td>A string</td><td>Single-line input</td><td><code>\{{name}}</code></td></tr>
+        <tr><td><code>richtext</code></td><td>An HTML string</td><td>Rich-text editor</td><td><code>\{{sw-html body}}</code>; test for emptiness with <code>sw-blank</code></td></tr>
+        <tr><td><code>number</code></td><td>A number</td><td>Number input</td><td><code>\{{price}}</code>, the arithmetic helpers</td></tr>
+        <tr><td><code>boolean</code></td><td><code>true</code> or <code>false</code></td><td>Toggle</td><td><code>\{{#if featured}}</code></td></tr>
+        <tr><td><code>date</code></td><td><code>YYYY-MM-DD</code></td><td>Date input</td><td><code>\{{sw-date starts "long"}}</code>, <code>sw-where … "gte" "now"</code></td></tr>
+        <tr><td><code>time</code></td><td><code>HH:MM</code></td><td>Time input</td><td><code>\{{opens}}</code></td></tr>
+        <tr><td><code>datetime</code></td><td><code>YYYY-MM-DDTHH:MM</code></td><td>Date and time input</td><td><code>\{{sw-date starts "medium"}}</code></td></tr>
+        <tr><td><code>image</code></td><td>A media URL</td><td>Media picker (images) with upload</td><td><code>\{{sw-image photo alt=name}}</code></td></tr>
+        <tr><td><code>icon</code></td><td>An icon name: <code>leaf</code>, <code>leaf:duotone</code>, <code>brand:whatsapp</code>, <code>flag:na</code></td><td>Picker over the whole icon library, searchable, flags included</td><td><code>\{{sw-icon icon "h-6 w-6"}}</code></td></tr>
+        <tr><td><code>file</code></td><td>A media URL</td><td>Media picker (any file) with upload</td><td><code>href="\{{sw-url brochure}}"</code></td></tr>
+        <tr><td><code>folder</code></td><td>A media folder path (<code>""</code> is the root)</td><td>Folder picker</td><td><code>\{{#sw-folder gallery}}…\{{/sw-folder}}</code></td></tr>
+        <tr><td><code>reference</code></td><td>The id of an entry in another dataset</td><td>Searchable list of the target dataset's entries</td><td><code>\{{#sw-pick-entry dataset.team author}}\{{name}}\{{/sw-pick-entry}}</code></td></tr>
+        <tr><td><code>page</code></td><td>A page id</td><td>Page picker</td><td><code>\{{link.path}}</code>, <code>\{{link.title}}</code> (see below)</td></tr>
+        <tr><td><code>prices</code></td><td>A price per shop market: <code>{ "eu": 95, "ch": 99 }</code></td><td>One input per market, in its currency</td><td><code>\{{sw-add-to-cart … prices=prices}}</code>, <code>\{{sw-price prices=prices}}</code></td></tr>
+        <tr><td><code>select</code></td><td>One of the configured strings</td><td>Dropdown</td><td><code>\{{#if (eq size "large")}}</code></td></tr>
+        <tr><td><code>json</code></td><td>Any parsed JSON value</td><td>JSON editor that flags invalid JSON</td><td><code>\{{#each specs}}</code>, <code>\{{sw-json specs}}</code></td></tr>
+        <tr><td><code>list</code></td><td>An array of objects shaped by its child fields</td><td>Repeatable group: add, remove, reorder</td><td><code>\{{#each slides}}\{{caption}}\{{/each}}</code></td></tr>
+        <tr><td><code>object</code></td><td>One object shaped by its child fields</td><td>A named group of inputs</td><td><code>\{{settings.autoplay}}</code></td></tr>
+      </tbody>
+    </table>
+    <p>Inside a dataset loop the row's fields are read directly by name (<code>\{{title}}</code>, not <code>\{{values.title}}</code>). The row's id and dataset are on <code>@entry</code>: <code>\{{@entry.id}}</code>.</p>
+
+    <h2 id="config">Configuration</h2>
+    <p>Two types read a <code>config</code> object. The others take none.</p>
+    <table>
+      <thead><tr><th>Type</th><th>Config</th><th class="min-w-56">Without it</th></tr></thead>
+      <tbody>
+        <tr><td><code>select</code></td><td><code>{ "options": ["small", "medium", "large"] }</code>, the allowed choices in order</td><td>The entry editor falls back to a text input. A stored value that is not in the list is kept.</td></tr>
+        <tr><td><code>reference</code></td><td><code>{ "dataset": "team" }</code>, the slug of the dataset it points at</td><td>The entry editor shows a text input and asks you to choose a target dataset in the schema editor.</td></tr>
+      </tbody>
+    </table>
+    <p><code>list</code> and <code>object</code> are the nested types: they need a non-empty <code>fields</code> array of their own, and every other type must not have one.</p>
+
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Data · products · fields</span></div>
+      {{> ws-media slot="doc_dataset_schema" class="rounded-none"}}
+    </div>
+
+    <h2 id="field">A field definition</h2>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">dataset: hero_widget</span></div>
+<pre class="overflow-x-auto"><code>{
+  <span class="tk-attr">"name"</span>: <span class="tk-str">"Hero widget"</span>,
+  <span class="tk-attr">"slug"</span>: <span class="tk-str">"hero_widget"</span>,
+  <span class="tk-attr">"fields"</span>: [
+    { <span class="tk-attr">"name"</span>: <span class="tk-str">"autoplay"</span>, <span class="tk-attr">"type"</span>: <span class="tk-str">"boolean"</span> },
+    { <span class="tk-attr">"name"</span>: <span class="tk-str">"style"</span>, <span class="tk-attr">"type"</span>: <span class="tk-str">"select"</span>, <span class="tk-attr">"config"</span>: { <span class="tk-attr">"options"</span>: [<span class="tk-str">"fade"</span>, <span class="tk-str">"slide"</span>] } },
+    { <span class="tk-attr">"name"</span>: <span class="tk-str">"slides"</span>, <span class="tk-attr">"type"</span>: <span class="tk-str">"list"</span>, <span class="tk-attr">"required"</span>: <span class="tk-kw">true</span>, <span class="tk-attr">"fields"</span>: [
+      { <span class="tk-attr">"name"</span>: <span class="tk-str">"image"</span>, <span class="tk-attr">"type"</span>: <span class="tk-str">"image"</span> },
+      { <span class="tk-attr">"name"</span>: <span class="tk-str">"caption"</span>, <span class="tk-attr">"type"</span>: <span class="tk-str">"text"</span> },
+      { <span class="tk-attr">"name"</span>: <span class="tk-str">"link"</span>, <span class="tk-attr">"type"</span>: <span class="tk-str">"page"</span> }
+    ] }
+  ]
+}</code></pre>
+    </div>
+    <table>
+      <thead><tr><th>Property</th><th>Rule</th></tr></thead>
+      <tbody>
+        <tr><td><code>name</code></td><td>An identifier: a letter or <code>_</code>, then letters, digits or <code>_</code>; up to 128 characters. It is the name a template reads.</td></tr>
+        <tr><td><code>type</code></td><td>One of the 18 types.</td></tr>
+        <tr><td><code>required</code></td><td>Default <code>false</code>. The entry editor marks the field with an asterisk; saving an entry does not check it.</td></tr>
+        <tr><td><code>localized</code></td><td>Default <code>false</code>. Other languages are not set per field: each entry carries a <code>translations</code> object with the fields that differ.</td></tr>
+        <tr><td><code>config</code></td><td>Optional; see above.</td></tr>
+        <tr><td><code>fields</code></td><td>Required and non-empty for <code>list</code> and <code>object</code>; refused for every other type.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="page-fields">Page fields resolve to the page</h2>
+    <p>A <code>page</code> field stores an id, but a template never sees the id: the render swaps it for the page's attributes. Read <code>.path</code> (the full route, for <code>sw-url</code>), <code>.title</code>, <code>.slug</code>, <code>.locale</code>, <code>.description</code> and <code>.image</code>. The link survives the page being renamed, moved or re-slugged, and on a translated page it resolves to that language's version. If the page is deleted the field reads as empty, so the template shows a blank rather than a link to a 404.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">snippets/related.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-hb">\{{#each dataset.highlights}}</span>
+  <span class="tk-hb">\{{#if link.path}}</span>
+    <span class="tk-tag">&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-url link.path}}</span>"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon icon "h-5 w-5"}}</span> <span class="tk-hb">\{{link.title}}</span><span class="tk-tag">&lt;/a&gt;</span>
+  <span class="tk-hb">\{{/if}}</span>
+<span class="tk-hb">\{{/each}}</span></code></pre>
+    </div>
+
+    <h2 id="limits">Schema limits</h2>
+    <table>
+      <thead><tr><th>Limit</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td>Nesting depth (<code>list</code> and <code>object</code> inside each other)</td><td>4 levels</td></tr>
+        <tr><td>Fields across the whole tree</td><td>1,000</td></tr>
+        <tr><td>Top-level fields</td><td>500</td></tr>
+        <tr><td>Child fields of one <code>list</code> or <code>object</code></td><td>100</td></tr>
+        <tr><td>Dataset slug</td><td>Lowercase letters and digits joined by <code>_</code>, up to 64 characters</td></tr>
+        <tr><td>Entry id</td><td>Same rule as the slug, up to 64 characters</td></tr>
+      </tbody>
+    </table>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>Underscores, not hyphens.</strong> The slug becomes a Handlebars path, <code>dataset.faq_passengers</code>. A hyphen would read as a minus sign and break every loop, so the schema refuses it. The same goes for entry ids, which <code>item.&lt;dataset&gt;.&lt;id&gt;</code> addresses directly.</p></div>
+
+    <h2 id="writing">Writing entries over the API</h2>
+    <p>A row's field values go under <code>values</code>. Sent flat, unknown keys are dropped and the entry saves empty. Other languages go under <code>translations</code>, with only the fields that differ:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">entry: trail_shoe (dataset products)</span></div>
+<pre class="overflow-x-auto"><code>{
+  <span class="tk-attr">"status"</span>: <span class="tk-str">"published"</span>,
+  <span class="tk-attr">"values"</span>: { <span class="tk-attr">"name"</span>: <span class="tk-str">"Trail shoe"</span>, <span class="tk-attr">"prices"</span>: { <span class="tk-attr">"eu"</span>: <span class="tk-kw">95</span>, <span class="tk-attr">"ch"</span>: <span class="tk-kw">99</span> } },
+  <span class="tk-attr">"translations"</span>: { <span class="tk-attr">"de"</span>: { <span class="tk-attr">"name"</span>: <span class="tk-str">"Wanderschuh"</span> } }
+}</code></pre>
+    </div>
+    <p>A new entry is a <code>draft</code> unless you say otherwise. A field left out of a language follows the main language, so a price is entered once.</p>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/concepts/datasets'}}">Datasets</a>: when to use a dataset and when a page per item</li>
+      <li><a href="{{sw-url '/docs/reference/helpers'}}#lists">List helpers</a>: filter, sort, group and paginate rows</li>
+      <li><a href="{{sw-url '/docs/guides/shop'}}">Set up the shop</a>: the <code>prices</code> field and markets</li>
+    </ul>
+  </article>
+</div>

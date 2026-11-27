@@ -1,0 +1,12 @@
+import { createRequire } from 'node:module';
+const require = createRequire('/workspace/sitewright/apps/editor/package.json');
+const { chromium } = require('@playwright/test');
+const browser = await chromium.launch({ executablePath: `${process.env.HOME}/.cache/ms-playwright/chromium_headless_shell-1255/chrome-headless-shell-linux64/chrome-headless-shell` });
+const page = await browser.newPage({ viewport: { width: 1180, height: 760 } });
+const OUT = '/tmp/claude-1000/-workspace-sitewright/ec7958e0-e951-4975-95e7-a51a6bdd4286/scratchpad';
+await page.goto(`file://${OUT}/sc-assets/imagemap-harness.html`);
+await page.waitForTimeout(1500);
+await page.hover('li[data-sw-imap-trigger-object-on-mouseover="Kitchen"]'); await page.waitForTimeout(1200);
+console.log(await page.evaluate(() => [...document.querySelectorAll('.sw-imap-tooltip')].filter(t => getComputedStyle(t).opacity === '1').map(t => { const r = t.getBoundingClientRect(); const w = t.closest('.sw-imap-tooltip-wrap') || t.parentElement; const rw = w.getBoundingClientRect(); return { r: [r.x, r.y, r.width, r.height], wrap: [rw.x, rw.y, rw.width, rw.height], wrapCls: w.className, vis: getComputedStyle(w).visibility, wop: getComputedStyle(w).opacity, disp: getComputedStyle(w).display }; })));
+console.log(await page.evaluate(() => { const o = [...document.querySelectorAll('.sw-imap-object')].map(e => e.className + ' ' + getComputedStyle(e).backgroundColor); return o.slice(0, 5); }));
+await browser.close();

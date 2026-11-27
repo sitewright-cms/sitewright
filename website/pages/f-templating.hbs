@@ -1,0 +1,111 @@
+{{!-- META {"path":"templating","title":"Templating & datasets","description":"Typed datasets hold the content, Handlebars loops render it, and every row is one click from its editor. 57 helpers cover links, images, lists, math, translations, forms and the shop.","parent":"features","order":2,"data":{"icon":"database","eyebrow":"Templating & datasets","headline":"Content lives in data. Pages loop over it."}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.15fr]">
+  <div data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">Datasets</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="flow_title">Define it, loop it, hand it over.</h2>
+    <ol class="mt-8 list-none space-y-6 p-0">
+      <li class="flex gap-5"><span class="ws-numeral w-14 shrink-0 text-5xl">01</span><div><h3 class="font-heading text-lg font-bold">Define the fields</h3><p class="mt-1 text-base-content/70">A dataset is a typed collection: team members, services, events, products. Lists and objects nest up to four levels deep.</p></div></li>
+      <li class="flex gap-5"><span class="ws-numeral w-14 shrink-0 text-5xl">02</span><div><h3 class="font-heading text-lg font-bold">Loop it in the page</h3><p class="mt-1 text-base-content/70"><code class="font-code">\{{#each dataset.team}}</code> and the fields are your variables. The markup around them stays yours.</p></div></li>
+      <li class="flex gap-5"><span class="ws-numeral w-14 shrink-0 text-5xl">03</span><div><h3 class="font-heading text-lg font-bold">Click a row to edit it</h3><p class="mt-1 text-base-content/70">In the preview, every row of a loop opens its own entry. New entries start as drafts: visible in the preview, left out of the published site.</p></div></li>
+    </ol>
+  </div>
+  <div class="ws-browser" data-sw-animation="fade-up" data-sw-delay="100">
+    <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Content Editor · team</span></div>
+    {{> ws-media slot="feat_templating_click" class="rounded-none"}}
+  </div>
+</section>
+
+<section class="bg-neutral text-white">
+  <div class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1.1fr_1fr]">
+    <div class="ws-window overflow-hidden rounded-2xl" data-sw-animation="fade-up">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/team.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-hb">\{{#each dataset.team}}</span>
+  <span class="tk-tag">&lt;a</span> <span class="tk-attr">class</span>=<span class="tk-str">"card bg-base-100"</span> <span class="tk-attr">href</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-url link.path}}</span>"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-hb">\{{sw-image photo alt=name sizes="33vw"}}</span>
+    <span class="tk-tag">&lt;h3&gt;</span><span class="tk-hb">\{{name}}</span><span class="tk-tag">&lt;/h3&gt;</span>
+    <span class="tk-tag">&lt;p&gt;</span><span class="tk-hb">\{{role}}</span><span class="tk-tag">&lt;/p&gt;</span>
+  <span class="tk-tag">&lt;/a&gt;</span>
+<span class="tk-hb">\{{/each}}</span>
+
+<span class="tk-com">\{{!-- The next three events, soonest first --}}</span>
+<span class="tk-hb">\{{#each (sw-limit (sw-sort (sw-where dataset.events</span>
+<span class="tk-hb">    "starts" "gte" "now") "starts") 3)}}</span>
+  <span class="tk-tag">&lt;li&gt;</span><span class="tk-hb">\{{sw-date starts "medium"}}</span> · <span class="tk-hb">\{{title}}</span><span class="tk-tag">&lt;/li&gt;</span>
+<span class="tk-hb">\{{else}}</span>
+  <span class="tk-tag">&lt;li&gt;</span>No upcoming events.<span class="tk-tag">&lt;/li&gt;</span>
+<span class="tk-hb">\{{/each}}</span></code></pre>
+    </div>
+    <div data-sw-animation="fade-up" data-sw-delay="100">
+      <p class="ws-index text-accent">Handlebars, with the data in scope</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="scope_title">Every page sees the whole site.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-white/70" data-sw-text="scope_lead">Loops, conditions and helpers run at build time, so the published page is plain HTML. A <code class="rounded bg-white/10 px-1.5 font-code text-[0.85em] text-white">page</code> field stores a page's id, so a link survives renames and moves.</p>
+      <dl class="mt-8 grid gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+        <div><dt class="font-code text-accent">dataset.&lt;slug&gt;</dt><dd class="mt-0.5 text-white/70">A dataset's entries, ready to loop</dd></div>
+        <div><dt class="font-code text-accent">item.&lt;slug&gt;.&lt;key&gt;</dt><dd class="mt-0.5 text-white/70">One entry, by key</dd></div>
+        <div><dt class="font-code text-accent">page</dt><dd class="mt-0.5 text-white/70">Title, path, data, children, parent</dd></div>
+        <div><dt class="font-code text-accent">pages</dt><dd class="mt-0.5 text-white/70">Any other page, by its path</dd></div>
+        <div><dt class="font-code text-accent">nav</dt><dd class="mt-0.5 text-white/70">The header, footer, mobile and custom menus</dd></div>
+        <div><dt class="font-code text-accent">company</dt><dd class="mt-0.5 text-white/70">Name, logos, contact details, address</dd></div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.15fr]">
+  <div data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">18 field types</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="fields_title">Typed fields, with an editor to match.</h2>
+    <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="fields_lead">Each type gets the right input: a rich-text editor, a date picker, the file picker, an icon search, a page picker. An entry stores only what differs in another language, and the rest follows the main one.</p>
+    <div class="mt-8 flex flex-wrap gap-2">
+      {{#each (sw-split "text|richtext|number|boolean|date|time|datetime|image|icon|file|folder|reference|page|prices|select|json|list|object" "|")}}
+      <span class="rounded-full border border-base-content/10 bg-base-200/60 px-3 py-1 font-code text-xs">{{this}}</span>
+      {{/each}}
+    </div>
+    <a class="btn btn-ghost mt-6 px-0 hover:bg-transparent" href="{{sw-url '/docs/reference/field-types'}}">Every field type {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+  </div>
+  <div class="ws-browser" data-sw-animation="fade-up" data-sw-delay="100">
+    <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Datasets · events · entry</span></div>
+    {{> ws-media slot="feat_templating_entry" class="rounded-none"}}
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+    <div class="grid gap-6 lg:grid-cols-[1fr_1.2fr] lg:items-end" data-sw-animation="fade-up">
+      <h2 class="ws-display text-3xl font-bold sm:text-5xl" data-sw-text="helpers_title">57 helpers, grouped by job.</h2>
+      <p class="max-w-xl text-lg leading-relaxed text-base-content/70" data-sw-text="helpers_lead">Next to Handlebars' own <code class="font-code">each</code>, <code class="font-code">if</code>, <code class="font-code">with</code> and <code class="font-code">lookup</code>, every <code class="whitespace-nowrap font-code">sw-</code> helper is documented with its arguments in the editor's Template reference.</p>
+    </div>
+    <div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up"><div class="flex items-baseline justify-between"><h3 class="font-heading text-lg font-bold">Lists</h3><span class="ws-numeral text-3xl">12</span></div><p class="mt-3 font-code text-xs leading-relaxed text-base-content/70">sw-sort · sw-where · sw-group · sw-limit · sw-paginate · sw-pick-entry</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60"><div class="flex items-baseline justify-between"><h3 class="font-heading text-lg font-bold">Math</h3><span class="ws-numeral text-3xl">11</span></div><p class="mt-3 font-code text-xs leading-relaxed text-base-content/70">sw-add · sw-mul · sw-round · sw-min · sw-max · sw-stagger</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120"><div class="flex items-baseline justify-between"><h3 class="font-heading text-lg font-bold">Text</h3><span class="ws-numeral text-3xl">8</span></div><p class="mt-3 font-code text-xs leading-relaxed text-base-content/70">sw-date · sw-truncate · sw-default · sw-translate · sw-concat</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up"><div class="flex items-baseline justify-between"><h3 class="font-heading text-lg font-bold">Site widgets</h3><span class="ws-numeral text-3xl">6</span></div><p class="mt-3 font-code text-xs leading-relaxed text-base-content/70">sw-form · sw-search · sw-theme-toggle · sw-json-data · sw-control</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60"><div class="flex items-baseline justify-between"><h3 class="font-heading text-lg font-bold">Media</h3><span class="ws-numeral text-3xl">5</span></div><p class="mt-3 font-code text-xs leading-relaxed text-base-content/70">sw-image · sw-icon · sw-flag · sw-folder · sw-imagemap</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120"><div class="flex items-baseline justify-between"><h3 class="font-heading text-lg font-bold">Shop</h3><span class="ws-numeral text-3xl">5</span></div><p class="mt-3 font-code text-xs leading-relaxed text-base-content/70">sw-add-to-cart · sw-price · sw-cart · sw-market-switcher</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up"><div class="flex items-baseline justify-between"><h3 class="font-heading text-lg font-bold">Links</h3><span class="ws-numeral text-3xl">4</span></div><p class="mt-3 font-code text-xs leading-relaxed text-base-content/70">sw-url · sw-page-url · sw-active · sw-label</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60"><div class="flex items-baseline justify-between"><h3 class="font-heading text-lg font-bold">Comparison</h3><span class="ws-numeral text-3xl">4</span></div><p class="mt-3 font-code text-xs leading-relaxed text-base-content/70">sw-gt · sw-gte · sw-lt · sw-lte</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120"><div class="flex items-baseline justify-between"><h3 class="font-heading text-lg font-bold">Booking</h3><span class="ws-numeral text-3xl">2</span></div><p class="mt-3 font-code text-xs leading-relaxed text-base-content/70">sw-booking · sw-booking-status</p></div>
+    </div>
+    <a class="btn btn-ghost mt-8 px-0 hover:bg-transparent" href="{{sw-url '/docs/reference/helpers'}}">The helper reference {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid gap-6 lg:grid-cols-3">
+    <div class="sw-border-beam rounded-3xl border border-base-content/10 bg-base-100 p-8 lg:col-span-2 [--sw-beam-width:2px]" data-sw-animation="fade-up">
+      {{sw-icon "files" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold" data-sw-text="detail_title">Every URL is a real page.</h3>
+      <p class="mt-3 leading-relaxed text-base-content/70" data-sw-text="detail_lead">A dataset never invents routes. A detail page, say one per team member, is a real page that shares a template with its siblings, so each has its own address, title and description, and any one of them can be changed on its own. List them with <code class="whitespace-nowrap font-code">page.children</code>, or feature one entry with <code class="whitespace-nowrap font-code">sw-pick-entry</code>.</p>
+      <a class="btn btn-ghost btn-sm mt-4 px-0 hover:bg-transparent" href="{{sw-url '/docs/concepts/datasets'}}">How datasets work {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-8" data-sw-animation="fade-up" data-sw-delay="100">
+      {{sw-icon "brackets-curly" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold" data-sw-text="json_title">Data for scripts, too.</h3>
+      <p class="mt-3 leading-relaxed text-base-content/70" data-sw-text="json_lead">Put a dataset into the page as a JSON island, or publish it as a JSON file next to the site, for your own scripts to read.</p>
+    </div>
+  </div>
+</section>
+
+{{> feature-next features=pages.features._attributes.children}}

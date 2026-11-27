@@ -1,0 +1,226 @@
+{{!-- META {"path":"svg-animation","title":"SVG animation","description":"Animate the parts of an inline SVG with attributes: stroke drawing, wipes, staggered scenes, travel along a path and shape morphing. Click any drawing on this page to replay it.","parent":"showcase","order":11,"data":{"icon":"pen-nib","preset":"ribbons"}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-center">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">01 · A logo, assembled</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="v1_title">The Sitewright mark, drawn.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="v1_lead">Three effects on one timeline: the stroke draws, then the two blocks wipe in, each with its own delay. Settings on the root SVG drive the whole drawing: it replays when it comes back into view, replays on a click, and repeats every five seconds.</p>
+    </div>
+    <div class="grid cursor-pointer place-items-center rounded-3xl border border-base-content/10 bg-base-100 py-16">
+
+<svg viewBox="0 0 96 96" class="h-48 w-48" fill="none" role="img" aria-label="Sitewright" data-sw-svg-trigger="view" data-sw-svg-replay="true" data-sw-svg-click="true" data-sw-svg-loop="5000">
+  <path data-sw-svg="draw" data-sw-duration="1100" data-sw-easing="ease-in-out" d="M30 18 V72 H78" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" />
+  <rect data-sw-svg="reveal-right" data-sw-delay="950" data-sw-duration="500" x="40" y="52" width="26" height="14" rx="3" class="text-accent" fill="currentColor" />
+  <rect data-sw-svg="reveal-right" data-sw-delay="1200" data-sw-duration="500" x="40" y="35" width="26" height="14" rx="3" class="text-secondary" fill="currentColor" />
+</svg>
+
+    </div>
+  </div>
+  <div class="mt-6">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">svg · the mark</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;svg</span> <span class="tk-attr">viewBox</span>=<span class="tk-str">"0 0 96 96"</span> <span class="tk-attr">class</span>=<span class="tk-str">"h-48 w-48"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"none"</span> <span class="tk-attr">role</span>=<span class="tk-str">"img"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Sitewright"</span> <span class="tk-attr">data-sw-svg-trigger</span>=<span class="tk-str">"view"</span> <span class="tk-attr">data-sw-svg-replay</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-sw-svg-click</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-sw-svg-loop</span>=<span class="tk-str">"5000"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;path</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"draw"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"1100"</span> <span class="tk-attr">data-sw-easing</span>=<span class="tk-str">"ease-in-out"</span> <span class="tk-attr">d</span>=<span class="tk-str">"M30 18 V72 H78"</span> <span class="tk-attr">stroke</span>=<span class="tk-str">"currentColor"</span> <span class="tk-attr">stroke-width</span>=<span class="tk-str">"7"</span> <span class="tk-attr">stroke-linecap</span>=<span class="tk-str">"round"</span> <span class="tk-attr">stroke-linejoin</span>=<span class="tk-str">"round"</span> <span class="tk-tag">/&gt;</span>
+  <span class="tk-tag">&lt;rect</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"reveal-right"</span> <span class="tk-attr">data-sw-delay</span>=<span class="tk-str">"950"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"500"</span> <span class="tk-attr">x</span>=<span class="tk-str">"40"</span> <span class="tk-attr">y</span>=<span class="tk-str">"52"</span> <span class="tk-attr">width</span>=<span class="tk-str">"26"</span> <span class="tk-attr">height</span>=<span class="tk-str">"14"</span> <span class="tk-attr">rx</span>=<span class="tk-str">"3"</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-accent"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"currentColor"</span> <span class="tk-tag">/&gt;</span>
+  <span class="tk-tag">&lt;rect</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"reveal-right"</span> <span class="tk-attr">data-sw-delay</span>=<span class="tk-str">"1200"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"500"</span> <span class="tk-attr">x</span>=<span class="tk-str">"40"</span> <span class="tk-attr">y</span>=<span class="tk-str">"35"</span> <span class="tk-attr">width</span>=<span class="tk-str">"26"</span> <span class="tk-attr">height</span>=<span class="tk-str">"14"</span> <span class="tk-attr">rx</span>=<span class="tk-str">"3"</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-secondary"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"currentColor"</span> <span class="tk-tag">/&gt;</span>
+<span class="tk-tag">&lt;/svg</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">02 · Draw</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="v2_title">Lines that draw themselves.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="v2_lead"><code class="font-code text-base">draw</code> animates a stroke from nothing to complete; the element needs a stroke and no fill. <code class="font-code text-base">data-sw-svg-fill="true"</code> fades the fill in after the line is done, the usual move for line-art icons. Put <code class="font-code text-base">draw</code> on a group and every shape inside it draws.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-1 gap-6 md:grid-cols-2">
+      <div class="grid cursor-pointer place-items-center rounded-3xl border border-base-content/10 bg-base-100 py-14">
+
+<svg viewBox="0 0 240 120" class="h-32 w-auto ws-ink" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" data-sw-svg-replay="true" data-sw-svg-click="true">
+  <path data-sw-svg="draw" data-sw-duration="1600" data-sw-easing="ease-in-out" d="M12 84 C 40 24 72 24 96 60 C 120 96 152 96 176 60 C 196 30 220 30 228 54" />
+</svg>
+
+      </div>
+      <div class="grid cursor-pointer place-items-center rounded-3xl border border-base-content/10 bg-base-100 py-14">
+
+<svg viewBox="0 0 120 120" class="h-32 w-auto text-accent" data-sw-svg-replay="true" data-sw-svg-click="true">
+  <path data-sw-svg="draw" data-sw-svg-fill="true" data-sw-duration="1400" d="M60 10 L73 44 L110 46 L81 69 L91 105 L60 85 L29 105 L39 69 L10 46 L47 44 Z" fill="currentColor" stroke="currentColor" stroke-width="3" stroke-linejoin="round" />
+</svg>
+
+      </div>
+    </div>
+    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">svg · draw</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;svg</span> <span class="tk-attr">viewBox</span>=<span class="tk-str">"0 0 240 120"</span> <span class="tk-attr">class</span>=<span class="tk-str">"h-32 w-auto ws-ink"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"none"</span> <span class="tk-attr">stroke</span>=<span class="tk-str">"currentColor"</span> <span class="tk-attr">stroke-width</span>=<span class="tk-str">"4"</span> <span class="tk-attr">stroke-linecap</span>=<span class="tk-str">"round"</span> <span class="tk-attr">data-sw-svg-replay</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-sw-svg-click</span>=<span class="tk-str">"true"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;path</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"draw"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"1600"</span> <span class="tk-attr">data-sw-easing</span>=<span class="tk-str">"ease-in-out"</span> <span class="tk-attr">d</span>=<span class="tk-str">"M12 84 C 40 24 72 24 96 60 C 120 96 152 96 176 60 C 196 30 220 30 228 54"</span> <span class="tk-tag">/&gt;</span>
+<span class="tk-tag">&lt;/svg</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+      </div>
+      <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">svg · draw, then fill</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;svg</span> <span class="tk-attr">viewBox</span>=<span class="tk-str">"0 0 120 120"</span> <span class="tk-attr">class</span>=<span class="tk-str">"h-32 w-auto text-accent"</span> <span class="tk-attr">data-sw-svg-replay</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-sw-svg-click</span>=<span class="tk-str">"true"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;path</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"draw"</span> <span class="tk-attr">data-sw-svg-fill</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"1400"</span> <span class="tk-attr">d</span>=<span class="tk-str">"M60 10 L73 44 L110 46 L81 69 L91 105 L60 85 L29 105 L39 69 L10 46 L47 44 Z"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"currentColor"</span> <span class="tk-attr">stroke</span>=<span class="tk-str">"currentColor"</span> <span class="tk-attr">stroke-width</span>=<span class="tk-str">"3"</span> <span class="tk-attr">stroke-linejoin</span>=<span class="tk-str">"round"</span> <span class="tk-tag">/&gt;</span>
+<span class="tk-tag">&lt;/svg</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">03 · Scenes</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="v3_title">One after another.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="v3_lead">Wrap animated shapes in a <code class="font-code text-base">data-sw-svg-scene</code> and set <code class="font-code text-base">data-sw-svg-stagger</code>; they play in document order as the scene enters the view. These bars rise 110 ms apart.</p>
+  </div>
+  <div class="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-center">
+    <div class="grid cursor-pointer place-items-center rounded-3xl border border-base-content/10 bg-base-100 py-14">
+
+<svg viewBox="0 0 320 120" class="h-32 w-auto" data-sw-svg-scene data-sw-svg-stagger="110" data-sw-svg-click="true" data-sw-svg-replay="true">
+  <rect data-sw-svg="fade-up" data-sw-duration="600" x="10" y="70" width="44" height="40" rx="8" class="text-primary" fill="currentColor" />
+  <rect data-sw-svg="fade-up" data-sw-duration="600" x="72" y="50" width="44" height="60" rx="8" class="text-primary" fill="currentColor" />
+  <rect data-sw-svg="fade-up" data-sw-duration="600" x="134" y="34" width="44" height="76" rx="8" class="text-secondary" fill="currentColor" />
+  <rect data-sw-svg="fade-up" data-sw-duration="600" x="196" y="20" width="44" height="90" rx="8" class="text-secondary" fill="currentColor" />
+  <rect data-sw-svg="fade-up" data-sw-duration="600" x="258" y="8" width="44" height="102" rx="8" class="text-accent" fill="currentColor" />
+</svg>
+
+    </div>
+    <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">svg · staggered scene</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;svg</span> <span class="tk-attr">viewBox</span>=<span class="tk-str">"0 0 320 120"</span> <span class="tk-attr">class</span>=<span class="tk-str">"h-32 w-auto"</span> <span class="tk-attr">data-sw-svg-scene</span> <span class="tk-attr">data-sw-svg-stagger</span>=<span class="tk-str">"110"</span> <span class="tk-attr">data-sw-svg-click</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-sw-svg-replay</span>=<span class="tk-str">"true"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;rect</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"fade-up"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"600"</span> <span class="tk-attr">x</span>=<span class="tk-str">"10"</span> <span class="tk-attr">y</span>=<span class="tk-str">"70"</span> <span class="tk-attr">width</span>=<span class="tk-str">"44"</span> <span class="tk-attr">height</span>=<span class="tk-str">"40"</span> <span class="tk-attr">rx</span>=<span class="tk-str">"8"</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-primary"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"currentColor"</span> <span class="tk-tag">/&gt;</span>
+  <span class="tk-tag">&lt;rect</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"fade-up"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"600"</span> <span class="tk-attr">x</span>=<span class="tk-str">"72"</span> <span class="tk-attr">y</span>=<span class="tk-str">"50"</span> <span class="tk-attr">width</span>=<span class="tk-str">"44"</span> <span class="tk-attr">height</span>=<span class="tk-str">"60"</span> <span class="tk-attr">rx</span>=<span class="tk-str">"8"</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-primary"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"currentColor"</span> <span class="tk-tag">/&gt;</span>
+  <span class="tk-tag">&lt;rect</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"fade-up"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"600"</span> <span class="tk-attr">x</span>=<span class="tk-str">"134"</span> <span class="tk-attr">y</span>=<span class="tk-str">"34"</span> <span class="tk-attr">width</span>=<span class="tk-str">"44"</span> <span class="tk-attr">height</span>=<span class="tk-str">"76"</span> <span class="tk-attr">rx</span>=<span class="tk-str">"8"</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-secondary"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"currentColor"</span> <span class="tk-tag">/&gt;</span>
+  <span class="tk-tag">&lt;rect</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"fade-up"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"600"</span> <span class="tk-attr">x</span>=<span class="tk-str">"196"</span> <span class="tk-attr">y</span>=<span class="tk-str">"20"</span> <span class="tk-attr">width</span>=<span class="tk-str">"44"</span> <span class="tk-attr">height</span>=<span class="tk-str">"90"</span> <span class="tk-attr">rx</span>=<span class="tk-str">"8"</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-secondary"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"currentColor"</span> <span class="tk-tag">/&gt;</span>
+  <span class="tk-tag">&lt;rect</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"fade-up"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"600"</span> <span class="tk-attr">x</span>=<span class="tk-str">"258"</span> <span class="tk-attr">y</span>=<span class="tk-str">"8"</span> <span class="tk-attr">width</span>=<span class="tk-str">"44"</span> <span class="tk-attr">height</span>=<span class="tk-str">"102"</span> <span class="tk-attr">rx</span>=<span class="tk-str">"8"</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-accent"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"currentColor"</span> <span class="tk-tag">/&gt;</span>
+<span class="tk-tag">&lt;/svg</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">04 · Wipes and entrances</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="v4_title">A clean edge, or a familiar entrance.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="v4_lead">The reveal effects uncover a shape in place with a clip-path: right, left, down, up, or an iris from the centre. The entrance effects you know from whole elements work on single shapes too, and scale effects grow from a named corner or edge.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+
+<svg viewBox="0 0 100 100" class="cursor-pointer rounded-2xl bg-base-100 p-6 text-primary" data-sw-svg-click="true" data-sw-svg-replay="true" aria-label="reveal-right" role="img"><rect data-sw-svg="reveal-right" data-sw-duration="800" x="10" y="10" width="80" height="80" rx="14" fill="currentColor" /></svg>
+<svg viewBox="0 0 100 100" class="cursor-pointer rounded-2xl bg-base-100 p-6 text-secondary" data-sw-svg-click="true" data-sw-svg-replay="true" aria-label="reveal-up" role="img"><rect data-sw-svg="reveal-up" data-sw-duration="800" x="10" y="10" width="80" height="80" rx="14" fill="currentColor" /></svg>
+<svg viewBox="0 0 100 100" class="cursor-pointer rounded-2xl bg-base-100 p-6 text-accent" data-sw-svg-click="true" data-sw-svg-replay="true" aria-label="reveal-iris" role="img"><circle data-sw-svg="reveal-iris" data-sw-duration="900" cx="50" cy="50" r="42" fill="currentColor" /></svg>
+<svg viewBox="0 0 100 100" class="cursor-pointer rounded-2xl bg-base-100 p-6 text-primary" data-sw-svg-click="true" data-sw-svg-replay="true" aria-label="zoom-in" role="img"><circle data-sw-svg="zoom-in" data-sw-duration="700" data-sw-easing="back" cx="50" cy="50" r="40" fill="currentColor" /></svg>
+<svg viewBox="0 0 100 100" class="cursor-pointer rounded-2xl bg-base-100 p-6 text-secondary" data-sw-svg-click="true" data-sw-svg-replay="true" aria-label="flip-x" role="img"><rect data-sw-svg="flip-x" data-sw-duration="800" x="14" y="14" width="72" height="72" rx="10" fill="currentColor" /></svg>
+<svg viewBox="0 0 100 100" class="cursor-pointer rounded-2xl bg-base-100 p-6 text-accent" data-sw-svg-click="true" data-sw-svg-replay="true" aria-label="scale-bl" role="img"><rect data-sw-svg="scale-bl" data-sw-duration="700" data-sw-easing="bounce" x="14" y="14" width="72" height="72" rx="10" fill="currentColor" /></svg>
+
+    </div>
+    <ul class="mt-4 grid list-none grid-cols-2 gap-4 p-0 text-center font-code text-xs text-base-content/60 sm:grid-cols-3 lg:grid-cols-6">
+      <li>reveal-right</li><li>reveal-up</li><li>reveal-iris</li><li>zoom-in · back</li><li>flip-x</li><li>scale-bl · bounce</li>
+    </ul>
+    <div class="mt-6">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">svg · wipes and entrances</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;svg</span> <span class="tk-attr">viewBox</span>=<span class="tk-str">"0 0 100 100"</span> <span class="tk-attr">class</span>=<span class="tk-str">"cursor-pointer rounded-2xl bg-base-100 p-6 text-primary"</span> <span class="tk-attr">data-sw-svg-click</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-sw-svg-replay</span>=<span class="tk-str">"true"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"reveal-right"</span> <span class="tk-attr">role</span>=<span class="tk-str">"img"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;rect</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"reveal-right"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"800"</span> <span class="tk-attr">x</span>=<span class="tk-str">"10"</span> <span class="tk-attr">y</span>=<span class="tk-str">"10"</span> <span class="tk-attr">width</span>=<span class="tk-str">"80"</span> <span class="tk-attr">height</span>=<span class="tk-str">"80"</span> <span class="tk-attr">rx</span>=<span class="tk-str">"14"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"currentColor"</span> <span class="tk-tag">/&gt;</span><span class="tk-tag">&lt;/svg</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;svg</span> <span class="tk-attr">viewBox</span>=<span class="tk-str">"0 0 100 100"</span> <span class="tk-attr">class</span>=<span class="tk-str">"cursor-pointer rounded-2xl bg-base-100 p-6 text-secondary"</span> <span class="tk-attr">data-sw-svg-click</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-sw-svg-replay</span>=<span class="tk-str">"true"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"reveal-up"</span> <span class="tk-attr">role</span>=<span class="tk-str">"img"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;rect</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"reveal-up"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"800"</span> <span class="tk-attr">x</span>=<span class="tk-str">"10"</span> <span class="tk-attr">y</span>=<span class="tk-str">"10"</span> <span class="tk-attr">width</span>=<span class="tk-str">"80"</span> <span class="tk-attr">height</span>=<span class="tk-str">"80"</span> <span class="tk-attr">rx</span>=<span class="tk-str">"14"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"currentColor"</span> <span class="tk-tag">/&gt;</span><span class="tk-tag">&lt;/svg</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;svg</span> <span class="tk-attr">viewBox</span>=<span class="tk-str">"0 0 100 100"</span> <span class="tk-attr">class</span>=<span class="tk-str">"cursor-pointer rounded-2xl bg-base-100 p-6 text-accent"</span> <span class="tk-attr">data-sw-svg-click</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-sw-svg-replay</span>=<span class="tk-str">"true"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"reveal-iris"</span> <span class="tk-attr">role</span>=<span class="tk-str">"img"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;circle</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"reveal-iris"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"900"</span> <span class="tk-attr">cx</span>=<span class="tk-str">"50"</span> <span class="tk-attr">cy</span>=<span class="tk-str">"50"</span> <span class="tk-attr">r</span>=<span class="tk-str">"42"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"currentColor"</span> <span class="tk-tag">/&gt;</span><span class="tk-tag">&lt;/svg</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;svg</span> <span class="tk-attr">viewBox</span>=<span class="tk-str">"0 0 100 100"</span> <span class="tk-attr">class</span>=<span class="tk-str">"cursor-pointer rounded-2xl bg-base-100 p-6 text-primary"</span> <span class="tk-attr">data-sw-svg-click</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-sw-svg-replay</span>=<span class="tk-str">"true"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"zoom-in"</span> <span class="tk-attr">role</span>=<span class="tk-str">"img"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;circle</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"zoom-in"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"700"</span> <span class="tk-attr">data-sw-easing</span>=<span class="tk-str">"back"</span> <span class="tk-attr">cx</span>=<span class="tk-str">"50"</span> <span class="tk-attr">cy</span>=<span class="tk-str">"50"</span> <span class="tk-attr">r</span>=<span class="tk-str">"40"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"currentColor"</span> <span class="tk-tag">/&gt;</span><span class="tk-tag">&lt;/svg</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;svg</span> <span class="tk-attr">viewBox</span>=<span class="tk-str">"0 0 100 100"</span> <span class="tk-attr">class</span>=<span class="tk-str">"cursor-pointer rounded-2xl bg-base-100 p-6 text-secondary"</span> <span class="tk-attr">data-sw-svg-click</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-sw-svg-replay</span>=<span class="tk-str">"true"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"flip-x"</span> <span class="tk-attr">role</span>=<span class="tk-str">"img"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;rect</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"flip-x"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"800"</span> <span class="tk-attr">x</span>=<span class="tk-str">"14"</span> <span class="tk-attr">y</span>=<span class="tk-str">"14"</span> <span class="tk-attr">width</span>=<span class="tk-str">"72"</span> <span class="tk-attr">height</span>=<span class="tk-str">"72"</span> <span class="tk-attr">rx</span>=<span class="tk-str">"10"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"currentColor"</span> <span class="tk-tag">/&gt;</span><span class="tk-tag">&lt;/svg</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;svg</span> <span class="tk-attr">viewBox</span>=<span class="tk-str">"0 0 100 100"</span> <span class="tk-attr">class</span>=<span class="tk-str">"cursor-pointer rounded-2xl bg-base-100 p-6 text-accent"</span> <span class="tk-attr">data-sw-svg-click</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-sw-svg-replay</span>=<span class="tk-str">"true"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"scale-bl"</span> <span class="tk-attr">role</span>=<span class="tk-str">"img"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;rect</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"scale-bl"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"700"</span> <span class="tk-attr">data-sw-easing</span>=<span class="tk-str">"bounce"</span> <span class="tk-attr">x</span>=<span class="tk-str">"14"</span> <span class="tk-attr">y</span>=<span class="tk-str">"14"</span> <span class="tk-attr">width</span>=<span class="tk-str">"72"</span> <span class="tk-attr">height</span>=<span class="tk-str">"72"</span> <span class="tk-attr">rx</span>=<span class="tk-str">"10"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"currentColor"</span> <span class="tk-tag">/&gt;</span><span class="tk-tag">&lt;/svg</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">05 · Travel and morph</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="v5_title">Along a path, into a new shape.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="v5_lead"><code class="font-code text-base">along-path</code> sends a shape along <code class="font-code text-base">data-sw-svg-path</code>, turned to face its direction. <code class="font-code text-base">morph</code> tweens a path from its own outline to the one in <code class="font-code text-base">data-sw-svg-to</code>; it reads cleanest when the two paths have a similar structure.</p>
+  </div>
+  <div class="mt-10 grid grid-cols-1 gap-6 md:grid-cols-2">
+    <div class="grid cursor-pointer place-items-center rounded-3xl border border-base-content/10 bg-base-100 py-14">
+
+<svg viewBox="0 0 240 120" class="h-32 w-auto" data-sw-svg-replay="true" data-sw-svg-click="true">
+  <path d="M16 96 Q 120 -8 224 96" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 6" class="text-base-content/30" />
+  <circle data-sw-svg="along-path" data-sw-svg-path="M16 96 Q 120 -8 224 96" data-sw-duration="1800" data-sw-easing="ease-in-out" cx="0" cy="0" r="9" class="text-accent" fill="currentColor" />
+</svg>
+
+    </div>
+    <div class="grid cursor-pointer place-items-center rounded-3xl border border-base-content/10 bg-base-100 py-14">
+
+<svg viewBox="0 0 120 120" class="h-32 w-auto ws-ink" data-sw-svg-replay="true" data-sw-svg-click="true">
+  <path class="sw-svg-shown" data-sw-svg="morph" data-sw-svg-to="M60 8 L74 44 L112 44 L82 68 L94 106 L60 82 L26 106 L38 68 L8 44 L46 44 Z" data-sw-duration="1200" data-sw-easing="ease-in-out" fill="currentColor" d="M28 20 H92 A12 12 0 0 1 104 32 V88 A12 12 0 0 1 92 100 H28 A12 12 0 0 1 16 88 V32 A12 12 0 0 1 28 20 Z" />
+</svg>
+
+    </div>
+  </div>
+  <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">svg · along a path</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;svg</span> <span class="tk-attr">viewBox</span>=<span class="tk-str">"0 0 240 120"</span> <span class="tk-attr">class</span>=<span class="tk-str">"h-32 w-auto"</span> <span class="tk-attr">data-sw-svg-replay</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-sw-svg-click</span>=<span class="tk-str">"true"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;path</span> <span class="tk-attr">d</span>=<span class="tk-str">"M16 96 Q 120 -8 224 96"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"none"</span> <span class="tk-attr">stroke</span>=<span class="tk-str">"currentColor"</span> <span class="tk-attr">stroke-width</span>=<span class="tk-str">"2"</span> <span class="tk-attr">stroke-dasharray</span>=<span class="tk-str">"4 6"</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-base-content/30"</span> <span class="tk-tag">/&gt;</span>
+  <span class="tk-tag">&lt;circle</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"along-path"</span> <span class="tk-attr">data-sw-svg-path</span>=<span class="tk-str">"M16 96 Q 120 -8 224 96"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"1800"</span> <span class="tk-attr">data-sw-easing</span>=<span class="tk-str">"ease-in-out"</span> <span class="tk-attr">cx</span>=<span class="tk-str">"0"</span> <span class="tk-attr">cy</span>=<span class="tk-str">"0"</span> <span class="tk-attr">r</span>=<span class="tk-str">"9"</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-accent"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"currentColor"</span> <span class="tk-tag">/&gt;</span>
+<span class="tk-tag">&lt;/svg</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+    </div>
+    <div class="min-w-0">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">svg · morph</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;svg</span> <span class="tk-attr">viewBox</span>=<span class="tk-str">"0 0 120 120"</span> <span class="tk-attr">class</span>=<span class="tk-str">"h-32 w-auto ws-ink"</span> <span class="tk-attr">data-sw-svg-replay</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-sw-svg-click</span>=<span class="tk-str">"true"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;path</span> <span class="tk-attr">class</span>=<span class="tk-str">"sw-svg-shown"</span> <span class="tk-attr">data-sw-svg</span>=<span class="tk-str">"morph"</span> <span class="tk-attr">data-sw-svg-to</span>=<span class="tk-str">"M60 8 L74 44 L112 44 L82 68 L94 106 L60 82 L26 106 L38 68 L8 44 L46 44 Z"</span> <span class="tk-attr">data-sw-duration</span>=<span class="tk-str">"1200"</span> <span class="tk-attr">data-sw-easing</span>=<span class="tk-str">"ease-in-out"</span> <span class="tk-attr">fill</span>=<span class="tk-str">"currentColor"</span> <span class="tk-attr">d</span>=<span class="tk-str">"M28 20 H92 A12 12 0 0 1 104 32 V88 A12 12 0 0 1 92 100 H28 A12 12 0 0 1 16 88 V32 A12 12 0 0 1 28 20 Z"</span> <span class="tk-tag">/&gt;</span>
+<span class="tk-tag">&lt;/svg</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+    </div>
+  </div>
+</section>
+
+<section class="border-t border-base-content/10">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+      <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">
+        {{sw-icon "eye" "h-6 w-6 ws-ink"}}
+        <h3 class="mt-4 font-heading text-lg font-bold">Never hidden for good</h3>
+        <p class="mt-2 text-sm leading-relaxed text-base-content/70">Without JavaScript, and for visitors who prefer reduced motion, every shape shows its finished state: the drawn line, the morph's starting shape.</p>
+      </div>
+      <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="80">
+        {{sw-icon "timer" "h-6 w-6 ws-ink"}}
+        <h3 class="mt-4 font-heading text-lg font-bold">The same timing words</h3>
+        <p class="mt-2 text-sm leading-relaxed text-base-content/70">Duration, delay, easing and once are the attributes the entrance animations use, plus the springy back, bounce and elastic easings.</p>
+      </div>
+      <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="160">
+        {{sw-icon "pencil-ruler" "h-6 w-6 ws-ink"}}
+        <h3 class="mt-4 font-heading text-lg font-bold">A builder in the editor</h3>
+        <p class="mt-2 text-sm leading-relaxed text-base-content/70">The editor's Library has an SVG animation builder for composing these without writing the attributes by hand.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="border-t border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-20">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <h2 class="ws-display text-3xl font-bold sm:text-4xl">More of the showcase</h2>
+      <a class="btn btn-ghost btn-sm" href="{{sw-url '/showcase'}}">All demos {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+    <div class="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {{#each pages.showcase._attributes.children}}
+      {{#unless (eq path @root.page.path)}}
+      <a class="ws-tile rounded-2xl border border-base-content/10 bg-base-100 p-4" href="{{sw-url path}}">
+        <span class="flex items-center gap-2 font-heading font-semibold">{{#if data.icon}}{{sw-icon data.icon "h-4 w-4 ws-ink"}}{{/if}}{{title}}</span>
+      </a>
+      {{/unless}}
+      {{/each}}
+    </div>
+  </div>
+</section>

@@ -1,0 +1,79 @@
+{{!-- META {"path":"rank-tracking","title":"Track rankings","description":"Track where a site places in Google for the keywords that matter: choose a provider and a budget, set a project's domain, depth and schedule, add keywords, and read the history.","parent":"guides","order":7,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>Rank tracking runs one Google search per keyword per day or week, from a place, on a device, in a language you choose, and records where the site appears. The history shows in <strong>Statistics → Search rankings</strong>, which everyone with access to the project can read, clients included. Each search is bought from a search-results provider, so the instance admin sets a monthly budget.</p>
+
+    <h2 id="provider">1. Choose a provider (instance admin)</h2>
+    <p>In <strong>System Settings → Integrations → Keyword rank tracking</strong>, pick the provider, enter its credentials and set a monthly budget. Every check is booked against the budget before it is sent.</p>
+    <table>
+      <thead><tr><th></th><th>Bright Data</th><th>DataForSEO</th><th class="min-w-56">Apify</th></tr></thead>
+      <tbody>
+        <tr><td>Service</td><td>SERP API</td><td>Google Organic SERP API, standard queue</td><td>Google Search Results Scraper</td></tr>
+        <tr><td>Searches from</td><td>A connection in the keyword's country</td><td>Its own servers, telling Google the place</td><td>A connection in the keyword's country</td></tr>
+        <tr><td>Answers</td><td>At once</td><td>Within minutes</td><td>Within minutes</td></tr>
+        <tr><td>Places</td><td>Countries</td><td>Countries, regions and cities</td><td>Countries</td></tr>
+        <tr><td>Credentials</td><td>API key and SERP API zone</td><td>API login and password</td><td>API token</td></tr>
+        <tr><td>Sandbox</td><td>None</td><td>Free dummy results</td><td>None</td></tr>
+      </tbody>
+    </table>
+    <p>Prices change; check each provider's own price list. For a site in a small market, where the search comes from matters: Google ranks by where the searcher really is, and searching from a connection in the country matches what people there see more closely than naming the place.</p>
+    <div class="ws-callout"><p class="!mt-0"><strong>Bright Data zone settings:</strong> set the zone's default data format to <strong>Full JSON</strong> (Light JSON leaves out featured snippets), Google Ads to <strong>Standard</strong>, and leave custom headers, cookies and asynchronous requests off.</p></div>
+
+    <h2 id="project">2. Set up the project (agency staff)</h2>
+    <p>In the project's <strong>Statistics → Search rankings</strong>, a platform admin or developer sets:</p>
+    <table>
+      <thead><tr><th>Setting</th><th>Values</th></tr></thead>
+      <tbody>
+        <tr><td>Domain</td><td>The domain the site is published at, e.g. <code>example.com</code>. <code>www.</code> is ignored.</td></tr>
+        <tr><td>Include subdomains</td><td>On by default: a result on <code>shop.example.com</code> counts as the site's.</td></tr>
+        <tr><td>Schedule</td><td><code>weekly</code> (default) or <code>daily</code>.</td></tr>
+        <tr><td>Depth</td><td>Top 10, 20, 50 or 100 (default). A check reads further pages only while the site has not turned up, so a site on page one costs one page whatever the depth.</td></tr>
+      </tbody>
+    </table>
+    <p>Then add keywords, up to 100 at a time and 500 per project, each up to 120 characters. Every keyword in one batch gets the same device (desktop or mobile), place and language. A paused keyword keeps its history and costs nothing.</p>
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Statistics · Search rankings</span></div>
+      {{> ws-media slot="doc_rankings" class="rounded-none"}}
+    </div>
+
+    <h2 id="read">3. Read the results</h2>
+    <ul>
+      <li><strong>Positions count the way Google and Search Console count them.</strong> Position 1 is the first result. A featured snippet counts as a result: when the site holds it, its position is 1, marked "featured snippet".</li>
+      <li><strong>"Not in the top 100"</strong> means Google returned every result the check asked for and the site was not among them.</li>
+      <li><strong>"Not in the 74 results Google returned"</strong> means Google's list ended before the depth; the site may be just below.</li>
+      <li><strong>"The check stopped there"</strong> means the budget ran out before the check could read further that day.</li>
+      <li><strong>Positions move.</strong> Each check is one search from one place at one moment. The trend over a few weeks says more than one day's change.</li>
+    </ul>
+    <p>Agents read the same data with <code>get_rankings</code>; they cannot add keywords or change the set-up.</p>
+
+    <h2 id="how">How checks run</h2>
+    <ul>
+      <li>A pass runs every ten minutes and sends what is due. "Check now" on a project goes ahead of the scheduled pass.</li>
+      <li>A search the provider could not run, and did not charge for, is retried an hour later, at most twice more that day.</li>
+      <li>When a keyword that ranked last time reads "not found", it is read once more five minutes later, and that second reading is what is recorded. The second reading is paid for like the first.</li>
+      <li>With Bright Data, identical searches from several projects are bought once and the cost is shared.</li>
+      <li>Switching provider keeps every keyword and its history; each check records which provider ran it.</li>
+    </ul>
+
+    <h2 id="verify">Check your work</h2>
+    <ul>
+      <li>Use "Check now" on a project with one or two keywords and watch the result arrive (at once with Bright Data, within minutes with the queued providers).</li>
+      <li>The admin view under Keyword rank tracking shows the last seven days per provider: checks, found, not found, failed, retried, pages read and cost.</li>
+    </ul>
+
+    <h2 id="pitfalls">Pitfalls</h2>
+    <ul>
+      <li><strong>Google only.</strong> Keywords are tracked on Google. Bing's numbers come from the search-performance view instead (see <a href="{{sw-url '/docs/guides/analytics-and-consent'}}#search">search engine numbers</a>).</li>
+      <li><strong>Switching to DataForSEO</strong> can break keywords added under Apify whose place name differs from DataForSEO's list; choose the place again.</li>
+      <li><strong>A deep, daily list is the expensive one.</strong> Depth caps what a missing site costs per check; schedule multiplies it.</li>
+    </ul>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/features/rank-tracking'}}">Rank tracking</a></li>
+      <li><a href="{{sw-url '/docs/guides/analytics-and-consent'}}">Statistics, analytics and consent</a></li>
+    </ul>
+  </article>
+</div>

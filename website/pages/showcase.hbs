@@ -1,0 +1,17 @@
+{{!-- META {"path":"showcase","title":"Showcase","description":"Every component and effect, running live. Each page shows the result and the markup that makes it.","parent":"home","nav":{"title":"Showcase","slots":["header"],"order":2},"data":{"headline":"See it live. Every component, every effect."}} --}}
+{{> page-hero parent=page.parent}}
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    {{#each page.children}}
+    <a class="ws-tile group overflow-hidden rounded-3xl border border-base-content/10 bg-base-100" href="{{sw-url path}}" data-sw-animation="fade-up" data-sw-delay="{{sw-stagger @index 60 420}}">
+      <div class="relative grid h-36 place-items-center overflow-hidden text-white {{#if (eq (sw-mod @index 3) 1)}}ws-sc-tile-2{{else if (eq (sw-mod @index 3) 2)}}ws-sc-tile-3{{else}}ws-sc-tile{{/if}}">
+        {{#if data.icon}}{{sw-icon data.icon "relative h-9 w-9 drop-shadow"}}{{/if}}
+      </div>
+      <div class="p-6">
+        <h2 class="font-heading text-lg font-bold">{{title}}</h2>
+        <p class="mt-1.5 text-sm leading-relaxed text-base-content/70">{{description}}</p>
+      </div>
+    </a>
+    {{/each}}
+  </div>
+</section>

@@ -1,0 +1,130 @@
+{{!-- META {"path":"brand-and-themes","title":"Brand, themes and layout","description":"Brand colors and fonts live in the Corporate Identity and compile to Tailwind utilities and CSS variables. Build on those tokens and a site gets a working dark theme and one content width you set in one place.","parent":"concepts","order":7,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>Every project has a <strong>Corporate Identity</strong> (Settings → Corporate Identity) that holds its name, logos, contact details and design tokens. The colors and fonts there become Tailwind utilities such as <code>bg-primary</code> and <code>font-heading</code>, and CSS variables such as <code>--sw-color-primary</code>. daisyUI components are themed from the same values. Change a color once and every page follows.</p>
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Settings · Corporate Identity</span></div>
+      {{> ws-media slot="doc_brand_identity" class="rounded-none"}}
+    </div>
+
+    <h2 id="colors">Color tokens</h2>
+    <p>Six colors always exist. They cannot be deleted: clearing one resets it to its default, so templates and components can rely on them.</p>
+    <table>
+      <thead><tr><th>Token</th><th>Settings label</th><th>Default</th><th>Role</th></tr></thead>
+      <tbody>
+        <tr><td><code>primary</code></td><td>Primary Color</td><td><code>#4f46e5</code></td><td>Brand color and main actions</td></tr>
+        <tr><td><code>secondary</code></td><td>Secondary Color</td><td><code>#0ea5e9</code></td><td>Supporting brand color</td></tr>
+        <tr><td><code>accent</code></td><td>Accent Color</td><td><code>#f59e0b</code></td><td>Highlights</td></tr>
+        <tr><td><code>neutral</code></td><td>Neutral Color</td><td><code>#171627</code></td><td>Dark surfaces such as footers and badges</td></tr>
+        <tr><td><code>base-100</code></td><td>Background Color</td><td><code>#ffffff</code></td><td>Page background</td></tr>
+        <tr><td><code>base-content</code></td><td>Text Color</td><td><code>#1a1a23</code></td><td>Body text</td></tr>
+      </tbody>
+    </table>
+    <ul>
+      <li><strong>Text on color is automatic.</strong> For <code>primary</code>, <code>secondary</code>, <code>accent</code> and <code>neutral</code> a readable foreground is derived from the color's luminance when the site is built. Use it as <code>text-primary-content</code> on <code>bg-primary</code>.</li>
+      <li><strong>Custom colors.</strong> Add any number of named colors (<code>brand-teal</code>). Each becomes <code>bg-</code>, <code>text-</code> and <code>border-</code> utilities. Custom colors get no derived <code>-content</code> color.</li>
+      <li><strong>Other surfaces.</strong> <code>base-200</code> and <code>base-300</code>, and daisyUI's <code>info</code>, <code>success</code>, <code>warning</code> and <code>error</code>, use daisyUI's defaults.</li>
+      <li><strong>CSS tokens.</strong> The CSS tokens tile holds values that are neither a color nor a font, such as a gradient or a shadow. Each is emitted as <code>--sw-&lt;name&gt;</code> and read with <code>var()</code>; it creates no utility class.</li>
+    </ul>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">tokens in markup and CSS</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;section</span> <span class="tk-attr">class</span>=<span class="tk-str">"bg-base-200 py-20"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"sw-container"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-base-content/70"</span><span class="tk-tag">&gt;</span>Muted text on a soft surface<span class="tk-tag">&lt;/p&gt;</span>
+    <span class="tk-tag">&lt;a</span> <span class="tk-attr">class</span>=<span class="tk-str">"rounded-lg bg-primary px-4 py-2 text-primary-content"</span> <span class="tk-attr">href</span>=<span class="tk-str">"/contact"</span><span class="tk-tag">&gt;</span>Contact<span class="tk-tag">&lt;/a&gt;</span>
+  <span class="tk-tag">&lt;/div&gt;</span>
+<span class="tk-tag">&lt;/section&gt;</span>
+
+<span class="tk-com">/* custom CSS: read the variables, never paste hex values */</span>
+<span class="tk-tag">.promo</span> {
+  <span class="tk-attr">background</span>: <span class="tk-kw">var</span>(--sw-color-base-100);
+  <span class="tk-attr">color</span>: <span class="tk-kw">var</span>(--sw-color-base-content);
+  <span class="tk-attr">border</span>: 1px solid <span class="tk-kw">var</span>(--sw-color-primary);
+  <span class="tk-attr">font-family</span>: <span class="tk-kw">var</span>(--sw-font-heading);
+}</code></pre>
+    </div>
+    <p>Every color you define, the six above and your custom ones, has a <code>--sw-color-&lt;token&gt;</code> variable, and every font slot a <code>--sw-font-&lt;slot&gt;</code> variable, on every page whether or not it uses daisyUI. Write custom CSS in a page's own <code>&lt;style&gt;</code> or in the site-wide Critical CSS setting.</p>
+
+    <h2 id="fonts">Fonts</h2>
+    <p>The <strong>Typography</strong> tile has two built-in slots, <strong>heading</strong> and <strong>body</strong>, and as many named slots as you need. The heading font is applied to <code>h1</code> to <code>h6</code> and the body font to the page's text, without any class. Use <code>font-heading</code> or <code>font-body</code> to put either on another element.</p>
+    <table>
+      <thead><tr><th>Slot</th><th>Applied to</th><th>Utility and variable</th><th>Unset</th></tr></thead>
+      <tbody>
+        <tr><td>Heading</td><td><code>h1</code>–<code>h6</code></td><td><code>font-heading</code>, <code>--sw-font-heading</code></td><td>a serif at weight 700</td></tr>
+        <tr><td>Body</td><td>the page text</td><td><code>font-body</code>, <code>--sw-font-body</code></td><td>a sans-serif at weight 400</td></tr>
+        <tr><td>Named, e.g. <code>code</code></td><td>only where you use it</td><td><code>font-code</code>, <code>--sw-font-code</code></td><td>no slot</td></tr>
+      </tbody>
+    </table>
+    <p>A slot uses either a system family (<code>serif</code>, <code>sans-serif</code>, <code>monospace</code>, or a face installed nearly everywhere, such as Georgia) or a font from the media library. Library fonts are self-hosted: upload your own files, or choose a family from the bundled Google Fonts catalog, which is downloaded once to your instance. Published pages never request fonts from Google. The names <code>heading</code>, <code>body</code>, <code>sans</code>, <code>serif</code> and <code>mono</code> are reserved for named slots.</p>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0">Do not load fonts with a <code>&lt;link&gt;</code> to fonts.googleapis.com or an <code>@import</code>. Set them in the Typography tile, so the font files ship with the site.</p></div>
+
+    <h2 id="themes">Light and dark themes</h2>
+    <p>Themes are off by default. Turn them on in Settings → Website → <strong>Light / dark themes</strong> and choose the default theme: <strong>Auto</strong> follows the visitor's device, <strong>Light</strong> or <strong>Dark</strong> pins one. The default is rendered into the page as <code>&lt;html data-sw-theme&gt;</code> (nothing for Auto), so there is no flash on load.</p>
+    <p>In the dark theme the surface and text tokens (<code>base-100</code>, <code>base-200</code>, <code>base-300</code>, <code>base-content</code>) switch to a dark palette. Anything built from those tokens adapts with no extra classes. The brand colors are tuned as well: the <code>--sw-color-primary</code>, <code>-secondary</code> and <code>-accent</code> variables get a lighter shade of the same hue, with a matching text color, and the platform's components and button effects use them.</p>
+    <p>Let visitors switch with the toggle helper. Put it once in the header slot:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">mainNav slot</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"navbar-end gap-2"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-hb">\{{sw-theme-toggle class="btn btn-ghost btn-circle"}}</span>
+<span class="tk-tag">&lt;/div&gt;</span></code></pre>
+    </div>
+    <p>It renders a button with a sun and a moon icon. The visitor's choice is kept in the browser and re-applied before the first paint on the next visit. <code>label=</code> sets its accessible name (the default comes from the reserved <code>theme.toggle</code> translation). While themes are off, the helper renders nothing.</p>
+
+    <h3 id="dark-safe">Keep pages dark-safe</h3>
+    <ul>
+      <li>Use token utilities for surfaces, text and borders: <code>bg-base-100</code>, <code>bg-base-200</code>, <code>text-base-content</code>, <code>border-base-content/10</code>. Fixed palette colors (<code>bg-white</code>, <code>text-gray-700</code>, <code>#fff</code> in CSS) stay the same in both themes and break the dark one.</li>
+      <li>A fixed color is fine on something meant to look the same in both themes, such as a brand badge or a photo overlay.</li>
+      <li>The <code>bg-primary</code> and <code>text-primary</code> utilities keep your exact brand color in both themes. For small brand-colored text on the dark background, use <code>var(--sw-color-primary)</code>, which is the tuned shade.</li>
+      <li>Tailwind's <code>dark:</code> prefix follows the device setting only and does not see the toggle. For a rule that only the dark theme needs, use both selectors the platform uses:</li>
+    </ul>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">Critical CSS</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-com">/* chosen with the toggle, or pinned as the default */</span>
+<span class="tk-tag">:root[data-sw-theme="dark"] .hero-shade</span> { <span class="tk-attr">opacity</span>: .6; }
+
+<span class="tk-com">/* Auto, on a device set to dark */</span>
+<span class="tk-kw">@media</span> (prefers-color-scheme: dark) {
+  <span class="tk-tag">:root:not([data-sw-theme]) .hero-shade</span> { <span class="tk-attr">opacity</span>: .6; }
+}</code></pre>
+    </div>
+
+    <h2 id="layout">Content width</h2>
+    <p>Sections should line up to one width, set in one place. Put <code>class="sw-container"</code> on each section's inner wrapper. It is fluid up to the configured width, centered, and keeps a responsive gutter so content never touches the edge of the screen.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">sections</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-com">&lt;!-- the background spans the screen, the content stays aligned --&gt;</span>
+<span class="tk-tag">&lt;section</span> <span class="tk-attr">class</span>=<span class="tk-str">"bg-neutral py-20 text-neutral-content"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"sw-container"</span><span class="tk-tag">&gt;</span>…<span class="tk-tag">&lt;/div&gt;</span>
+<span class="tk-tag">&lt;/section&gt;</span>
+
+<span class="tk-com">/* what the platform ships */</span>
+<span class="tk-tag">.sw-container</span> {
+  <span class="tk-attr">width</span>: 100%;
+  <span class="tk-attr">max-width</span>: <span class="tk-kw">var</span>(--sw-container, 1200px);
+  <span class="tk-attr">margin-inline</span>: auto;
+  <span class="tk-attr">padding-inline</span>: clamp(1rem, 5vw, 5rem);
+}</code></pre>
+    </div>
+    <p>Settings → Website → <strong>Content width</strong> sets <code>--sw-container</code> for the whole site, and every <code>.sw-container</code> reflows at once.</p>
+    <table>
+      <thead><tr><th>Preset</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td>Default (unset)</td><td><code>1200px</code></td></tr>
+        <tr><td>Narrow</td><td><code>960px</code></td></tr>
+        <tr><td>Normal</td><td><code>1200px</code></td></tr>
+        <tr><td>Wide</td><td><code>1440px</code></td></tr>
+        <tr><td>Full</td><td><code>none</code>, no cap</td></tr>
+      </tbody>
+    </table>
+    <p>Any other pixel value works too. <code>.sw-container</code> sits in a low-priority layer, so your own utilities override it where a section needs to break out. Imported pages use the same wrapper, so they line up with the pages you write.</p>
+
+    <h2 id="next">Next</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/concepts/header-footer-sidebars'}}">Header, footer and sidebars</a></li>
+      <li><a href="{{sw-url '/docs/reference/effects'}}">Effects reference</a></li>
+      <li><a href="{{sw-url '/docs/self-hosting/white-label'}}">Branding the admin</a></li>
+    </ul>
+  </article>
+</div>

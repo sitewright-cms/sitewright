@@ -1,0 +1,104 @@
+{{!-- META {"path":"editing-attributes","title":"Editing attributes","description":"The data-sw-* directives that make an element click-to-edit in the preview, where each one stores its value, and the editor-only control chip.","parent":"reference","order":2,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>Handlebars draws the structure of a page. The <code>data-sw-*</code> directives mark the leaves a client may change: a heading, a paragraph, a link, an image. You put one on a real element, the authored content becomes its default, and in the editor's preview that element turns click-to-edit. On publish the attributes are stripped and the site ships plain HTML.</p>
+
+    <h2 id="directives">The directives</h2>
+    <p>There are seven. Six are written by hand; <code>data-sw-entry</code> is added for you.</p>
+    <table>
+      <thead><tr><th>Attribute</th><th>Makes editable</th><th class="min-w-56">Written to</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>data-sw-text="key"</code></td><td>The element's text, as plain text (HTML-escaped).</td><td>The page's <code>page.data</code></td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-html="key"</code></td><td>A rich-text region: a floating toolbar in the preview and a side WYSIWYG or HTML-source editor. Sanitized to a safe allowlist when rendered.</td><td>The page's <code>page.data</code></td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-href="key"</code></td><td>A link's URL, in a popover. Pair it with <code>data-sw-text</code> on the same anchor to edit the label too.</td><td>The page's <code>page.data</code></td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-src="key"</code></td><td>An <code>&lt;img&gt;</code>: clicking it opens the file picker.</td><td>The page's <code>page.data</code></td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-bg="key"</code></td><td>An element's background image, set as an inline <code>background-image</code>.</td><td>The page's <code>page.data</code></td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-translate="key"</code></td><td>Text from the project's translation catalog, as plain text. The same key is shared by every page.</td><td><code>website.translations[key][locale]</code></td></tr>
+        <tr><td class="whitespace-nowrap"><code>data-sw-entry</code></td><td>Added automatically to each row a dataset <code>\{{#each}}</code> renders. Clicking the row opens that entry's editor. It adds no element, so the layout is the published one.</td><td>The dataset entry</td></tr>
+      </tbody>
+    </table>
+
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/about.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;section</span> <span class="tk-attr">data-sw-bg</span>=<span class="tk-str">"hero_bg"</span> <span class="tk-attr">class</span>=<span class="tk-str">"bg-cover bg-center py-24"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;h2</span> <span class="tk-attr">data-sw-text</span>=<span class="tk-str">"headline"</span><span class="tk-tag">&gt;</span>We build websites<span class="tk-tag">&lt;/h2&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-html</span>=<span class="tk-str">"intro"</span><span class="tk-tag">&gt;&lt;p&gt;</span>Default intro.<span class="tk-tag">&lt;/p&gt;&lt;/div&gt;</span>
+  <span class="tk-tag">&lt;img</span> <span class="tk-attr">data-sw-src</span>=<span class="tk-str">"portrait"</span> <span class="tk-attr">src</span>=<span class="tk-str">"/media/acme/portrait.jpg"</span> <span class="tk-attr">alt</span>=<span class="tk-str">"Our studio"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;a</span> <span class="tk-attr">data-sw-href</span>=<span class="tk-str">"cta_url"</span> <span class="tk-attr">data-sw-text</span>=<span class="tk-str">"cta_label"</span> <span class="tk-attr">href</span>=<span class="tk-str">"/contact"</span><span class="tk-tag">&gt;</span>Talk to us<span class="tk-tag">&lt;/a&gt;</span>
+  <span class="tk-tag">&lt;span</span> <span class="tk-attr">data-sw-translate</span>=<span class="tk-str">"cta_note"</span><span class="tk-tag">&gt;</span>Reply within a day<span class="tk-tag">&lt;/span&gt;</span>
+<span class="tk-tag">&lt;/section&gt;</span></code></pre>
+    </div>
+    <p>Everything between the tags is the default. A client who edits the headline writes <code>page.data.headline</code>; until then the authored text shows.</p>
+
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Content editor · About</span></div>
+      {{> ws-media slot="doc_inline_editing" class="rounded-none"}}
+    </div>
+
+    <h2 id="keys">Keys and where values live</h2>
+    <p>The text, html, href, src and bg directives read the key in one of three forms:</p>
+    <table>
+      <thead><tr><th>Key</th><th>Store</th><th class="min-w-56">Use it for</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>headline</code></td><td>A top-level property of this page's <code>page.data</code></td><td>Most page copy.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>page.data.hero.title</code></td><td>A nested path in <code>page.data</code></td><td>Grouping a section's fields.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>website.data.footer_note</code></td><td>The site-wide <code>website.data</code> object, one value for every page</td><td>Text in the header, footer or another chrome slot, and anything repeated on every page.</td></tr>
+      </tbody>
+    </table>
+    <p>A value must resolve to a string. A missing value, or a non-string one, keeps the authored default. For the URL directives (<code>href</code>, <code>src</code>, <code>bg</code>) an empty value also keeps the default, so clearing the field reverts it, and only a scheme-safe URL replaces it.</p>
+    <div class="ws-callout"><p class="!mt-0"><strong>Chrome slots have no page.</strong> The header, footer and sidebars are shared by every page, so there is no <code>page.data</code> to write to. Use <code>website.data.&lt;path&gt;</code> keys there (the only rich-text option in a slot), or <code>data-sw-translate</code> for plain text that changes per language.</p></div>
+
+    <h2 id="details">Behavior worth knowing</h2>
+    <h3 id="html">Rich text is sanitized</h3>
+    <p><code>data-sw-html</code> is the one directive that writes HTML, and it always goes through the sanitizer at render. Storing raw HTML in <code>page.data</code> is therefore safe: nothing is emitted unsanitized.</p>
+    <h3 id="images">Images keep their responsive markup</h3>
+    <p>When a client replaces an image that <code>\{{sw-image}}</code> rendered, the <code>srcset</code> rungs are rebuilt for the new file, and an <code>alt</code> the helper derived from the old file is derived again from the new one. An <code>alt</code> you wrote yourself stays.</p>
+    <h3 id="lazy">Lazy loading</h3>
+    <p>Add an empty <code>data-src</code> to the <code>&lt;img&gt;</code> (or <code>data-bg</code> to the background element) and the directive writes the URL there instead of <code>src</code> or the inline style. The lazy-load runtime then loads it when it scrolls into view.</p>
+    <h3 id="translate">Translations</h3>
+    <p><code>data-sw-text</code> is per page; a translated page carries its own <code>page.data</code>. <code>data-sw-translate</code> is per key across the site: editing it on a German page writes <code>website.translations[key].de</code>. Its read-only twin for attributes is <code>\{{sw-translate "key"}}</code>. Text with no directive on it cannot be translated without forking the page, so mark every string before you add a language. See <a href="{{sw-url '/docs/guides/languages'}}">Add a language</a>.</p>
+
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>No directives inside a dataset loop.</strong> Rows of a <code>\{{#each dataset.x}}</code> are edited in the dataset editor, and the loop already marks each row with <code>data-sw-entry</code>. Read the fields plainly (<code>\{{title}}</code>, <code>src="\{{sw-url image}}"</code>) and leave <code>data-sw-*</code> for page-level content.</p></div>
+
+    <h2 id="sw-control">The control chip: sw-control</h2>
+    <p>Some values are not text on the page: the gallery folder a <code>\{{#sw-folder}}</code> loop reads, the dataset a section lists, an accent color. <code>\{{sw-control}}</code> puts an inline control for one of them into the preview, shown only in the content editor and removed from the published page.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/gallery.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-hb">\{{sw-control target="page.data.gallery" as="folder" label="Gallery folder"}}</span>
+<span class="tk-hb">\{{sw-control target="page.data.layout" as="select" options="grid, masonry" label="Layout"}}</span>
+<span class="tk-hb">\{{sw-control target="page.image" as="image" label="Share image"}}</span>
+
+<span class="tk-hb">\{{#sw-folder page.data.gallery}}</span>
+  <span class="tk-hb">\{{sw-image url alt=alt}}</span>
+<span class="tk-hb">\{{/sw-folder}}</span></code></pre>
+    </div>
+    <table>
+      <thead><tr><th>Argument</th><th>Values</th></tr></thead>
+      <tbody>
+        <tr><td><code>target</code></td><td><code>page.title</code>, <code>page.description</code>, <code>page.image</code>, a bare key or <code>page.data.&lt;path&gt;</code> (this page), or <code>website.data.&lt;path&gt;</code> (every page). Any other target renders nothing.</td></tr>
+        <tr><td><code>as</code></td><td><code>text</code> (default), <code>textarea</code>, <code>url</code>, <code>number</code>, <code>color</code>, <code>date</code>, <code>image</code>, <code>file</code>, <code>select</code>, <code>folder</code>, <code>dataset</code>, <code>dataset-item</code>. An unknown value is an error.</td></tr>
+        <tr><td><code>label</code></td><td>The chip's label. Defaults to the target.</td></tr>
+        <tr><td><code>options</code></td><td>Comma-separated choices; required for <code>as="select"</code> (up to 100).</td></tr>
+        <tr><td><code>dataset</code></td><td>The dataset slug whose entries <code>as="dataset-item"</code> lists.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="other">Other data-sw-* attributes</h2>
+    <p>The platform reads more <code>data-sw-*</code> attributes; they configure behavior rather than make content editable:</p>
+    <ul>
+      <li><code>data-sw-component</code>, <code>data-sw-part</code> and the component options: <a href="{{sw-url '/docs/reference/components'}}">Components</a>.</li>
+      <li><code>data-sw-animation</code>, <code>data-sw-parallax-*</code>, <code>data-sw-svg</code>, <code>data-sw-scrollspy</code>: <a href="{{sw-url '/docs/reference/effects'}}">Motion and effects</a>.</li>
+      <li><code>data-sw-form</code> on your own <code>&lt;form&gt;</code> markup: <a href="{{sw-url '/docs/guides/forms'}}">Forms and spam protection</a>.</li>
+      <li><code>data-sw-consent</code> on an iframe or a gated script: <a href="{{sw-url '/docs/guides/analytics-and-consent'}}">Statistics, analytics and consent</a>.</li>
+    </ul>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/concepts/client-editing'}}">Client editing</a></li>
+      <li><a href="{{sw-url '/docs/concepts/authoring-model'}}">The authoring model</a></li>
+      <li><a href="{{sw-url '/docs/reference/helpers'}}">Template helpers</a></li>
+    </ul>
+  </article>
+</div>

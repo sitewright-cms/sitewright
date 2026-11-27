@@ -1,0 +1,96 @@
+{{!-- META {"path":"image-maps","title":"Image maps","description":"Hotspots over an image or a drawn plan: rooms, seats, regions or parts of a product, each with a tooltip, a link or a switch to another floor. A map is stored once and embedded by its id.","parent":"showcase","order":8,"data":{"icon":"map-trifold","preset":"voronoi-cells"}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">01 · A floor plan</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="im1_title">Point at a room.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="im1_lead">This map has no picture under it: the plan is drawn from its own rectangles and labels, on two floors. Each room lights up and shows a tooltip. The buttons switch floors from outside the map, with <code class="font-code text-base">data-sw-imap-change-artboard</code>; the menu in the corner does the same.</p>
+  </div>
+  <div class="mt-10 rounded-3xl border border-base-content/10 bg-base-100 p-4 sm:p-6">
+<!--demo:map-->
+<div class="mb-4 flex flex-wrap gap-2">
+  <button type="button" class="btn btn-sm" data-sw-imap-change-artboard="Ground floor">Ground floor</button>
+  <button type="button" class="btn btn-sm" data-sw-imap-change-artboard="First floor">First floor</button>
+</div>
+<!--hide-->{{#if imageMaps.sc_floorplan}}<!--/hide-->
+{{sw-imagemap "sc_floorplan"}}
+<!--hide-->{{else}}
+<div class="relative aspect-[5/3] rounded-2xl bg-base-200/60 p-[2%]" role="img" aria-label="Still preview of the studio floor plan">
+  <div class="grid h-full grid-cols-12 grid-rows-[1.45fr_1fr] gap-3 text-sm font-semibold">
+    <div class="col-span-6 grid place-items-center rounded-xl border-2 border-primary/50 bg-primary/10">Studio A</div>
+    <div class="col-span-6 grid place-items-center rounded-xl border-2 border-primary/50 bg-primary/10">Studio B</div>
+    <div class="col-span-4 grid place-items-center rounded-xl border-2 border-accent/60 bg-accent/10">Reception</div>
+    <div class="col-span-4 grid place-items-center rounded-xl border-2 border-accent/60 bg-accent/10">Kitchen</div>
+    <div class="col-span-4 grid place-items-center rounded-xl border-2 border-primary/50 bg-primary/10">Meeting room</div>
+  </div>
+</div>
+<p class="mt-3 text-sm text-base-content/60">A still preview. The interactive map appears here once the demo map is stored.</p>
+{{/if}}<!--/hide-->
+<!--/demo-->
+  </div>
+  <div class="mt-6">
+<!--code:map file="image map · embed + floor buttons"-->
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="grid grid-cols-1 gap-10 lg:grid-cols-[1fr_1.15fr] lg:items-start">
+      <div data-sw-animation="fade-up">
+        <p class="ws-index ws-ink">02 · Hotspots are data</p>
+        <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="im2_title">Author the map, not the behaviour.</h2>
+        <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="im2_lead">A map is its own content entry: artboards, each with a background colour or an image from the media library, and the hotspots on it. Positions and sizes are percentages, so the map stays correct at every width. The editor's image map studio draws them for you; agents write the same JSON.</p>
+        <ul class="mt-6 list-none space-y-3 p-0">
+          <li class="flex gap-3">{{sw-icon "shapes" "mt-1 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80"><strong class="text-base-content">Shapes.</strong> Rectangles, ovals, polygons, pins, text, regions imported from an SVG, and groups.</span></li>
+          <li class="flex gap-3">{{sw-icon "chat-centered-text" "mt-1 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80"><strong class="text-base-content">Tooltips.</strong> Built from heading, paragraph, image, button, video and YouTube blocks.</span></li>
+          <li class="flex gap-3">{{sw-icon "cursor-click" "mt-1 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80"><strong class="text-base-content">Actions.</strong> A click follows a link or switches the floor. Hotspots never run scripts.</span></li>
+          <li class="flex gap-3">{{sw-icon "magnifying-glass-plus" "mt-1 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80"><strong class="text-base-content">Big maps.</strong> Zoom with a navigator, fullscreen, and a searchable list of every hotspot, each switched on in the map's settings.</span></li>
+        </ul>
+      </div>
+      <div class="ws-window overflow-hidden rounded-2xl">
+        <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">sc_floorplan · one room, trimmed</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-dim">{</span>
+  <span class="tk-attr">"id"</span>: <span class="tk-str">"sc_floorplan"</span>,
+  <span class="tk-attr">"general"</span>: { <span class="tk-attr">"name"</span>: <span class="tk-str">"Studio floor plan"</span>, <span class="tk-attr">"width"</span>: <span class="tk-kw">1000</span>, <span class="tk-attr">"height"</span>: <span class="tk-kw">600</span> },
+  <span class="tk-attr">"artboards"</span>: [{
+    <span class="tk-attr">"id"</span>: <span class="tk-str">"ground"</span>, <span class="tk-attr">"title"</span>: <span class="tk-str">"Ground floor"</span>,
+    <span class="tk-attr">"background_type"</span>: <span class="tk-str">"color"</span>, <span class="tk-attr">"background_color"</span>: <span class="tk-str">"#F8FAFC"</span>,
+    <span class="tk-attr">"children"</span>: [{
+      <span class="tk-attr">"id"</span>: <span class="tk-str">"kitchen"</span>, <span class="tk-attr">"title"</span>: <span class="tk-str">"Kitchen"</span>, <span class="tk-attr">"type"</span>: <span class="tk-str">"rect"</span>,
+      <span class="tk-attr">"x"</span>: <span class="tk-kw">34</span>, <span class="tk-attr">"y"</span>: <span class="tk-kw">60</span>, <span class="tk-attr">"width"</span>: <span class="tk-kw">30</span>, <span class="tk-attr">"height"</span>: <span class="tk-kw">36</span>,
+      <span class="tk-attr">"default_style"</span>: { <span class="tk-attr">"background_color"</span>: <span class="tk-str">"#14B8A6"</span>, <span class="tk-attr">"background_opacity"</span>: <span class="tk-kw">0.1</span> },
+      <span class="tk-attr">"mouseover_style"</span>: { <span class="tk-attr">"background_color"</span>: <span class="tk-str">"#14B8A6"</span>, <span class="tk-attr">"background_opacity"</span>: <span class="tk-kw">0.32</span> },
+      <span class="tk-attr">"tooltip_content"</span>: [
+        { <span class="tk-attr">"type"</span>: <span class="tk-str">"Heading"</span>, <span class="tk-attr">"text"</span>: <span class="tk-str">"Kitchen"</span> },
+        { <span class="tk-attr">"type"</span>: <span class="tk-str">"Paragraph"</span>, <span class="tk-attr">"text"</span>: <span class="tk-str">"Coffee, a long table and the lunch rota."</span> }
+      ]
+    }]
+  }]
+<span class="tk-dim">}</span></code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">
+      {{sw-icon "image" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">Without JavaScript</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">A map over an image falls back to that plain image, and a config that fails to parse does the same, so a visitor never sees an empty box.</p>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="80">
+      {{sw-icon "shield-check" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">Sanitised at render</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">Tooltip text, YouTube embed code and imported SVG regions are cleaned on the way into the page, and links only follow http, https, mailto and tel.</p>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="160">
+      {{sw-icon "code" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">Two ways to embed</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">The helper above, or an element of your own with <code class="font-code">data-sw-imagemap="sc_floorplan"</code>, which keeps its classes and receives the map inside.</p>
+    </div>
+  </div>
+</section>
+
+{{> showcase-next}}

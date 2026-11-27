@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" fill="none" color="#0F172A" role="img" aria-label="Sitewright">
+  <title>Sitewright</title>
+  <!-- Single-colour mark. Inherits CSS `color` via currentColor — set it to tint the whole mark. -->
+  <path d="M30 18 V72 H78" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="40" y="52" width="26" height="14" rx="3" fill="currentColor"/>
+  <rect x="40" y="35" width="26" height="14" rx="3" fill="currentColor" opacity="0.55"/>
+</svg>

@@ -1,0 +1,201 @@
+{{!-- META {"path":"animated-backgrounds","title":"Animated backgrounds","description":"A WebGL background behind any section, in the site's own colours: 31 presets, tuned with speed, intensity, angle, pointer and colour attributes. Reduced motion gets one still frame, and no JavaScript a CSS gradient.","parent":"showcase","order":9,"data":{"icon":"sparkle","preset":"neuro-noise"}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">01 · One attribute</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="a1_title">Move your pointer across it.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="a1_lead">This panel is one element with the shader-bg marker and the Neuro Noise preset. The runtime paints a canvas behind the content; an overlay part sits between the two to keep the text legible. With <code class="font-code text-base">data-interactive</code> the pointer bends the field.</p>
+  </div>
+  <div class="mt-10">
+
+<div class="relative grid min-h-[26rem] place-items-center overflow-hidden rounded-3xl px-6 text-center text-white" data-sw-component="shader-bg" data-preset="neuro-noise" data-speed="0.8" data-intensity="0.6" data-colors="primary,accent,neutral" data-interactive="true">
+  <div data-sw-part="overlay" class="bg-black/20"></div>
+  <div class="max-w-xl">
+    <p class="ws-display text-4xl font-bold sm:text-6xl">Neuro Noise</p>
+    <p class="mt-4 text-lg text-white/80">No video and no image: a shader, drawn live in the brand colours.</p>
+  </div>
+</div>
+
+  </div>
+  <div class="mt-6">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">shader-bg · interactive hero</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"relative grid min-h-[26rem] place-items-center overflow-hidden rounded-3xl px-6 text-center text-white"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"shader-bg"</span> <span class="tk-attr">data-preset</span>=<span class="tk-str">"neuro-noise"</span> <span class="tk-attr">data-speed</span>=<span class="tk-str">"0.8"</span> <span class="tk-attr">data-intensity</span>=<span class="tk-str">"0.6"</span> <span class="tk-attr">data-colors</span>=<span class="tk-str">"primary,accent,neutral"</span> <span class="tk-attr">data-interactive</span>=<span class="tk-str">"true"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"overlay"</span> <span class="tk-attr">class</span>=<span class="tk-str">"bg-black/20"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"max-w-xl"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"ws-display text-4xl font-bold sm:text-6xl"</span><span class="tk-tag">&gt;</span>Neuro Noise<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-4 text-lg text-white/80"</span><span class="tk-tag">&gt;</span>No video and no image: a shader, drawn live in the brand colours.<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">02 · Presets</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="a2_title">Pick a look with data-preset.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="a2_lead">Eight of the 31 presets, each in this site's palette. Subtle ones such as Mesh Gradient read best behind text; bold ones such as Plasma or Voronoi Cells suit a decorative band.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
+<div class="relative flex h-44 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="mesh-gradient">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">mesh-gradient</span>
+</div>
+
+<div class="relative flex h-44 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="silk-flow">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">silk-flow</span>
+</div>
+<div class="relative flex h-44 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="plasma">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">plasma</span>
+</div>
+<div class="relative flex h-44 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="caustics">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">caustics</span>
+</div>
+<div class="relative flex h-44 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="lava-lamp">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">lava-lamp</span>
+</div>
+<div class="relative flex h-44 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="voronoi-cells">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">voronoi-cells</span>
+</div>
+<div class="relative flex h-44 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="starfield">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">starfield</span>
+</div>
+<div class="relative flex h-44 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="liquid-metal">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">liquid-metal</span>
+</div>
+
+
+    </div>
+    <div class="mt-6">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">shader-bg · presets</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"relative flex h-44 items-end overflow-hidden rounded-2xl p-4"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"shader-bg"</span> <span class="tk-attr">data-preset</span>=<span class="tk-str">"mesh-gradient"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur"</span><span class="tk-tag">&gt;</span>mesh-gradient<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+<span class="tk-com">&lt;!-- one tile per preset, the same markup --&gt;</span></code></pre>
+</div>
+    </div>
+    <div class="mt-10 rounded-3xl border border-base-content/10 bg-base-100 p-6">
+      <p class="font-heading font-semibold">All 31 presets</p>
+      <ul class="mt-4 flex list-none flex-wrap gap-2 p-0">
+        {{#each (sw-split "mesh-gradient,silk-flow,plasma,halftone-pulse,caustics,marble-ink,sun-rays,lava-lamp,corner-mesh,flow-field,interference,ribbons,brushed-streaks,voronoi-cells,pointer-ripples,liquid-metal,rising-smoke,edge-glow,waterfall,heat-haze,bokeh-drift,contours,starfield,sine-strands,vortex-swirl,ink-bloom,mist-layers,drifting-blobs,glow-orbits,gradient-flow,neuro-noise")}}
+        <li class="rounded-full border border-base-content/10 bg-base-200/60 px-3 py-1 font-code text-xs">{{this}}</li>
+        {{/each}}
+      </ul>
+      <p class="mt-4 text-sm text-base-content/60">Fifteen of them run on this page, and more on the tiles of the <a class="ws-link ws-ink" href="{{sw-url '/showcase'}}">showcase overview</a>.</p>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">03 · Colours</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="a3_title">Three slots, any colours.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="a3_lead">Without <code class="font-code text-base">data-colors</code> a shader uses primary, secondary and neutral, read live from the theme. Each of the three slots takes a theme token, a literal CSS colour, or <code class="font-code text-base">auto</code>, which takes the page background of the current theme. Switch the theme in the header and watch the third tile.</p>
+  </div>
+  <div class="mt-10 grid grid-cols-1 gap-4 md:grid-cols-3">
+
+<div class="relative flex h-48 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="gradient-flow" data-colors="accent,primary,neutral">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">accent,primary,neutral</span>
+</div>
+<div class="relative flex h-48 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="ribbons" data-colors="#F97316,#DB2777,#1E1B4B">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">#F97316,#DB2777,#1E1B4B</span>
+</div>
+<div class="relative flex h-48 items-end overflow-hidden rounded-2xl border border-base-content/10 p-4" data-sw-component="shader-bg" data-preset="mist-layers" data-colors="primary,auto,auto">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">primary,auto,auto</span>
+</div>
+
+  </div>
+  <div class="mt-6">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">shader-bg · data-colors</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"relative flex h-48 items-end overflow-hidden rounded-2xl p-4"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"shader-bg"</span> <span class="tk-attr">data-preset</span>=<span class="tk-str">"gradient-flow"</span> <span class="tk-attr">data-colors</span>=<span class="tk-str">"accent,primary,neutral"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur"</span><span class="tk-tag">&gt;</span>accent,primary,neutral<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"relative flex h-48 items-end overflow-hidden rounded-2xl p-4"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"shader-bg"</span> <span class="tk-attr">data-preset</span>=<span class="tk-str">"ribbons"</span> <span class="tk-attr">data-colors</span>=<span class="tk-str">"#F97316,#DB2777,#1E1B4B"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur"</span><span class="tk-tag">&gt;</span>#F97316,#DB2777,#1E1B4B<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"relative flex h-48 items-end overflow-hidden rounded-2xl border border-base-content/10 p-4"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"shader-bg"</span> <span class="tk-attr">data-preset</span>=<span class="tk-str">"mist-layers"</span> <span class="tk-attr">data-colors</span>=<span class="tk-str">"primary,auto,auto"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur"</span><span class="tk-tag">&gt;</span>primary,auto,auto<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">04 · Knobs</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="a4_title">Speed, intensity, angle, pointer.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="a4_lead"><code class="font-code text-base">data-speed</code> runs from 0 to 4, and 0 renders one still frame. <code class="font-code text-base">data-intensity</code> runs from 0 to 1; lower is calmer behind text. <code class="font-code text-base">data-angle</code> turns the whole field in degrees. Point at the third tile: Pointer Ripples follows the cursor.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-1 gap-4 md:grid-cols-3">
+
+<div class="relative flex h-48 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="sun-rays" data-speed="0" data-angle="135">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">speed 0 · angle 135</span>
+</div>
+<div class="relative flex h-48 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="bokeh-drift" data-speed="1.6" data-intensity="0.9">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">speed 1.6 · intensity 0.9</span>
+</div>
+<div class="relative flex h-48 items-end overflow-hidden rounded-2xl p-4" data-sw-component="shader-bg" data-preset="pointer-ripples" data-interactive="true">
+  <span class="rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur">interactive</span>
+</div>
+
+    </div>
+    <div class="mt-6">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">shader-bg · knobs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"relative flex h-48 items-end overflow-hidden rounded-2xl p-4"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"shader-bg"</span> <span class="tk-attr">data-preset</span>=<span class="tk-str">"sun-rays"</span> <span class="tk-attr">data-speed</span>=<span class="tk-str">"0"</span> <span class="tk-attr">data-angle</span>=<span class="tk-str">"135"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur"</span><span class="tk-tag">&gt;</span>speed 0 · angle 135<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"relative flex h-48 items-end overflow-hidden rounded-2xl p-4"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"shader-bg"</span> <span class="tk-attr">data-preset</span>=<span class="tk-str">"bokeh-drift"</span> <span class="tk-attr">data-speed</span>=<span class="tk-str">"1.6"</span> <span class="tk-attr">data-intensity</span>=<span class="tk-str">"0.9"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur"</span><span class="tk-tag">&gt;</span>speed 1.6 · intensity 0.9<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"relative flex h-48 items-end overflow-hidden rounded-2xl p-4"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"shader-bg"</span> <span class="tk-attr">data-preset</span>=<span class="tk-str">"pointer-ripples"</span> <span class="tk-attr">data-interactive</span>=<span class="tk-str">"true"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"rounded-full bg-black/40 px-3 py-1 font-code text-xs text-white backdrop-blur"</span><span class="tk-tag">&gt;</span>interactive<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">
+      {{sw-icon "pause-circle" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">Paused when unseen</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">A background stops animating when it scrolls out of view or the tab is hidden. Visitors who prefer reduced motion get a single still frame, and the pointer effect is off for them.</p>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="80">
+      {{sw-icon "palette" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">Never a blank box</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">Until the runtime starts, and wherever JavaScript or WebGL is missing, the element shows a still CSS gradient made from the same colour tokens.</p>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="160">
+      {{sw-icon "cpu" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-lg font-bold">A few per page</h3>
+      <p class="mt-2 text-sm leading-relaxed text-base-content/70">Each instance is its own WebGL context, and browsers limit how many a page may run at once. This page runs fifteen; most pages need one or two.</p>
+    </div>
+  </div>
+</section>
+
+<section class="border-t border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-20">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <h2 class="ws-display text-3xl font-bold sm:text-4xl">More of the showcase</h2>
+      <a class="btn btn-ghost btn-sm" href="{{sw-url '/showcase'}}">All demos {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+    <div class="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {{#each pages.showcase._attributes.children}}
+      {{#unless (eq path @root.page.path)}}
+      <a class="ws-tile rounded-2xl border border-base-content/10 bg-base-100 p-4" href="{{sw-url path}}">
+        <span class="flex items-center gap-2 font-heading font-semibold">{{#if data.icon}}{{sw-icon data.icon "h-4 w-4 ws-ink"}}{{/if}}{{title}}</span>
+      </a>
+      {{/unless}}
+      {{/each}}
+    </div>
+  </div>
+</section>

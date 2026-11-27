@@ -1,0 +1,16 @@
+{{!-- META {"path":"docs","title":"Documentation","description":"Install Sitewright, learn how pages, data and chrome fit together, look up every helper and setting, and follow guides for each feature.","parent":"home","nav":{"title":"Docs","slots":["header"],"order":3},"data":{"headline":"Documentation"}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <div class="ws-article">
+    <div class="grid gap-4 sm:grid-cols-2">
+      {{#each page.children}}
+      <a class="ws-tile rounded-2xl border border-base-content/10 bg-base-100 p-6" href="{{sw-url path}}">
+        {{#if data.icon}}{{sw-icon data.icon "h-6 w-6 ws-ink"}}{{/if}}
+        <h2 class="mt-4 font-heading text-lg font-bold">{{title}}</h2>
+        <p class="mt-1.5 text-sm leading-relaxed text-base-content/70">{{description}}</p>
+      </a>
+      {{/each}}
+    </div>
+  </div>
+</div>

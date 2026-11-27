@@ -1,0 +1,123 @@
+{{!-- META {"path":"environment","title":"Environment variables","description":"Every variable the container reads at startup, with its default. Most installs set three and leave the rest alone.","parent":"self-hosting","order":1,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>Sitewright reads its environment once, when the container starts. In practice you set where the instance is reached (<code>SW_PUBLIC_URL</code>), whether a proxy is in front (<code>TRUST_PROXY</code>) and the key that encrypts stored secrets (<code>SW_ENCRYPTION_KEY</code>). Everything else has a safe default, and most behavior is changed at runtime under <strong>System Settings</strong> in the editor, without a restart.</p>
+    <p>A change to any variable below takes effect when you recreate the container.</p>
+
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">.env</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-com"># The three most installs need</span>
+<span class="tk-attr">SW_PUBLIC_URL</span>=<span class="tk-str">https://sites.example.com</span>
+<span class="tk-attr">TRUST_PROXY</span>=<span class="tk-str">true</span>
+<span class="tk-attr">SW_ENCRYPTION_KEY</span>=<span class="tk-str">…output of: openssl rand -base64 32…</span>
+
+<span class="tk-com"># Optional: your own first admin instead of the default one</span>
+<span class="tk-attr">SW_ADMIN_EMAIL</span>=<span class="tk-str">you@example.com</span>
+<span class="tk-attr">SW_ADMIN_PASSWORD</span>=<span class="tk-str">a-long-passphrase</span></code></pre>
+    </div>
+
+    <h2 id="primary">Data and address</h2>
+    <table>
+      <thead><tr><th>Variable</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>SW_DATA_DIR</code><span class="mt-1.5 block text-xs text-base-content/60">Default: <code>./data</code> (image: <code>/app/data</code>)</span></td><td>The one persistent directory: the SQLite database, media, published sites, preview builds and pre-migration snapshots. Mount a single volume here.</td></tr>
+        <tr><td><code>SW_PUBLIC_URL</code><span class="mt-1.5 block text-xs text-base-content/60">Default: unset</span></td><td>The canonical address of the instance, such as <code>https://sites.example.com</code>. An <code>https</code> URL turns on Secure cookies with the <code>__Host-</code> prefix. It is also the absolute submission endpoint baked into published forms. Leave it unset for a local, plain-HTTP instance.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="core">Core</h2>
+    <table>
+      <thead><tr><th>Variable</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>NODE_ENV</code><span class="mt-1.5 block text-xs text-base-content/60">Default: <code>production</code> when unset</span></td><td>Production means structured logs, a forced change of the default admin password and warnings about insecure cookies. Any other value, such as <code>development</code>, turns that posture off.</td></tr>
+        <tr><td><code>PORT</code><span class="mt-1.5 block text-xs text-base-content/60">Default: <code>2002</code> (image: <code>80</code>)</span></td><td>The HTTP port the server listens on.</td></tr>
+        <tr><td><code>DATABASE_URL</code><span class="mt-1.5 block text-xs text-base-content/60">Default: <code>file:&lt;SW_DATA_DIR&gt;/sitewright.db</code></span></td><td>Moves the database file. Normally unset.</td></tr>
+        <tr><td><code>TRUST_PROXY</code><span class="mt-1.5 block text-xs text-base-content/60">Default: <code>false</code></span></td><td><code>true</code>, or a comma-separated list of proxy IPs and CIDRs. Rate limits and the sign-in throttle then use the visitor's address from <code>X-Forwarded-For</code> instead of the proxy's. Set it only when a proxy is in front.</td></tr>
+        <tr><td><code>SW_SECURITY_CONTACT</code><span class="mt-1.5 block text-xs text-base-content/60">Default: the Sitewright project's private advisory channel</span></td><td>Who receives vulnerability reports about this instance, published at <code>/.well-known/security.txt</code>. A comma-separated list of <code>https://</code>, <code>mailto:</code> or <code>tel:</code> URIs, in order of preference. Setting it replaces the default. Set it once you run a patched build of your own.</td></tr>
+        <tr><td><code>COOKIE_SECRET</code><span class="mt-1.5 block text-xs text-base-content/60">Default: generated on first start and stored</span></td><td>The key that signs session cookies. Unset, it is generated once and can be rotated in System Settings. Setting it pins the key, and rotation in System Settings is then refused.</td></tr>
+        <tr><td><code>COOKIE_SECURE</code><span class="mt-1.5 block text-xs text-base-content/60">Default: derived from <code>SW_PUBLIC_URL</code></span></td><td>Forces the Secure cookie flag on (<code>true</code>) or off (any other value). Normally unset.</td></tr>
+        <tr><td><code>SW_GEOIP_DB</code><span class="mt-1.5 block text-xs text-base-content/60">Default: the bundled DB-IP Country Lite file</span></td><td>A MaxMind-format country database for the built-in statistics: a fresher DB-IP download, or MaxMind GeoLite2-Country under your own MaxMind license.</td></tr>
+        <tr><td><code>LOG_LEVEL</code><span class="mt-1.5 block text-xs text-base-content/60">Default: <code>info</code></span></td><td>The starting log level, <code>fatal</code> to <code>trace</code>. The Log level setting in System Settings overrides it live. Logs go to the container's stdout.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="secrets">Secrets and sign-in</h2>
+    <table>
+      <thead><tr><th>Variable</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>SW_ENCRYPTION_KEY</code><span class="mt-1.5 block text-xs text-base-content/60">Default: unset</span></td><td>A 32-byte key, base64-encoded, that encrypts stored credentials: deploy targets, SMTP passwords, single sign-on secrets, stock-image keys and authenticator-app secrets. It lives only in the environment, so a copy of the database alone cannot decrypt them. Without it those features are off and the rest works. Generate it with <code>openssl rand -base64 32</code>; a value of any other length stops the server at startup.</td></tr>
+        <tr><td><code>SW_ADMIN_EMAIL</code><span class="mt-1.5 block text-xs text-base-content/60">Default: <code>admin@sitewright.example</code></span></td><td>The email of the admin created on first start.</td></tr>
+        <tr><td><code>SW_ADMIN_PASSWORD</code><span class="mt-1.5 block text-xs text-base-content/60">Default: <code>123456</code>, with a warning</span></td><td>That admin's password. With the default, production asks for a new password at the first sign-in. A password you set here is trusted and not forced to change.</td></tr>
+        <tr><td><code>SW_WEBAUTHN_RP_ID</code><span class="mt-1.5 block text-xs text-base-content/60">Default: resolved per request</span></td><td>Pins the passkey relying-party id for every request. Leave it unset: the relying party then follows the approved hostname a request arrived on, falling back to <code>SW_PUBLIC_URL</code>. Pinning it makes passkeys work on one hostname only.</td></tr>
+        <tr><td><code>SW_WEBAUTHN_ORIGIN</code><span class="mt-1.5 block text-xs text-base-content/60">Default: resolved per request</span></td><td>Pins the passkey origin, with the same caveat.</td></tr>
+        <tr><td><code>SW_DEPLOY_ALLOWED_HOSTS</code><span class="mt-1.5 block text-xs text-base-content/60">Default: unset (any host)</span></td><td>Comma-separated hostnames that saved deploy targets may point at. Any other host is refused.</td></tr>
+        <tr><td><code>SW_SMTP_ALLOWED_HOSTS</code><span class="mt-1.5 block text-xs text-base-content/60">Default: unset (any host)</span></td><td>Comma-separated hostnames that a project's own SMTP server may use.</td></tr>
+      </tbody>
+    </table>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>Keep the encryption key with your backups.</strong> There is no way to recover a secret encrypted under a lost key. With a different key, every stored password has to be entered again, and users who set up an authenticator app cannot finish signing in. See <a href="{{sw-url '/docs/self-hosting/security'}}">Security and hardening</a>.</p></div>
+
+    <h2 id="hosting">Hosting</h2>
+    <table>
+      <thead><tr><th>Variable</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>SW_SITES_DOMAIN</code><span class="mt-1.5 block text-xs text-base-content/60">Default: unset (off)</span></td><td>Serves each site published to Local Hosting at <code>&lt;slug&gt;.&lt;SW_SITES_DOMAIN&gt;</code>. Needs wildcard DNS and a wildcard certificate on the proxy. Keep the editor's own host outside this domain, or it becomes unreachable.</td></tr>
+        <tr><td><code>SW_VERSION</code><span class="mt-1.5 block text-xs text-base-content/60">Default: <code>0.0.0</code></span></td><td>The version reported at <code>GET /version</code>. The release image sets it from its tag; you do not set it yourself.</td></tr>
+        <tr><td><code>SW_DISABLE_UPDATE_CHECK</code><span class="mt-1.5 block text-xs text-base-content/60">Default: unset (check on)</span></td><td><code>true</code> stops the check for new releases and the update banner, for installs without internet access.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="hostnames">More than one hostname</h2>
+    <p>Extra hostnames are not an environment variable. Add them under <strong>System Settings → Security → Additional hostnames</strong>; they apply without a restart. <code>SW_PUBLIC_URL</code> stays the canonical address for the form endpoint in published sites and for <code>security.txt</code>. On an approved hostname, passkeys, single sign-on callbacks and agent connections use the hostname the request arrived on. A hostname that is not on the list falls back to the canonical one.</p>
+    <ul>
+      <li>DNS must point the hostname at the instance, and the proxy needs a certificate for it.</li>
+      <li>Every hostname must use the same scheme as <code>SW_PUBLIC_URL</code>. A hostname inside <code>SW_SITES_DOMAIN</code> is refused.</li>
+      <li>Each hostname is a separate sign-in, because the session cookie is bound to one host. A passkey works only on the hostname it was created on.</li>
+      <li>For single sign-on, register each hostname's <code>/auth/oidc/&lt;provider&gt;/callback</code> address with your identity provider.</li>
+    </ul>
+
+    <h2 id="ai">AI assistant</h2>
+    <p>The in-editor assistant is off until a key is set, here or under <strong>System Settings → AI Assistant</strong>. Usage counts against monthly token caps, so one client cannot spend the whole budget.</p>
+    <table>
+      <thead><tr><th>Variable</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>SW_AI_API_KEY</code><span class="mt-1.5 block text-xs text-base-content/60">Default: unset (off)</span></td><td>The provider key that pays for the assistant. It stays on the server.</td></tr>
+        <tr><td><code>SW_AI_MODEL</code><span class="mt-1.5 block text-xs text-base-content/60">Default: the provider's default</span></td><td>Pins the model. Users cannot override it.</td></tr>
+        <tr><td><code>SW_AI_PROVIDER</code><span class="mt-1.5 block text-xs text-base-content/60">Default: <code>anthropic</code></span></td><td><code>openai</code> talks to any OpenAI-compatible endpoint at <code>SW_AI_BASE_URL</code>.</td></tr>
+        <tr><td><code>SW_AI_BASE_URL</code><span class="mt-1.5 block text-xs text-base-content/60">Default: unset</span></td><td>The base URL of that endpoint. It is checked at startup, and may point at a model server on your own network.</td></tr>
+        <tr><td><code>SW_AI_ORG_MONTHLY_TOKENS</code><br /><code>SW_AI_USER_MONTHLY_TOKENS</code><br /><code>SW_AI_PROJECT_MONTHLY_TOKENS</code><span class="mt-1.5 block text-xs text-base-content/60">Default: unlimited</span></td><td>Monthly token caps per organization, user and project. Positive whole numbers; an invalid value logs a warning and means unlimited.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="tuning">Tuning</h2>
+    <p>The defaults are sized from the container's memory limit, or from half the host's memory when no limit is set. Change these only to fix a measured problem.</p>
+    <table>
+      <thead><tr><th>Variable</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>SW_RENDER_WORKERS</code><span class="mt-1.5 block text-xs text-base-content/60">Default: 1 below 1 GiB, 2 below 4 GiB, else 3</span></td><td>How many template render workers run.</td></tr>
+        <tr><td><code>SW_RENDER_MEMORY_MB</code><span class="mt-1.5 block text-xs text-base-content/60">Default: <code>128</code></span></td><td>The heap ceiling of each render worker.</td></tr>
+        <tr><td><code>SW_RENDER_TIMEOUT_MS</code><span class="mt-1.5 block text-xs text-base-content/60">Default: <code>5000</code></span></td><td>How long one render may take.</td></tr>
+        <tr><td><code>SW_RENDER_MAX_RENDERS</code><span class="mt-1.5 block text-xs text-base-content/60">Default: <code>500</code></span></td><td>A worker is replaced after this many renders.</td></tr>
+        <tr><td><code>SW_SITE_BUILDS</code><span class="mt-1.5 block text-xs text-base-content/60">Default: 1 below 1 GiB, 2 below 2 GiB, 3 below 4 GiB, else 4; one fewer with build threads on (at least 1)</span></td><td>Whole-site builds (previews, publishes, deploys) that run at once. The rest wait, with publishes, deploys and site downloads ahead of previews.</td></tr>
+        <tr><td><code>SW_BUILD_THREADS</code><span class="mt-1.5 block text-xs text-base-content/60">Default: on from 2 GiB, off below</span></td><td>Runs site builds on worker threads, beside the thread that serves requests. <code>1</code> turns them on, <code>0</code> off. Threads use more memory, which is why they start off on small containers.</td></tr>
+        <tr><td><code>SW_IMAGE_THREADS</code><span class="mt-1.5 block text-xs text-base-content/60">Default: <code>2</code> (1 on a single CPU)</span></td><td>Threads per image operation. More mostly costs memory, because many operations already run in parallel.</td></tr>
+        <tr><td><code>SW_BUILD_WORKER</code><span class="mt-1.5 block text-xs text-base-content/60">Default: unset (in-process)</span></td><td><code>true</code> runs each site build in its own worker container. Needs the Docker CLI, <code>DOCKER_HOST</code> and the API image available as the worker image.</td></tr>
+        <tr><td><code>SW_BUILD_WORKER_IMAGE</code><br /><code>SW_BUILD_WORKER_MEMORY</code><br /><code>SW_BUILD_WORKER_CPUS</code><span class="mt-1.5 block text-xs text-base-content/60">Default: image <code>sitewright-api</code></span></td><td>The worker image and its limits, only with <code>SW_BUILD_WORKER=true</code>.</td></tr>
+        <tr><td><code>SW_FETCH_WORKER</code><span class="mt-1.5 block text-xs text-base-content/60">Default: unset (in-process)</span></td><td><code>true</code> runs the website importer's crawl in a separate process that has no database handle, no encryption key and no decrypted secrets. Costs one process per import.</td></tr>
+        <tr><td><code>SW_HEAPSNAPSHOT</code><span class="mt-1.5 block text-xs text-base-content/60">Default: unset (off)</span></td><td><code>1</code> lets <code>docker kill -s SIGUSR2 &lt;container&gt;</code> write a heap snapshot for Chrome DevTools, to tell a real memory leak from memory the allocator has not returned yet. Writing one pauses the process.</td></tr>
+        <tr><td><code>MALLOC_CONF</code><span class="mt-1.5 block text-xs text-base-content/60">Default: <code>dirty_decay_ms:2000,muzzy_decay_ms:2000</code></span></td><td>jemalloc tuning, so memory goes back to the system sooner after a burst of work. Your own value replaces it entirely. Do not add <code>background_thread:true</code>: it stalls the headless browser that previews and audits use.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="image">Set by the image</h2>
+    <p>The image sets <code>EDITOR_DIST</code> (where the built editor lives) and <code>PLAYWRIGHT_BROWSERS_PATH</code> (<code>/ms-playwright</code>, the bundled Chromium). Do not override them.</p>
+
+    <h2 id="next">Next</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/getting-started/install'}}">Install with Docker</a></li>
+      <li><a href="{{sw-url '/docs/self-hosting/security'}}">Security and hardening</a></li>
+      <li><a href="{{sw-url '/docs/self-hosting/upgrades-and-backups'}}">Upgrades and backups</a></li>
+    </ul>
+  </article>
+</div>

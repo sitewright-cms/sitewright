@@ -1,0 +1,115 @@
+{{!-- META {"path":"upgrades-and-backups","title":"Upgrades and backups","description":"Pull a new image and recreate the container on the same volume. The database is snapshotted before every migration, and the whole instance is one folder to back up.","parent":"self-hosting","order":2,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>An upgrade is a newer image started against the same data volume. Updates are never applied by themselves: the instance tells you a release exists, and you pull it when it suits you. Everything the instance keeps sits in one folder, so a backup is a copy of that folder plus the encryption key.</p>
+
+    <h2 id="before">Before you upgrade</h2>
+    <ul>
+      <li><strong>Read the changelog</strong> for every version between yours and the new one. Sitewright is pre-1.0: a minor version may include breaking changes, and the changelog says what to do about them. <code>GET /version</code> reports the version you run.</li>
+      <li><strong>Back up the volume</strong> (below). The automatic snapshot covers the main database only.</li>
+      <li><strong>Pin a version tag.</strong> Each release is published as <code>ghcr.io/sitewright-cms/sitewright:X.Y.Z</code>. <code>:latest</code> follows the newest stable release; release candidates never move it.</li>
+    </ul>
+
+    <h2 id="upgrade">Upgrade</h2>
+    <p>Pull the new tag and recreate the container with the same volume and the same environment:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">terminal</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-ok">$</span> docker pull ghcr.io/sitewright-cms/sitewright:0.85.0
+<span class="tk-ok">$</span> docker stop sitewright &amp;&amp; docker rm sitewright
+<span class="tk-ok">$</span> docker run -d --name sitewright \
+    -p 127.0.0.1:8080:80 \
+    -v sw-data:/app/data \
+    -e SW_PUBLIC_URL=https://sites.example.com \
+    -e TRUST_PROXY=true \
+    -e SW_ENCRYPTION_KEY="$SW_ENCRYPTION_KEY" \
+    --restart unless-stopped \
+    ghcr.io/sitewright-cms/sitewright:0.85.0
+
+<span class="tk-com"># with docker compose: change the image tag, then</span>
+<span class="tk-ok">$</span> docker compose pull &amp;&amp; docker compose up -d</code></pre>
+    </div>
+    <p>Editors who still have the old editor open see a banner, <em>A new version of the editor is available</em>, with a Reload button.</p>
+
+    <h2 id="on-start">What happens on start</h2>
+    <ol>
+      <li><strong>Snapshot.</strong> When schema migrations are pending, the database is copied to <code>&lt;SW_DATA_DIR&gt;/backups/sitewright-&lt;UTC time&gt;-&lt;random&gt;.pre-migration.bak</code> with SQLite's <code>VACUUM INTO</code>, a consistent single-file copy that is safe while the database is in WAL mode. Only the main database, <code>sitewright.db</code>, is copied; migrations do not touch media or published sites. If the snapshot fails, the log says so and the migrations run anyway.</li>
+      <li><strong>Schema migrations</strong> run, forward only.</li>
+      <li><strong>Upgrade check.</strong> If this release no longer contains a one-time data migration your instance still needs, it does not start. It leaves the data untouched and serves a page naming the release to upgrade through first. No release so far requires this.</li>
+      <li><strong>Data migrations</strong> bring older content into the current shape, logged under <code>[sitewright/migrate]</code>. Some take their own snapshot before they rewrite records.</li>
+      <li><strong>Ready.</strong> <code>GET /ready</code> answers <code>503</code> until the database is reachable and migrated; the image's health check and your load balancer should use it. <code>GET /health</code> only says the process is up.</li>
+    </ol>
+    <p>Snapshots older than the retention are deleted after each new one. The default keeps the two newest.</p>
+
+    <h2 id="panel">The Storage &amp; backups panel</h2>
+    <p>As an admin, open <strong>System Settings → Ops</strong>. The <strong>Storage &amp; backups</strong> card shows the size of the database, the statistics, the pre-migration snapshots (count and size), media files, site builds and previews, and the whole data folder.</p>
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">System Settings · Ops</span></div>
+      {{> ws-media slot="doc_storage_backups" class="rounded-none"}}
+    </div>
+    <table>
+      <thead><tr><th>Control</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td>Snapshots to keep automatically</td><td>How many pre-migration snapshots to retain, 1 to 100 (default 2). Saved with <em>Save settings</em>.</td></tr>
+        <tr><td>Purge now, keep newest</td><td>Deletes all but the newest snapshots right away, to free disk space.</td></tr>
+        <tr><td>Check database integrity</td><td>On the same tab: a read-only scan for records that exist but cannot be reached, plus SQLite's own structural check. Anything it can repair is offered as an action; nothing is changed without you.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="backup">Back up the whole instance</h2>
+    <p>Everything durable is in the data volume: the database <code>sitewright.db</code> with its <code>-wal</code> and <code>-shm</code> files, the statistics database, <code>media/</code>, the published sites in <code>sites/</code> and the snapshots in <code>backups/</code>. Do not copy <code>sitewright.db</code> on its own while the container runs: without its <code>-wal</code> file the copy can be corrupt. The simple, safe way is to stop the container and archive the volume:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">terminal</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-ok">$</span> docker stop sitewright
+<span class="tk-ok">$</span> docker run --rm -v sw-data:/data -v "$PWD":/backup alpine \
+    tar czf /backup/sitewright-$(date +%F).tar.gz -C /data .
+<span class="tk-ok">$</span> docker start sitewright</code></pre>
+    </div>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>Store <code>SW_ENCRYPTION_KEY</code> with your backups, separately from them.</strong> The archive holds deploy, mail and sign-in secrets encrypted under that key. Restored with a different key, they cannot be read.</p></div>
+    <p>To copy a single project, use <strong>Export project (.zip)</strong> in the editor's settings menu. <strong>Import a project</strong> in the project selector turns such a file into a new project, on this instance or another one.</p>
+
+    <h2 id="restore">Restore</h2>
+    <h3 id="rollback">Roll back a failed upgrade</h3>
+    <p>Going back to an older image after its migrations have run is not supported. Restore the snapshot taken before them, then start the image you ran before. Anything saved after the snapshot is lost.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">terminal</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-ok">$</span> docker stop sitewright &amp;&amp; docker rm sitewright
+
+<span class="tk-com"># list the snapshots, newest last</span>
+<span class="tk-ok">$</span> docker run --rm -v sw-data:/app/data --entrypoint ls \
+    ghcr.io/sitewright-cms/sitewright:0.84.1 /app/data/backups
+
+<span class="tk-com"># put one back and drop the WAL files of the newer database</span>
+<span class="tk-ok">$</span> docker run --rm -v sw-data:/app/data --entrypoint sh \
+    ghcr.io/sitewright-cms/sitewright:0.84.1 -c '
+      cd /app/data &amp;&amp;
+      cp backups/sitewright-20261126T101500Z-3fa9c1.pre-migration.bak sitewright.db &amp;&amp;
+      rm -f sitewright.db-wal sitewright.db-shm'
+
+<span class="tk-com"># start the previous version again, with the same flags as before</span>
+<span class="tk-ok">$</span> docker run -d --name sitewright ... ghcr.io/sitewright-cms/sitewright:0.84.1</code></pre>
+    </div>
+    <p>Running the helper commands from the Sitewright image keeps the files owned by the user the server runs as.</p>
+
+    <h3 id="restore-full">Restore a full backup</h3>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">terminal</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-ok">$</span> docker stop sitewright
+<span class="tk-ok">$</span> docker run --rm -v sw-data:/data -v "$PWD":/backup alpine \
+    sh -c 'rm -rf /data/* &amp;&amp; tar xzf /backup/sitewright-2026-11-27.tar.gz -C /data'
+<span class="tk-ok">$</span> docker start sitewright</code></pre>
+    </div>
+    <p>Start it with the same <code>SW_ENCRYPTION_KEY</code>, and with the version the backup was taken on or a newer one.</p>
+
+    <h2 id="update-check">How you hear about a release</h2>
+    <p>The server asks GitHub for the latest Sitewright release and keeps the answer for six hours. When it is newer than the running version, the editor shows a banner that names it, with a link to the release notes. The banner can be dismissed. Nothing is downloaded or installed. Set <code>SW_DISABLE_UPDATE_CHECK=true</code> to turn the check off, for example on a server without internet access.</p>
+
+    <h2 id="next">Next</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/self-hosting/compatibility'}}">Versions and compatibility</a></li>
+      <li><a href="{{sw-url '/docs/self-hosting/environment'}}">Environment variables</a></li>
+      <li><a href="{{sw-url '/docs/self-hosting/security'}}">Security and hardening</a></li>
+    </ul>
+  </article>
+</div>

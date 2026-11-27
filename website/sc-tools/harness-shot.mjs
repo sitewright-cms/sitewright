@@ -1,0 +1,18 @@
+import { createRequire } from 'node:module';
+const require = createRequire('/workspace/sitewright/apps/editor/package.json');
+const { chromium } = require('@playwright/test');
+const browser = await chromium.launch({ executablePath: `${process.env.HOME}/.cache/ms-playwright/chromium_headless_shell-1255/chrome-headless-shell-linux64/chrome-headless-shell` });
+const page = await browser.newPage({ viewport: { width: 1180, height: 760 } });
+const errs = []; page.on('pageerror', (e) => errs.push(e.message)); page.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+const OUT = '/tmp/claude-1000/-workspace-sitewright/ec7958e0-e951-4975-95e7-a51a6bdd4286/scratchpad';
+await page.goto(`file://${OUT}/sc-assets/imagemap-harness.html`);
+await page.waitForTimeout(1500);
+await page.screenshot({ path: `${OUT}/crops/imap-1.jpg`, type: 'jpeg', quality: 75 });
+await page.hover('li[data-sw-imap-trigger-object-on-mouseover="Kitchen"]');
+await page.waitForTimeout(900);
+await page.screenshot({ path: `${OUT}/crops/imap-2.jpg`, type: 'jpeg', quality: 75 });
+await page.mouse.move(150, 300); await page.waitForTimeout(900); await page.screenshot({ path: `${OUT}/crops/imap-4.jpg`, type: 'jpeg', quality: 75 }); await page.click('li[data-sw-imap-change-artboard]');
+await page.waitForTimeout(1200);
+await page.screenshot({ path: `${OUT}/crops/imap-3.jpg`, type: 'jpeg', quality: 75 });
+console.log('errors', errs);
+await browser.close();

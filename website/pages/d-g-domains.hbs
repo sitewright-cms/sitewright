@@ -1,0 +1,79 @@
+{{!-- META {"path":"custom-domains","title":"Custom domains","description":"Serve a locally hosted site at the client's own domain: claim the hostname, prove it with a DNS record, give your proxy a certificate, and pick the primary address.","parent":"guides","order":5,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>A site on the Local Hosting target is served by the platform itself. Out of the box it lives at <code>/sites/&lt;slug&gt;/</code> on your instance, or at <code>&lt;slug&gt;.&lt;SW_SITES_DOMAIN&gt;</code> when you have set a sites domain. A custom domain puts it at <code>www.client.com</code>. Sites deployed over FTP, SFTP or git are served by another host, and their domain is that host's business.</p>
+
+    <h2 id="before">Before you start</h2>
+    <ul>
+      <li>A deployed Local Hosting target in the project.</li>
+      <li>Access to the domain's DNS.</li>
+      <li>A reverse proxy that can obtain or hold a certificate for the domain. The platform routes by the <code>Host</code> header and cannot issue certificates itself.</li>
+      <li>The project owner's role: adding and verifying domains is owner-only.</li>
+    </ul>
+
+    <h2 id="claim">1. Claim the hostname</h2>
+    <p>Open the project's <strong>Deploy targets</strong>, then <strong>Local Hosting → Custom domains</strong>, type the hostname and choose <strong>Add domain</strong>. Add the apex and the <code>www</code> name as two entries if you want both. A project holds up to 10. Wildcards, IP addresses, ports, single-label names, the instance's own hostnames and anything under <code>SW_SITES_DOMAIN</code> are refused.</p>
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Deploy targets · Local Hosting · Custom domains</span></div>
+      {{> ws-media slot="doc_custom_domains" class="rounded-none"}}
+    </div>
+
+    <h2 id="dns">2. Publish two DNS records</h2>
+    <table>
+      <thead><tr><th>Record</th><th>Name</th><th class="min-w-56">Value</th></tr></thead>
+      <tbody>
+        <tr><td><code>A</code> / <code>AAAA</code>, or <code>CNAME</code></td><td>the hostname</td><td>your instance, the same as the sites domain</td></tr>
+        <tr><td><code>TXT</code></td><td><code>_sitewright.&lt;hostname&gt;</code></td><td>the token the panel shows, <code>sw-verify-…</code></td></tr>
+      </tbody>
+    </table>
+    <p>Then choose <strong>Check DNS</strong>. It reports whether the record is still pending or wrong. Until the hostname verifies it is reserved for the project but serves nothing: a claim alone never routes traffic.</p>
+    <p>Platform admins and developers can mark a hostname verified without the check, for a domain controlled out of band or a DNS provider whose TXT records the resolver cannot see. That action is logged.</p>
+
+    <h2 id="tls">3. Give the proxy a certificate</h2>
+    <p>Your proxy terminates HTTPS for every custom domain and forwards to the container like any other request. The simplest is to list the hostnames explicitly, so Caddy obtains a certificate for each:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">Caddyfile</span></div>
+<pre class="overflow-x-auto"><code>sites.example.com, client.com, www.client.com {
+    reverse_proxy 127.0.0.1:8080
+}</code></pre>
+    </div>
+    <p>Caddy's on-demand TLS saves editing the file for every new domain, but restrict issuance to hostnames you have actually configured: an unrestricted <code>ask</code> lets failed attempts use up your Let's Encrypt validation limits. Sitewright does not provide an <code>ask</code> endpoint, so that check is yours to supply.</p>
+
+    <h2 id="primary">4. Pick the primary address</h2>
+    <p>The first domain a project claims becomes its primary; <strong>Make primary</strong> changes it. The primary is the address <em>View live</em> shows, and every other verified hostname, the <code>&lt;slug&gt;.&lt;SW_SITES_DOMAIN&gt;</code> address and the <code>/sites/&lt;slug&gt;/</code> path answer with a 301 to it, so the site has one canonical address.</p>
+    <p>Then set <strong>Settings → Website → Site → Production URL</strong> to <code>https://www.client.com</code>. The sitemap, the canonical and <code>hreflang</code> links and the links in booking emails use it.</p>
+
+    <h2 id="verify">Check your work</h2>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">terminal</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-ok">$</span> dig +short TXT _sitewright.www.client.com
+<span class="tk-dim">"sw-verify-…"</span>
+<span class="tk-ok">$</span> curl -sI https://client.com/ | grep -i location
+<span class="tk-dim">location: https://www.client.com/</span></code></pre>
+    </div>
+    <ul>
+      <li>The primary answers with the site over HTTPS.</li>
+      <li>Every other address answers with a 301 to the primary.</li>
+      <li>Forms, booking and the statistics beacon keep working: on a site's own host, their requests to the platform pass through to it.</li>
+    </ul>
+
+    <h2 id="search">Search engines</h2>
+    <p>The editor, the draft site and share links are always sent with <code>noindex</code>. A hosted site keeps its own indexing rules. <strong>System Settings → Integrations → Hosted sites in search results</strong> can also hide every site at a platform address (<code>&lt;slug&gt;.&lt;SW_SITES_DOMAIN&gt;</code> and <code>/sites/&lt;slug&gt;/</code>). A site at a verified custom domain stays indexable; its primary must be that verified domain.</p>
+
+    <h2 id="pitfalls">Pitfalls</h2>
+    <ul>
+      <li><strong>Keep the instance's own host outside <code>SW_SITES_DOMAIN</code>.</strong> A host matching <code>&lt;label&gt;.&lt;SW_SITES_DOMAIN&gt;</code> is routed as a client site, so <code>SW_SITES_DOMAIN=example.com</code> with <code>SW_PUBLIC_URL=https://cms.example.com</code> makes the editor unreachable. Use a dedicated subdomain such as <code>sites.example.com</code>.</li>
+      <li><strong>An unverified primary.</strong> While the primary is unverified, the other domains redirect to the platform address instead.</li>
+      <li><strong>The path form redirects.</strong> Once a sites domain or a custom domain exists, <code>/sites/&lt;slug&gt;/</code> answers with a 301: a published page runs its owner's JavaScript, which must never run on the origin that carries the platform's session cookie.</li>
+    </ul>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/reference/deploy-targets'}}">Deploy targets</a></li>
+      <li><a href="{{sw-url '/docs/getting-started/install'}}">Install with Docker</a></li>
+      <li><a href="{{sw-url '/docs/self-hosting/environment'}}">Environment variables</a></li>
+    </ul>
+  </article>
+</div>

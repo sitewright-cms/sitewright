@@ -1,0 +1,115 @@
+{{!-- META {"path":"shop","title":"Shop & payments","description":"A cart added with a few helpers, prices per market, and checkout through a payment provider you enable, with orders, fulfilment and receipts in one inbox. Off until you switch it on.","parent":"features","order":7,"data":{"icon":"shopping-bag","eyebrow":"Shop & payments","headline":"Sell from any page. The server sets the price."}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid gap-6 lg:grid-cols-[1fr_1.2fr] lg:items-end" data-sw-animation="fade-up">
+    <h2 class="ws-display text-3xl font-bold sm:text-5xl" data-sw-text="cart_title">The shop is a handful of helpers.</h2>
+    <p class="max-w-xl text-lg leading-relaxed text-base-content/70" data-sw-text="cart_lead">Products are usually a dataset, and a buy button is one line in its loop. Turn the shop on in the website settings, and <code class="whitespace-nowrap font-code">sw-cart</code> adds the cart drawer. Until then the helpers render nothing and no cart script ships.</p>
+  </div>
+  <div class="mt-12 grid items-stretch gap-6 lg:grid-cols-[1fr_1.1fr]">
+    <div class="ws-window overflow-hidden rounded-2xl" data-sw-animation="fade-up">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/shop.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-hb">\{{#each dataset.products}}</span>
+  <span class="tk-tag">&lt;article</span> <span class="tk-attr">class</span>=<span class="tk-str">"card bg-base-100"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-hb">\{{sw-image image alt=name sizes="25vw"}}</span>
+    <span class="tk-tag">&lt;h3&gt;</span><span class="tk-hb">\{{name}}</span><span class="tk-tag">&lt;/h3&gt;</span>
+    <span class="tk-hb">\{{sw-price prices=prices}}</span>
+    <span class="tk-hb">\{{sw-add-to-cart sku=sku name=name</span>
+<span class="tk-hb">        prices=prices image=image}}</span>
+  <span class="tk-tag">&lt;/article&gt;</span>
+<span class="tk-hb">\{{/each}}</span>
+
+<span class="tk-com">\{{!-- Shown only when there are two or more markets --}}</span>
+<span class="tk-hb">\{{sw-market-switcher}}</span>
+<span class="tk-hb">\{{sw-cart}}</span></code></pre>
+    </div>
+    <div class="ws-browser" data-sw-animation="fade-up" data-sw-delay="100">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">shop.example · cart → checkout</span></div>
+      {{> ws-media slot="feat_shop_checkout" class="rounded-none"}}
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">Checkout channels</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="channels_title">From a WhatsApp message to a paid order.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="channels_lead">A shop offers up to eight ways to finish a cart. Start with an order by email and add processed payments when the client is ready.</p>
+    </div>
+    <div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-5" data-sw-animation="fade-up">{{sw-icon "brand:whatsapp" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading font-bold">WhatsApp</h3><p class="mt-1 text-sm text-base-content/70">Opens a chat with the order written out.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-5" data-sw-animation="fade-up" data-sw-delay="40">{{sw-icon "envelope-simple" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading font-bold">Email</h3><p class="mt-1 text-sm text-base-content/70">Opens the buyer's mail app with the order.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-5" data-sw-animation="fade-up" data-sw-delay="80">{{sw-icon "link" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading font-bold">Payment link</h3><p class="mt-1 text-sm text-base-content/70">Sends the buyer to a link you already have. Nothing is processed.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-5" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "textbox" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading font-bold">Order form</h3><p class="mt-1 text-sm text-base-content/70">Lands in the submissions inbox and is emailed to the shop.</p></div>
+      <div class="sw-border-beam rounded-2xl border border-base-content/10 bg-base-100 p-5 [--sw-beam-width:2px]" data-sw-animation="fade-up" data-sw-delay="160">{{sw-icon "credit-card" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading font-bold">Checkout</h3><p class="mt-1 text-sm text-base-content/70">A processed payment on the provider's hosted page.</p></div>
+    </div>
+    <p class="mt-6 text-sm text-base-content/60" data-sw-animation="fade-up">The WhatsApp, email, form and checkout channels ask for the buyer fields you define, in eleven field types with translatable labels. The checkout runs the same bot checks as forms, plus proof of work and a captcha if you want them.</p>
+  </div>
+</section>
+
+<section class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.15fr]">
+  <div data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">Markets</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="markets_title">A price per market, never converted.</h2>
+    <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="markets_lead">Define up to 20 markets, each with a currency and its countries, and give each product the price you want there. A product without a price in a market is not sold there. Each market has its own cart.</p>
+    <ul class="mt-6 list-none space-y-3 p-0 text-base-content/80">
+      <li class="flex gap-3">{{sw-icon "globe-simple" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>The market comes from the visitor's choice, then the page language, then their region.</span></li>
+      <li class="flex gap-3">{{sw-icon "truck" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>A flat shipping fee, free over an amount if you like, and one tax rate, per shop or per market.</span></li>
+    </ul>
+  </div>
+  <div class="min-w-0" data-sw-animation="fade-up" data-sw-delay="100">
+    <div class="overflow-x-auto rounded-2xl border border-base-content/10 bg-base-100">
+      <table class="w-full min-w-[32rem] border-collapse text-left text-sm">
+        <thead><tr class="bg-base-200/70"><th class="px-5 py-4 font-heading font-semibold">Market</th><th class="px-5 py-4 font-heading font-semibold">Currency</th><th class="px-5 py-4 font-heading font-semibold">Countries</th><th class="px-5 py-4 font-heading font-semibold">Mug, SKU MUG-1</th></tr></thead>
+        <tbody class="text-base-content/80">
+          <tr class="border-t border-base-content/10"><td class="px-5 py-4 font-medium text-base-content">Euro area</td><td class="px-5 py-4 font-code">EUR</td><td class="px-5 py-4">DE, AT, FR, NL</td><td class="px-5 py-4">€19.00</td></tr>
+          <tr class="border-t border-base-content/10"><td class="px-5 py-4 font-medium text-base-content">Switzerland</td><td class="px-5 py-4 font-code">CHF</td><td class="px-5 py-4">CH</td><td class="px-5 py-4">CHF 21.00</td></tr>
+          <tr class="border-t border-base-content/10"><td class="px-5 py-4 font-medium text-base-content">Rest of world</td><td class="px-5 py-4 font-code">USD</td><td class="px-5 py-4">all others</td><td class="px-5 py-4 text-base-content/50">Not available</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="mt-3 text-xs text-base-content/50">An example setup. Prices are what you enter for each market.</p>
+  </div>
+</section>
+
+<section class="bg-neutral text-white">
+  <div class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+    <div class="grid gap-6 lg:grid-cols-[1fr_1.2fr] lg:items-end" data-sw-animation="fade-up">
+      <div>
+        <p class="ws-index text-accent">Processed payments</p>
+        <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="money_title">Built so the amount cannot be faked.</h2>
+      </div>
+      <p class="max-w-xl text-lg leading-relaxed text-white/70" data-sw-text="money_lead">Stripe, PayPal and Mollie ship as provider definitions, switched off. An instance admin enables one, and a real test-mode checkout has to succeed before it takes live money.</p>
+    </div>
+    <div class="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div class="rounded-2xl border border-white/10 bg-white/5 p-6" data-sw-animation="fade-up">{{sw-icon "tag" "h-6 w-6 text-accent"}}<h3 class="mt-4 font-heading text-lg font-bold">The server prices</h3><p class="mt-2 text-sm leading-relaxed text-white/70">The browser sends only products and quantities. The server prices them from the list sealed at the last publish.</p></div>
+      <div class="rounded-2xl border border-white/10 bg-white/5 p-6" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "seal-check" "h-6 w-6 text-accent"}}<h3 class="mt-4 font-heading text-lg font-bold">Bad prices stop the publish</h3><p class="mt-2 text-sm leading-relaxed text-white/70">With a checkout on, a price that cannot be charged exactly, or one product at two prices in a market, blocks the publish instead of being rounded.</p></div>
+      <div class="rounded-2xl border border-white/10 bg-white/5 p-6" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "lock-simple" "h-6 w-6 text-accent"}}<h3 class="mt-4 font-heading text-lg font-bold">No card data</h3><p class="mt-2 text-sm leading-relaxed text-white/70">Buyers pay on the provider's hosted page. Card details never touch the site or your server.</p></div>
+      <div class="rounded-2xl border border-white/10 bg-white/5 p-6" data-sw-animation="fade-up" data-sw-delay="180">{{sw-icon "webhooks-logo" "h-6 w-6 text-accent"}}<h3 class="mt-4 font-heading text-lg font-bold">Paid means verified</h3><p class="mt-2 text-sm leading-relaxed text-white/70">Only a verified webhook marks an order paid. An order still open after ten minutes is checked with the provider directly.</p></div>
+    </div>
+    <p class="mt-8 text-sm text-white/60" data-sw-animation="fade-up">Each project enters its own provider keys, with separate test and live values, encrypted at rest. Only a signed-in person can enter them. No agent or API token can.</p>
+  </div>
+</section>
+
+<section class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1.15fr_1fr]">
+  <div class="ws-browser order-2 lg:order-1" data-sw-animation="fade-up">
+    <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Orders</span></div>
+    {{> ws-media slot="feat_shop_orders" class="rounded-none"}}
+  </div>
+  <div class="order-1 lg:order-2" data-sw-animation="fade-up" data-sw-delay="100">
+    <p class="ws-index ws-ink">The Orders tab</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="orders_title">From paid to shipped, in one list.</h2>
+    <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="orders_lead">Every order shows its payment status and moves through new, packed, shipped and done. The shop and the buyer each get their own email, and either one can be sent again. Refunds are made from here, by a person.</p>
+    <ul class="mt-6 list-none space-y-3 p-0 text-base-content/80">
+      <li class="flex gap-3">{{sw-icon "robot" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Agents list orders and mark them packed or shipped. They cannot refund.</span></li>
+      <li class="flex gap-3">{{sw-icon "eye" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>A demo copy of the site runs the cart and checkout in the browser and charges nothing.</span></li>
+    </ul>
+    <div class="mt-6 flex flex-wrap gap-3">
+      <a class="btn btn-primary btn-sm" href="{{sw-url '/docs/guides/shop'}}">The shop guide</a>
+      <a class="btn btn-ghost btn-sm" href="{{sw-url '/docs/guides/demo-copies'}}">Demo copies {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+  </div>
+</section>
+
+{{> feature-next features=pages.features._attributes.children}}

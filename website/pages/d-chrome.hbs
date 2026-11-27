@@ -1,0 +1,118 @@
+{{!-- META {"path":"header-footer-sidebars","title":"Header, footer and sidebars","description":"The five chrome slots that wrap every page, where each one renders, how to edit them, and the rules their markup follows.","parent":"concepts","order":4,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>The header, the footer and anything else that appears on every page live in <strong>slots</strong>: five fields in the project's website settings, rendered around each page's body. They are not pages and not templates. A page called "Header" fills no slot; the slot is where that markup goes.</p>
+
+    <h2 id="slots">The five slots</h2>
+    <p>The page skeleton owns the landmark elements and wraps each slot in one, with a fixed id. A slot's wrapper is only written when the slot has content.</p>
+    <table>
+      <thead><tr><th>Slot</th><th>Setting</th><th>Wrapped in</th><th>For</th></tr></thead>
+      <tbody>
+        <tr><td>Main Navigation</td><td><code>website.mainNav</code></td><td><code>nav#main-nav</code></td><td>The header: desktop bar and mobile drawer, at the top of the body.</td></tr>
+        <tr><td><em>(the page)</em></td><td>page source</td><td><code>main#page-content</code></td><td>The page's own content.</td></tr>
+        <tr><td>Left Sidebar</td><td><code>website.sidebarLeft</code></td><td><code>aside#sidebar-left</code></td><td>Site-wide side content, written after the body.</td></tr>
+        <tr><td>Right Sidebar</td><td><code>website.sidebarRight</code></td><td><code>aside#sidebar-right</code></td><td>The same, on the other side.</td></tr>
+        <tr><td>Footer</td><td><code>website.footer</code></td><td><code>footer#footer</code></td><td>The footer, below the body and the sidebars.</td></tr>
+        <tr><td>Bottom</td><td><code>website.bottom</code></td><td><code>div#bottom</code></td><td>Global dialogs and schema.org microdata, after the footer. Usually invisible.</td></tr>
+      </tbody>
+    </table>
+    <p>The same settings hold three parts that are not slots: <strong>Critical CSS</strong>, inlined in the <code>&lt;head&gt;</code> of every page after the brand tokens; <strong>Head HTML</strong>, raw HTML for meta and site-verification tags; and <strong>Scripts</strong>, raw HTML inserted at the end of the body. Analytics does not belong in either raw part: connect it under Analytics, where it waits for visitor consent.</p>
+
+    <h2 id="editing">Editing a slot</h2>
+    <ul>
+      <li><strong>Website Settings → Document skeleton</strong> shows every part as a map of the document, in render order, with its size. The header, sidebars and footer open in the full editor, with a live preview, device widths and click-to-code. Bottom and the raw parts open in the code editor.</li>
+      <li>In any page editor, hover the header, footer or a sidebar in the preview and click its edit button.</li>
+      <li>The Main Navigation and Footer editors have <strong>Insert the default navigation</strong> and <strong>Insert the default footer</strong>, which put the built-in recipes back.</li>
+      <li>Over the API or MCP, slots are fields of the <code>settings</code> entity. Patch one field with a merge write, so the other slots stay untouched.</li>
+    </ul>
+    <figure class="ws-browser">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Website Settings · Document skeleton</span></div>
+      {{> ws-media slot="doc_chrome_skeleton" class="rounded-none"}}
+    </figure>
+
+    <h2 id="rules">Markup rules</h2>
+    <p>A slot is checked when you save it, with the same rules as a page. A broken slot is refused with its name in the message, instead of disappearing from every page later.</p>
+    <ul>
+      <li><strong>Inner markup only.</strong> Don't write <code>&lt;nav&gt;</code>, <code>&lt;main&gt;</code>, <code>&lt;footer&gt;</code> or <code>&lt;aside&gt;</code>; the skeleton already provides them. Use <code>&lt;div&gt;</code> and <code>&lt;ul&gt;</code>. daisyUI's <code>navbar</code>, <code>menu</code> and <code>footer</code> classes work on any element.</li>
+      <li><strong>No snippets.</strong> Slots render without partials, so <code>\{{&gt; name}}</code> fails here. Put the markup in the slot itself.</li>
+      <li><strong>The usual template rules:</strong> no inline event handlers, no raw triple-brace output, and every bound <code>href</code> or <code>src</code> through <code>\{{sw-url …}}</code>. An unknown helper is refused at save, because a typo in a slot would show on every page.</li>
+      <li><strong>Size:</strong> up to 256 KB per slot.</li>
+      <li><strong>Readable code:</strong> slots are stored exactly as written and shared by every page, so keep them indented. Minifying happens at build time.</li>
+    </ul>
+
+    <h2 id="context">What a slot can read</h2>
+    <p>Each slot renders once per page, with that page's context. <code>\{{page.title}}</code> is the page being viewed, and <code>\{{sw-active path}}</code> marks the current item in a menu. Slots can read <code>company</code>, <code>website</code>, <code>page</code>, <code>pages</code>, <code>dataset</code> and the menus in <code>nav</code>:</p>
+    <table>
+      <thead><tr><th>Binding</th><th>Holds</th></tr></thead>
+      <tbody>
+        <tr><td><code>\{{#each nav.header}}</code></td><td>Pages in the main navigation, with their dropdown <code>children</code></td></tr>
+        <tr><td><code>\{{#each nav.mobile}}</code></td><td>Pages in the mobile menu</td></tr>
+        <tr><td><code>\{{#each nav.footer}}</code></td><td>Pages in the footer menu</td></tr>
+        <tr><td><code>\{{#each nav.custom}}</code></td><td>Pages in the custom slot, for a list of your own</td></tr>
+        <tr><td><code>\{{#each company.social}}</code></td><td>Social profiles from Corporate Identity: <code>link</code>, <code>name</code>, <code>icon</code></td></tr>
+        <tr><td><code>\{{sw-theme-toggle}}</code></td><td>A light and dark switch; renders nothing until themes are enabled</td></tr>
+        <tr><td><code>\{{#each page.translations}}</code></td><td>The current page in other languages, for a language switcher</td></tr>
+      </tbody>
+    </table>
+    <p>How pages get into those menus, and in which order, is covered in <a href="{{sw-url '/docs/concepts/pages-and-routes'}}">Pages and routes</a>.</p>
+
+    <h2 id="footer">A footer, start to finish</h2>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">website.footer</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"bg-neutral text-neutral-content"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"mx-auto grid max-w-6xl gap-10 px-6 py-16 sm:grid-cols-3"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;div&gt;</span>
+      <span class="tk-tag">&lt;a</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-lg font-bold"</span> <span class="tk-attr">href</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-url '/'}}</span>"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{company.name}}</span><span class="tk-tag">&lt;/a&gt;</span>
+      <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-3 text-sm text-neutral-content/70"</span> <span class="tk-attr">data-sw-text</span>=<span class="tk-str">"website.data.footer_tagline"</span><span class="tk-tag">&gt;</span>
+        Design, build and care.
+      <span class="tk-tag">&lt;/p&gt;</span>
+    <span class="tk-tag">&lt;/div&gt;</span>
+    <span class="tk-tag">&lt;ul</span> <span class="tk-attr">class</span>=<span class="tk-str">"space-y-2 text-sm"</span><span class="tk-tag">&gt;</span>
+      <span class="tk-hb">\{{#each nav.footer}}</span>
+      <span class="tk-tag">&lt;li&gt;&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-url path}}</span>"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-label}}</span><span class="tk-tag">&lt;/a&gt;&lt;/li&gt;</span>
+      <span class="tk-hb">\{{/each}}</span>
+    <span class="tk-tag">&lt;/ul&gt;</span>
+    <span class="tk-tag">&lt;ul</span> <span class="tk-attr">class</span>=<span class="tk-str">"flex gap-3"</span><span class="tk-tag">&gt;</span>
+      <span class="tk-hb">\{{#each company.social}}</span>
+      <span class="tk-tag">&lt;li&gt;&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-url link}}</span>"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"<span class="tk-hb">\{{name}}</span>"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon icon "h-5 w-5"}}</span><span class="tk-tag">&lt;/a&gt;&lt;/li&gt;</span>
+      <span class="tk-hb">\{{/each}}</span>
+    <span class="tk-tag">&lt;/ul&gt;</span>
+  <span class="tk-tag">&lt;/div&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"border-t border-neutral-content/10 py-5 text-center text-xs"</span><span class="tk-tag">&gt;</span>&amp;copy; <span class="tk-hb">\{{company.name}}</span><span class="tk-tag">&lt;/p&gt;</span>
+<span class="tk-tag">&lt;/div&gt;</span></code></pre>
+    </div>
+    <h3 id="editable">Editable text in a slot</h3>
+    <p>A slot is not a page, so it has no <code>page.data</code> of its own. Two kinds of key make slot text editable in the Content Editor:</p>
+    <ul>
+      <li><code>data-sw-text="website.data.footer_tagline"</code> (or <code>data-sw-html</code> for rich text) stores one value in the site-wide <code>website.data</code>. Edit it once and every page shows it.</li>
+      <li><code>data-sw-translate="footer_cta"</code> stores a project translation: one value per language, shared by every page.</li>
+    </ul>
+
+    <h2 id="header">The header</h2>
+    <p>New projects start with the <code>nav-header</code> recipe in the Main Navigation slot: a desktop bar with hover dropdowns, a mobile drawer, a language switcher that appears once there is a second language, and the theme toggle. Treat it as the mechanics and give it your own look.</p>
+    <ul>
+      <li><strong>The mobile drawer</strong> is CSS only: a hidden checkbox with the id <code>sw-nav-drawer</code>, a label as the menu button, a second label as the backdrop. Keep that id. While it is checked the platform lifts the header above other floating elements, and tapping an in-page link closes it. The menu button and the drawer must be in the same slot.</li>
+      <li><strong>Sticky header:</strong> Website Settings → Nav, buttons &amp; preloader offers Pinned (always visible) or Hide on scroll down. The platform pads the page so content clears the bar, and sets <code>html.sw-scrolled</code> once the page has scrolled, for your own styling.</li>
+      <li><strong>A header of a different height</strong> must set <code>--sw-header-h</code> in Critical CSS at every breakpoint where its height changes. The default is <code>4.5rem</code>, and <code>4.75rem</code> from 1024 pixels up. Jump links and the sticky offset read it.</li>
+    </ul>
+
+    <h2 id="sidebars">Sidebars</h2>
+    <p>The sidebar slots are written <strong>after</strong> the page body in the document and are not a layout grid. Position them with their own classes, for example a fixed side tab or a floating contact button, so they do not push the page content around. For a sidebar that belongs to one page's layout, such as a table of contents beside an article, use a <code>&lt;div&gt;</code> in that page instead. This documentation's menu is built that way.</p>
+
+    <h2 id="bottom">The Bottom slot and global dialogs</h2>
+    <p>A <code>&lt;dialog&gt;</code> placed in the Bottom slot exists on every page. A menu item whose target is <code>#newsletter</code> opens it from any menu, and a link to <code>#newsletter</code> does the same.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">website.bottom</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;dialog</span> <span class="tk-attr">id</span>=<span class="tk-str">"newsletter"</span> <span class="tk-attr">class</span>=<span class="tk-str">"modal"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"modal-box"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;h3</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-lg font-bold"</span> <span class="tk-attr">data-sw-translate</span>=<span class="tk-str">"newsletter_title"</span><span class="tk-tag">&gt;</span>Stay in the loop<span class="tk-tag">&lt;/h3&gt;</span>
+    <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"py-4"</span> <span class="tk-attr">data-sw-translate</span>=<span class="tk-str">"newsletter_text"</span><span class="tk-tag">&gt;</span>One email a month.<span class="tk-tag">&lt;/p&gt;</span>
+    <span class="tk-tag">&lt;form</span> <span class="tk-attr">method</span>=<span class="tk-str">"dialog"</span><span class="tk-tag">&gt;&lt;button</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn"</span><span class="tk-tag">&gt;</span>Close<span class="tk-tag">&lt;/button&gt;&lt;/form&gt;</span>
+  <span class="tk-tag">&lt;/div&gt;</span>
+<span class="tk-tag">&lt;/dialog&gt;</span></code></pre>
+    </div>
+    <div class="ws-callout"><p class="!mt-0"><strong>Structured data.</strong> A <code>&lt;script type="application/ld+json"&gt;</code> block does not belong in a slot. Once the business details in Corporate Identity are filled in, the platform writes schema.org JSON-LD into the <code>&lt;head&gt;</code> from them, including the business type you choose there.</p></div>
+  </article>
+</div>

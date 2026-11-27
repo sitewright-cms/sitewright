@@ -1,0 +1,271 @@
+{{!-- META {"path":"effects","title":"Borders, buttons and nav effects","description":"A travelling light around any box, 28 button hover effects with shapes and accents, and 19 navigation effects, each one class on the element it decorates. They follow the brand colours in both themes.","parent":"showcase","order":13,"data":{"icon":"magic-wand","preset":"edge-glow"}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">01 · Border beam</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="f1_title">A light that travels the edge.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="f1_lead"><code class="font-code text-base">sw-border-beam</code> sends a comet around any box in the brand colour. It laps and, on a second timeline, breathes: it spreads along the edge and narrows back. Custom properties on the same element tune it. It needs no script and never covers the content. It repaints every frame, so keep it to one featured box per page; this page breaks that rule on purpose.</p>
+  </div>
+  <div class="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+<!--demo:beams-->
+<div class="sw-border-beam rounded-2xl border border-base-content/10 bg-base-100 p-6">
+  <p class="font-heading font-bold">Default</p>
+  <p class="mt-2 text-sm text-base-content/70">5px, laps in 1.8s, breathes over 7s.</p>
+</div>
+<div class="sw-border-beam rounded-2xl bg-base-100 p-6 [--sw-beam-width:2px] [--sw-beam-track:color-mix(in_oklab,var(--sw-color-primary)_25%,transparent)]">
+  <p class="font-heading font-bold">Fine edge</p>
+  <p class="mt-2 text-sm text-base-content/70">A thin beam over a faint brand track.</p>
+</div>
+<div class="sw-border-beam rounded-2xl border border-base-content/10 bg-base-100 p-6 [--sw-beam-arc:90deg] [--sw-beam-arc-max:90deg]">
+  <p class="font-heading font-bold">Steady comet</p>
+  <p class="mt-2 text-sm text-base-content/70">Equal arcs stop the breathing.</p>
+</div>
+<div class="sw-border-beam rounded-2xl bg-neutral p-6 text-white [--sw-beam-color:var(--sw-color-accent)] [--sw-beam-speed:4s] [--sw-beam-width:3px]">
+  <p class="font-heading font-bold">Accent, slower</p>
+  <p class="mt-2 text-sm text-white/70">Colour and lap time changed.</p>
+</div>
+<!--/demo-->
+  </div>
+  <div class="mt-6">
+<!--code:beams file="effects · border beam"-->
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">02 · Button effects</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="f2_title">Hover these.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="f2_lead">A button has two separate choices. The face is the daisyUI variant that owns the resting look. The effect is a <code class="font-code text-base">sw-btn-fx-*</code> class for the hover. Motion effects work on any face. Reveal effects rest as your face and bring in the accent on hover, best on an outline or ghost button. Face effects are the look themselves. This site's default is <code class="font-code text-base">lift</code>; a class on a button overrides it.</p>
+    </div>
+    <div class="mt-10 space-y-8">
+      <div>
+        <p class="ws-index text-base-content/60">Motion · 15</p>
+        <div class="mt-4 flex flex-wrap gap-3">
+<!--demo:motion-->
+<button type="button" class="btn btn-primary sw-btn-fx-lift">lift</button>
+<button type="button" class="btn btn-primary sw-btn-fx-glow">glow</button>
+<button type="button" class="btn btn-primary sw-btn-fx-pulse">pulse</button>
+<button type="button" class="btn btn-primary sw-btn-fx-ring">ring</button>
+<button type="button" class="btn btn-primary sw-btn-fx-magnetic">magnetic</button>
+<button type="button" class="btn btn-primary sw-btn-fx-arrow">arrow {{sw-icon "arrow-right" "h-4 w-4"}}</button>
+<button type="button" class="btn btn-primary sw-btn-fx-bounce">bounce</button>
+<button type="button" class="btn btn-primary sw-btn-fx-jelly">jelly</button>
+<button type="button" class="btn btn-primary sw-btn-fx-icon-spin">{{sw-icon "gear" "h-4 w-4"}} icon-spin</button>
+<button type="button" class="btn btn-primary sw-btn-fx-long-shadow">long-shadow</button>
+<button type="button" class="btn btn-primary sw-btn-fx-width-expand">width-expand</button>
+<button type="button" class="btn btn-primary sw-btn-fx-sheen">sheen</button>
+<button type="button" class="btn btn-primary sw-btn-fx-spotlight">spotlight</button>
+<button type="button" class="btn btn-primary sw-btn-fx-shine">shine</button>
+<button type="button" class="btn btn-primary sw-btn-fx-sparkle">sparkle</button>
+<!--/demo-->
+        </div>
+      </div>
+      <div>
+        <p class="ws-index text-base-content/60">Reveal · 9</p>
+        <div class="mt-4 flex flex-wrap gap-3">
+<!--demo:reveal-->
+<button type="button" class="btn btn-outline sw-btn-fx-fill-center">fill-center</button>
+<button type="button" class="btn btn-outline sw-btn-fx-fill-slide">fill-slide</button>
+<button type="button" class="btn btn-outline sw-btn-fx-fill-up">fill-up</button>
+<button type="button" class="btn btn-outline sw-btn-fx-fill-down">fill-down</button>
+<button type="button" class="btn btn-outline sw-btn-fx-skew-sweep">skew-sweep</button>
+<button type="button" class="btn btn-outline sw-btn-fx-bubble">bubble</button>
+<button type="button" class="btn btn-outline sw-btn-fx-border-draw">border-draw</button>
+<button type="button" class="btn btn-outline sw-btn-fx-outline-fill">outline-fill</button>
+<button type="button" class="btn btn-ghost sw-btn-fx-text-link">text-link</button>
+<!--/demo-->
+        </div>
+      </div>
+      <div>
+        <p class="ws-index text-base-content/60">Face · 4</p>
+        <div class="mt-4 flex flex-wrap gap-3">
+<!--demo:face-->
+<button type="button" class="btn btn-primary sw-btn-fx-two-tone">two-tone</button>
+<button type="button" class="btn btn-primary sw-btn-fx-gradient-move">gradient-move</button>
+<button type="button" class="btn btn-primary sw-btn-fx-frost">frost</button>
+<button type="button" class="btn btn-primary sw-btn-fx-ghost-gradient">ghost-gradient</button>
+<!--/demo-->
+        </div>
+      </div>
+    </div>
+    <div class="mt-10 space-y-6">
+      <div class="min-w-0">
+<!--code:motion file="buttons · motion"-->
+      </div>
+      <div class="min-w-0">
+<!--code:reveal file="buttons · reveal"-->
+      </div>
+      <div class="min-w-0">
+<!--code:face file="buttons · face"-->
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">03 · Shapes and accents</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="f3_title">Two more axes.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="f3_lead"><code class="font-code text-base">sw-btn-shape-*</code> sets the corners or the silhouette; square and circle are for icon-only buttons. <code class="font-code text-base">sw-btn-accent-*</code> picks the colour the hover fills with. Each axis can also be set once for the whole site in the website settings.</p>
+  </div>
+  <div class="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6">
+      <p class="ws-index text-base-content/60">Shapes · 8</p>
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+<!--demo:shapes-->
+<button type="button" class="btn btn-primary sw-btn-shape-rounded">rounded</button>
+<button type="button" class="btn btn-primary sw-btn-shape-soft">soft</button>
+<button type="button" class="btn btn-primary sw-btn-shape-sharp">sharp</button>
+<button type="button" class="btn btn-primary sw-btn-shape-pill">pill</button>
+<button type="button" class="btn btn-primary sw-btn-shape-cut">cut</button>
+<button type="button" class="btn btn-primary sw-btn-shape-skewed">skewed</button>
+<button type="button" class="btn btn-primary sw-btn-shape-square" aria-label="Settings">{{sw-icon "gear" "h-5 w-5"}}</button>
+<button type="button" class="btn btn-primary sw-btn-shape-circle" aria-label="Add">{{sw-icon "plus:bold" "h-5 w-5"}}</button>
+<!--/demo-->
+      </div>
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6">
+      <p class="ws-index text-base-content/60">Accents · 4, hover them</p>
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+<!--demo:accents-->
+<button type="button" class="btn btn-outline sw-btn-fx-fill-slide sw-btn-accent-primary">primary</button>
+<button type="button" class="btn btn-outline sw-btn-fx-fill-slide sw-btn-accent-secondary">secondary</button>
+<button type="button" class="btn btn-outline sw-btn-fx-fill-slide sw-btn-accent-accent">accent</button>
+<button type="button" class="btn btn-outline sw-btn-fx-fill-slide sw-btn-accent-neutral">neutral</button>
+<!--/demo-->
+      </div>
+    </div>
+  </div>
+  <div class="mt-6 space-y-6">
+    <div class="min-w-0">
+<!--code:shapes file="buttons · shapes"-->
+    </div>
+    <div class="min-w-0">
+<!--code:accents file="buttons · accents"-->
+    </div>
+  </div>
+</section>
+
+<section id="nav-effects" class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">04 · Navigation effects</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="f4_title">Nineteen menus, one class each.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="f4_lead">A <code class="font-code text-base">sw-nav-*</code> class on a daisyUI <code class="font-code text-base">menu</code> styles its hover and active links. Set one for the whole site in the website settings, or put a class on a single menu, which then keeps its own effect. The two sliding effects and the spotlight load a small script; the rest are CSS. Hover the links, or click one to move the active state.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+<!--demo:navs-->
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">box-solid</p>
+  <ul class="menu menu-horizontal sw-nav-box-solid"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<!--elide:one card per effect, the same markup-->
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">box-fill-left</p>
+  <ul class="menu menu-horizontal sw-nav-box-fill-left"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">box-fill-up</p>
+  <ul class="menu menu-horizontal sw-nav-box-fill-up"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">box-draw</p>
+  <ul class="menu menu-horizontal sw-nav-box-draw"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">box-shadow</p>
+  <ul class="menu menu-horizontal sw-nav-box-shadow"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">line-bottom</p>
+  <ul class="menu menu-horizontal sw-nav-line-bottom"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">line-sliding-bottom</p>
+  <ul class="menu menu-horizontal sw-nav-line-sliding-bottom"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">line-top-down</p>
+  <ul class="menu menu-horizontal sw-nav-line-top-down"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">line-squiggle</p>
+  <ul class="menu menu-horizontal sw-nav-line-squiggle"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">sliding-pill</p>
+  <ul class="menu menu-horizontal sw-nav-sliding-pill"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">glass-pill</p>
+  <ul class="menu menu-horizontal sw-nav-glass-pill"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">dot-to-pill</p>
+  <ul class="menu menu-horizontal sw-nav-dot-to-pill"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">highlighter</p>
+  <ul class="menu menu-horizontal sw-nav-highlighter"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">brackets</p>
+  <ul class="menu menu-horizontal sw-nav-brackets"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">brackets-curly</p>
+  <ul class="menu menu-horizontal sw-nav-brackets-curly"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">blob</p>
+  <ul class="menu menu-horizontal sw-nav-blob"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">chevron</p>
+  <ul class="menu menu-horizontal sw-nav-chevron"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">corner-ticks</p>
+  <ul class="menu menu-horizontal sw-nav-corner-ticks"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<div class="rounded-2xl bg-base-100 p-3">
+  <p class="px-4 pt-1 font-code text-xs text-base-content/60">spotlight-sliding</p>
+  <ul class="menu menu-horizontal sw-nav-spotlight-sliding"><li><a class="active" href="#nav-effects">Home</a></li><li><a href="#nav-effects">Work</a></li><li><a href="#nav-effects">Contact</a></li></ul>
+</div>
+<!--/elide-->
+<!--/demo-->
+    </div>
+    <div class="mt-6">
+<!--code:navs file="nav effects · per menu"-->
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-center">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">05 · Ripple</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="f5_title">A ripple on anything.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="f5_lead">Every <code class="font-code text-base">btn</code> already ripples when pressed. For any other element, add <code class="font-code text-base">waves-effect</code>, and <code class="font-code text-base">waves-light</code> for a white ripple on a dark surface. The default tint follows the theme. Click the cards.</p>
+    </div>
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+<!--demo:ripple-->
+<a href="#nav-effects" class="waves-effect block rounded-3xl border border-base-content/10 bg-base-100 p-8">
+  <span class="font-heading text-lg font-bold">waves-effect</span>
+  <span class="mt-2 block text-sm text-base-content/70">A tint that follows the theme.</span>
+</a>
+<a href="#nav-effects" class="waves-effect waves-light block rounded-3xl bg-primary p-8 text-primary-content">
+  <span class="font-heading text-lg font-bold">waves-light</span>
+  <span class="mt-2 block text-sm opacity-80">A white ripple on colour.</span>
+</a>
+<!--/demo-->
+    </div>
+  </div>
+  <div class="mt-6">
+<!--code:ripple file="effects · ripple"-->
+  </div>
+</section>
+
+{{> showcase-next}}

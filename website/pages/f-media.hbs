@@ -1,0 +1,106 @@
+{{!-- META {"path":"media","title":"Images & media","description":"Upload once. Sitewright keeps the original and serves the sizes each page needs as WebP or AVIF, with blur-up placeholders and real dimensions, so nothing jumps while the page loads.","parent":"features","order":4,"data":{"icon":"image","eyebrow":"Images & media","headline":"One upload. Every size the page needs."}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">The image helper</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="helper_title">One line in, a responsive image out.</h2>
+    <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="helper_lead">Tell <code class="whitespace-nowrap font-code">sw-image</code> how wide the image will be shown and it writes the rest: a srcset up to the size of the original, the intrinsic width and height, lazy loading, and a blurred placeholder that paints until the file arrives.</p>
+  </div>
+  <div class="mt-12 grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
+    <div class="ws-window overflow-hidden rounded-2xl" data-sw-animation="fade-up">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">you write</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-hb">\{{sw-image</span>
+  <span class="tk-str">"/media/acme/a1b2c3-studio.jpg"</span>
+  <span class="tk-attr">sizes</span>=<span class="tk-str">"33vw"</span>
+  <span class="tk-attr">class</span>=<span class="tk-str">"rounded-box"</span><span class="tk-hb">}}</span>
+
+<span class="tk-com">\{{!-- AVIF first, WebP as the fallback --}}</span>
+<span class="tk-hb">\{{sw-image</span> <span class="tk-attr">hero</span> <span class="tk-attr">alt</span>=<span class="tk-str">""</span>
+  <span class="tk-attr">loading</span>=<span class="tk-str">"eager"</span> <span class="tk-attr">format</span>=<span class="tk-str">"avif"</span><span class="tk-hb">}}</span></code></pre>
+    </div>
+    <div class="ws-window overflow-hidden rounded-2xl" data-sw-animation="fade-up" data-sw-delay="100">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">the page gets</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;img</span> <span class="tk-attr">src</span>=<span class="tk-str">"/media/acme/a1b2c3-studio.jpg?size=xl"</span>
+     <span class="tk-attr">srcset</span>=<span class="tk-str">"…?size=sm 500w, …?size=md 1000w,</span>
+<span class="tk-str">             …?size=lg 1600w, …?size=xl 2400w"</span>
+     <span class="tk-attr">sizes</span>=<span class="tk-str">"33vw"</span> <span class="tk-attr">alt</span>=<span class="tk-str">"Our studio"</span>
+     <span class="tk-attr">width</span>=<span class="tk-str">"3000"</span> <span class="tk-attr">height</span>=<span class="tk-str">"2000"</span>
+     <span class="tk-attr">loading</span>=<span class="tk-str">"lazy"</span> <span class="tk-attr">decoding</span>=<span class="tk-str">"async"</span>
+     <span class="tk-attr">class</span>=<span class="tk-str">"rounded-box"</span>
+     <span class="tk-attr">style</span>=<span class="tk-str">"background-image:url('data:image/webp;…')"</span><span class="tk-tag">&gt;</span>
+
+<span class="tk-com">&lt;!-- The alt text came from the media library --&gt;</span></code></pre>
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+    <h2 class="ws-display max-w-2xl text-3xl font-bold sm:text-4xl" data-sw-animation="fade-up" data-sw-text="pipe_title">What happens after the upload.</h2>
+    <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">{{sw-icon "stack-simple" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Sizes on demand</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Only the original is stored. The sizes, 500 to 2400 pixels wide, are made when first asked for and never larger than the original. A publish writes only the ones its pages use.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "file-image" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">WebP, or AVIF</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">WebP by default. Turn AVIF on per image or for the whole project and the page gets a picture element with AVIF first. Animated GIFs become animated WebP.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "selection-all" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">No layout shift</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Width and height come from the upright image, so the browser reserves the space. A 20-pixel blurred preview fills it until the image loads.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">{{sw-icon "crop" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Rotate and crop</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">The image editor rotates and crops, in place or as a copy. Photos a camera tagged as sideways are turned upright in every size.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "bezier-curve" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">SVG stays vector</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Scripts, event handlers, foreign objects and remote references are stripped on upload. Animation and internal references are kept.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "film-strip" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Video, loaded late</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">MP4, WebM and MOV play inline. With <code class="whitespace-nowrap font-code">data-src</code> a video loads when it comes into view, and <code class="whitespace-nowrap font-code">data-autoplay</code> plays it there and pauses it when it leaves.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1.15fr_1fr]">
+  <div class="ws-browser order-2 lg:order-1" data-sw-animation="fade-up">
+    <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">File Manager · images / team</span></div>
+    {{> ws-media slot="feat_media_library" class="rounded-none"}}
+  </div>
+  <div class="order-1 lg:order-2" data-sw-animation="fade-up" data-sw-delay="100">
+    <p class="ws-index ws-ink">The media library</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="lib_title">Tidy it up without breaking a link.</h2>
+    <ul class="mt-6 list-none space-y-4 p-0">
+      <li class="flex gap-3">{{sw-icon "folder-simple" "mt-1 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80"><strong class="text-base-content">Folders that move freely.</strong> Moving a file never changes its address.</span></li>
+      <li class="flex gap-3">{{sw-icon "swap" "mt-1 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80"><strong class="text-base-content">Replace, keep the URL.</strong> Swap a file for a new version and every page that uses it gets the new one.</span></li>
+      <li class="flex gap-3">{{sw-icon "text-aa" "mt-1 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80"><strong class="text-base-content">Alt text on the asset.</strong> Write it once; every <code class="whitespace-nowrap font-code">sw-image</code> that leaves alt out uses it.</span></li>
+      <li class="flex gap-3">{{sw-icon "trash-simple" "mt-1 h-5 w-5 shrink-0 text-accent"}}<span class="text-base-content/80"><strong class="text-base-content">A recycle bin.</strong> Deleted files can be restored for 90 days, and an Unused Files view finds what no page needs.</span></li>
+    </ul>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+    <div class="grid grid-cols-2 gap-y-12 lg:grid-cols-4">
+      <div data-sw-animation="fade-up"><p class="ws-numeral text-6xl sm:text-7xl">4</p><p class="mt-3 text-sm text-base-content/70">stock libraries: Openverse with no key, Unsplash, Pexels and Pixabay with yours</p></div>
+      <div data-sw-animation="fade-up" data-sw-delay="80"><p class="ws-numeral text-6xl sm:text-7xl">1,933</p><p class="mt-3 text-sm text-base-content/70">Google Font families, downloaded once and served from your own server</p></div>
+      <div data-sw-animation="fade-up" data-sw-delay="160"><p class="ws-numeral text-6xl sm:text-7xl">1,512</p><p class="mt-3 text-sm text-base-content/70">Phosphor icons in six weights, plus brand logos and flags, inlined as SVG</p></div>
+      <div data-sw-animation="fade-up" data-sw-delay="240"><p class="ws-numeral text-6xl sm:text-7xl">6</p><p class="mt-3 text-sm text-base-content/70">favicon and app icon files made from one square image</p></div>
+    </div>
+    <p class="mt-12 max-w-3xl text-base-content/70" data-sw-animation="fade-up">A stock photo is downloaded, optimized and stored with its attribution, so the published site serves it itself. Your own fonts upload as WOFF2, WOFF, TTF or OTF.</p>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
+    <div class="sw-border-beam rounded-3xl border border-base-content/10 bg-base-100 p-8 [--sw-beam-width:2px]" data-sw-animation="fade-up">
+      {{sw-icon "magnifying-glass-plus" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold" data-sw-text="audit_title">Finds the oversized images Lighthouse misses.</h3>
+      <p class="mt-3 leading-relaxed text-base-content/70" data-sw-text="audit_lead">The Page Audit tab lists CSS backgrounds and images without a srcset that are served larger than they are shown. Lighthouse misses those; the audit lists them next to its results.</p>
+      <div class="mt-6 overflow-hidden rounded-2xl border border-base-content/10">{{> ws-media slot="feat_media_audit"}}</div>
+    </div>
+    <div class="flex flex-col rounded-3xl border border-base-content/10 bg-base-100 p-8" data-sw-animation="fade-up" data-sw-delay="100">
+      {{sw-icon "upload-simple" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold" data-sw-text="limits_title">Upload limits</h3>
+      <table class="mt-5 w-full text-left text-sm">
+        <tbody class="text-base-content/80">
+          <tr class="border-b border-base-content/10"><th class="py-3 pr-4 font-medium text-base-content">Images</th><td class="py-3">15 MB · JPEG, PNG, WebP, AVIF, HEIF, GIF, TIFF</td></tr>
+          <tr class="border-b border-base-content/10"><th class="py-3 pr-4 font-medium text-base-content">SVG</th><td class="py-3">4 MB</td></tr>
+          <tr class="border-b border-base-content/10"><th class="py-3 pr-4 font-medium text-base-content">Fonts</th><td class="py-3">5 MB</td></tr>
+          <tr><th class="py-3 pr-4 font-medium text-base-content">Video and files</th><td class="py-3">200 MB</td></tr>
+        </tbody>
+      </table>
+      <p class="mt-4 text-sm text-base-content/60">HEIF photos from phones are converted to WebP. PDFs and documents are offered as downloads.</p>
+      <a class="btn btn-ghost btn-sm mt-auto self-start px-0 pt-6 hover:bg-transparent" href="{{sw-url '/docs/reference/limits'}}">All limits {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+  </div>
+</section>
+
+{{> feature-next features=pages.features._attributes.children}}

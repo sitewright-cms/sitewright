@@ -1,0 +1,127 @@
+{{!-- META {"path":"security","title":"Security and hardening","description":"What a fresh instance already does, and what to set up around it: TLS, the real client address, sign-in factors, outbound limits and the encryption key.","parent":"self-hosting","order":3,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>A fresh instance starts in a hardened posture: production mode unless you say otherwise, registration by invitation only, a forced change of the default admin password, and no framing of the admin panel. This page covers the parts that depend on how you run it.</p>
+
+    <h2 id="tls">TLS and the reverse proxy</h2>
+    <p>The container serves plain HTTP on port 80. Terminate HTTPS at a reverse proxy and publish the container's port on <code>127.0.0.1</code> only, as in <a href="{{sw-url '/docs/getting-started/install'}}">Install with Docker</a>.</p>
+    <ul>
+      <li>Set <code>SW_PUBLIC_URL</code> to the <code>https</code> address. Session cookies then carry the Secure flag and the <code>__Host-</code> prefix, and passkeys work. Without HTTPS they do not.</li>
+      <li>Have the proxy pass <code>Host</code>, <code>X-Forwarded-For</code> and <code>X-Forwarded-Proto</code>.</li>
+      <li>Allow large bodies on the proxy (uploads go up to 200 MB) and do not buffer <code>text/event-stream</code>: the editor's live updates and deploy progress are long-lived event streams, so give them a long read timeout.</li>
+      <li><strong>HSTS</strong> is off by default. Turn it on under <strong>System Settings → Security</strong> once the address will stay on HTTPS: browsers remember it for the whole max-age (default one year). The same card offers <code>includeSubDomains</code>, <code>preload</code> and applying the header to the sites the instance serves, each with its condition spelled out.</li>
+    </ul>
+
+    <h2 id="trust-proxy">The visitor's real address</h2>
+    <p>Rate limits and the sign-in throttle count per client address. Behind a proxy every request comes from the proxy, so all visitors would share one budget. <code>TRUST_PROXY</code> fixes that:</p>
+    <table>
+      <thead><tr><th>Value</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>true</code></td><td>The address is read from <code>X-Forwarded-For</code>, whatever the sender.</td></tr>
+        <tr><td><code>10.0.0.5,172.18.0.0/16</code></td><td>The header is believed only when the request comes from one of these addresses or ranges. The stricter choice.</td></tr>
+        <tr><td>unset or <code>false</code></td><td>The address of the direct connection is used.</td></tr>
+      </tbody>
+    </table>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0">Set it only when the container can be reached through the proxy alone. If its port is open to the internet as well, a client can name any address it likes in the header and walk around the limits.</p></div>
+    <p>The sign-in throttle blocks an address for a minute after 10 failed sign-in or two-factor attempts within a minute; change the number under <strong>System Settings → Security → Accounts</strong>. A successful sign-in never counts against it.</p>
+
+    <h2 id="sign-in">Sign-in</h2>
+    <p>There is no public sign-up: people join by accepting an invitation. On top of the password, each user can add factors: the person icon in the editor's header, then <strong>Account Settings → Security</strong>.</p>
+    <table>
+      <thead><tr><th>Method</th><th>How it works</th></tr></thead>
+      <tbody>
+        <tr><td>Authenticator app</td><td>A time-based code (TOTP) from an app such as 1Password, Authy or Google Authenticator, asked for after the password. Setting it up gives single-use recovery codes. Needs <code>SW_ENCRYPTION_KEY</code>, because the app's secret is stored encrypted.</td></tr>
+        <tr><td>Passkeys</td><td>Sign in without a password, up to 20 per user. A passkey belongs to the hostname it was created on and needs HTTPS. When the user also has an authenticator app, the code is still asked for after the passkey.</td></tr>
+        <tr><td>Single sign-on (OIDC)</td><td>An admin adds providers under <strong>System Settings → Integrations → Single sign-on (OIDC)</strong>: an id, a label, the issuer, the client id and secret, and scopes. The card shows the redirect address to register with the provider, <code>/auth/oidc/&lt;id&gt;/callback</code>. PKCE is on by default and can only be turned off for a provider that has a client secret.</td></tr>
+      </tbody>
+    </table>
+    <p>Single sign-on admits only people who already have an account or hold a pending invitation. The first sign-in links the provider's identity to the account by email, and only an email the provider marks as verified is accepted. An authenticator app still applies after single sign-on. Providers on your own network, such as Keycloak or Authentik, are supported, so a firewall rule must let the container reach them (see below).</p>
+
+    <h2 id="encryption-key">The encryption key</h2>
+    <p><code>SW_ENCRYPTION_KEY</code> encrypts stored credentials with AES-256-GCM: deploy-target passwords and keys, SMTP passwords, single sign-on client secrets, stock-image keys, authenticator-app secrets and the other secrets the settings hold. It is read only from the environment, so a copy of the database alone does not reveal them. Without a key, the features that store secrets are off and the rest works.</p>
+    <ul>
+      <li>Generate it once with <code>openssl rand -base64 32</code> and keep it in a secret store, and with your backups.</li>
+      <li>There is no built-in rotation. With a different key, stored secrets cannot be decrypted, and each one has to be entered again.</li>
+      <li>Users who set up an authenticator app cannot finish signing in while the key is missing or different. Do not change the key on an instance whose users rely on one.</li>
+    </ul>
+
+    <h2 id="egress">Outbound connections</h2>
+    <p>Fetching addresses users name is part of the product: the website importer crawls a site, media import downloads a file, and deploy targets and SMTP servers point wherever a client's hosting lives. So a list of allowed destinations cannot work for the container as a whole. What you can do:</p>
+    <ul>
+      <li><strong>Rely on the built-in guard for tenant content.</strong> The importer and media import resolve the name, refuse private addresses, connect to the address they checked and check every redirect again.</li>
+      <li><strong>Limit what users may configure.</strong> On a shared instance set <code>SW_DEPLOY_ALLOWED_HOSTS</code> and <code>SW_SMTP_ALLOWED_HOSTS</code> to the hostnames deploy targets and project SMTP may use.</li>
+      <li><strong>Isolate the crawler.</strong> <code>SW_FETCH_WORKER=true</code> runs the import crawl in a separate process with no database handle and no secrets.</li>
+      <li><strong>Block the private network at the host.</strong> A default install has no reason to reach a private address: the database is a file on its own volume.</li>
+    </ul>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">terminal</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-com"># a dedicated network, so the rules have a stable subnet to match</span>
+<span class="tk-ok">$</span> docker network create --subnet 172.28.0.0/24 sw-net
+<span class="tk-com"># start the container with --network sw-net, then:</span>
+<span class="tk-ok">$</span> SUBNET=172.28.0.0/24
+<span class="tk-ok">$</span> for dst in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8 169.254.0.0/16; do
+    sudo iptables -I DOCKER-USER -s "$SUBNET" -d "$dst" \
+      -j REJECT --reject-with icmp-admin-prohibited
+  done
+<span class="tk-com"># last, because -I prepends: keep traffic inside sw-net working</span>
+<span class="tk-ok">$</span> sudo iptables -I DOCKER-USER -s "$SUBNET" -d "$SUBNET" -j RETURN</code></pre>
+    </div>
+    <p>To prove the rules match, zero the counters (<code>iptables -Z DOCKER-USER</code>), try a connection from the container to a private address that is not the host, and check that the packet count of the matching rule went up (<code>iptables -L DOCKER-USER -n -v</code>). Then check that the container still reaches the internet. Add an <code>ACCEPT</code> rule for each private host you use on purpose: a single sign-on provider, an SMTP relay or SFTP server on your network, a model server at <code>SW_AI_BASE_URL</code>, or the Docker daemon for <code>SW_BUILD_WORKER</code>.</p>
+
+    <h2 id="waf">Web application firewalls</h2>
+    <p><strong>A WAF in front of Sitewright is not recommended.</strong> The editor and agents send site source code on purpose: HTML, CSS, JavaScript and <code>\{{ }}</code> templates, in fields whose names authors choose. That is exactly what injection rules look for. Measured with the OWASP Core Rule Set at its defaults, a WAF refuses saves and deletes, agents' page writes and uploads, uploads over 12.5 MB, the statistics beacon, and sign-in from the CLI and from MCP clients on the user's machine. On the authoring API it adds nothing: Sitewright checks the session or access key before it reads a request body, and validates every write itself.</p>
+    <p>If a WAF has to stay, exclude these paths and keep the rest of its protection for the public surface:</p>
+    <table>
+      <thead><tr><th>Path</th><th>Exclude</th></tr></thead>
+      <tbody>
+        <tr><td><code>/projects</code>, <code>/admin</code>, <code>/account</code>, <code>/invites</code>, <code>/mcp</code>, <code>/media-upload</code></td><td>Everything. Every write there needs a credential, checked before the body.</td></tr>
+        <tr><td><code>/a/&lt;project&gt;</code></td><td>The content-type check (920420): the statistics beacon is <code>text/plain</code>.</td></tr>
+        <tr><td><code>/oauth/authorize</code>, <code>/oauth/token</code>, <code>/oauth/register</code></td><td>931100, 931130 and 934110 on the redirect address: local apps sign in with a loopback address.</td></tr>
+        <tr><td><code>/auth/login</code>, <code>/auth/register</code></td><td>Every rule on the <code>password</code> field.</td></tr>
+        <tr><td><code>/pay/&lt;project&gt;/webhook/&lt;gateway&gt;</code></td><td>943120: a payment provider's event can carry a <code>session_id</code> field.</td></tr>
+      </tbody>
+    </table>
+    <p>For a WAF that takes Core Rule Set rules, the repository ships these exclusions ready-made as <code>docs/waf/sitewright-before.conf</code>. With nginx and ModSecurity, route the authoring paths around ModSecurity instead of switching its rule engine off for them: with the engine off, the connector still reads the whole body into memory first.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">nginx.conf</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-com"># before the general location; quote the pattern</span>
+location ~ "^/(?:projects|admin|account|invites|mcp|media-upload)(?:/|$)" {
+    modsecurity off;
+    client_max_body_size 210m;
+    proxy_request_buffering off;
+    proxy_pass http://127.0.0.1:8080;
+    <span class="tk-com"># … the same proxy headers and timeouts as below …</span>
+}
+
+location / {
+    client_max_body_size 1m;   <span class="tk-com"># nothing public is larger</span>
+    <span class="tk-com"># … ModSecurity and the proxy settings …</span>
+}</code></pre>
+    </div>
+    <ul>
+      <li>Stay at paranoia level 1. Level 2 refuses ordinary contact messages and webhooks and signs editors out at random.</li>
+      <li>Restrict who can read the WAF's audit log: it records request headers with access keys and session cookies, and at sign-in it can record a password.</li>
+      <li>If the WAF cannot be configured this far, keep it in front of the site hosts only (<code>*.&lt;SW_SITES_DOMAIN&gt;</code> and custom domains), which carry only public traffic.</li>
+    </ul>
+    <p>The measurements behind this advice, and the full list of rules, are in <a href="https://github.com/sitewright-cms/sitewright/blob/main/docs/waf.md" target="_blank" rel="noopener">docs/waf.md</a>.</p>
+
+    <h2 id="isolation">Sites and the admin stay apart</h2>
+    <ul>
+      <li>Published pages carry their authors' own scripts, so they must run on an origin that never receives the editor's session cookie. Serve Local Hosting sites from <code>SW_SITES_DOMAIN</code> subdomains or custom domains. Once one is set up, the <code>/sites/&lt;slug&gt;/</code> path redirects there; without one, that path serves the site with its scripts disabled.</li>
+      <li>Keep the editor's own host outside <code>SW_SITES_DOMAIN</code>.</li>
+      <li>No site may frame the admin panel. To embed it in a portal or intranet, list that origin under <strong>System Settings → Security → Embedding</strong>.</li>
+    </ul>
+
+    <h2 id="reports">Where vulnerability reports go</h2>
+    <p>The instance publishes <code>/.well-known/security.txt</code>. Its contact is the Sitewright project's private advisory channel until you set <code>SW_SECURITY_CONTACT</code>, which you should once you run a build you patched yourself.</p>
+
+    <h2 id="next">Next</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/self-hosting/environment'}}">Environment variables</a></li>
+      <li><a href="{{sw-url '/docs/self-hosting/upgrades-and-backups'}}">Upgrades and backups</a></li>
+      <li><a href="{{sw-url '/docs/guides/custom-domains'}}">Custom domains</a></li>
+    </ul>
+  </article>
+</div>

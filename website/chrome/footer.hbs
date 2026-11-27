@@ -1,0 +1,41 @@
+<div class="border-t border-base-content/10 bg-base-200/60">
+  <div class="mx-auto grid max-w-7xl gap-12 px-6 py-16 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+    <div>
+      <a class="flex items-center gap-2.5 font-heading text-xl font-bold tracking-tight" href="{{sw-url '/'}}">
+        <svg class="h-8 w-8" viewBox="0 0 96 96" fill="none" aria-hidden="true"><path d="M30 18 V72 H78" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" /><rect x="40" y="52" width="26" height="14" rx="3" class="fill-accent" /><rect x="40" y="35" width="26" height="14" rx="3" class="fill-primary" /></svg>
+        {{ company.name }}
+      </a>
+      <p class="mt-4 max-w-xs text-sm leading-relaxed text-base-content/70" data-sw-text="footer_blurb">The open-source website platform for web developers. Self-hosted, code-first, ready for AI agents.</p>
+      <p class="mt-6 text-xs text-base-content/60">Apache License 2.0</p>
+    </div>
+    <div>
+      <p class="font-heading text-sm font-semibold uppercase tracking-wider text-base-content/60">Product</p>
+      <ul class="mt-4 list-none space-y-2.5 p-0 text-sm">
+        <li><a class="ws-link" href="{{sw-url '/features'}}">Features</a></li>
+        <li><a class="ws-link" href="{{sw-url '/showcase'}}">Showcase</a></li>
+        <li><a class="ws-link" href="{{sw-url '/docs'}}">Documentation</a></li>
+      </ul>
+    </div>
+    <div>
+      <p class="font-heading text-sm font-semibold uppercase tracking-wider text-base-content/60">Get started</p>
+      <ul class="mt-4 list-none space-y-2.5 p-0 text-sm">
+        <li><a class="ws-link" href="{{sw-url '/docs/getting-started'}}">Install with Docker</a></li>
+        <li><a class="ws-link" href="https://github.com/sitewright-cms/sitewright/releases" target="_blank" rel="noopener">Releases</a></li>
+        <li><a class="ws-link" href="https://github.com/sitewright-cms/sitewright/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a></li>
+      </ul>
+    </div>
+    <div>
+      <p class="font-heading text-sm font-semibold uppercase tracking-wider text-base-content/60">Community</p>
+      <ul class="mt-4 list-none space-y-2.5 p-0 text-sm">
+        <li><a class="ws-link inline-flex items-center gap-2" href="https://github.com/sitewright-cms/sitewright" target="_blank" rel="noopener">{{sw-icon "brand:github" "h-4 w-4"}} GitHub</a></li>
+        <li><a class="ws-link" href="https://github.com/sitewright-cms/sitewright/issues" target="_blank" rel="noopener">Issues</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="border-t border-base-content/10">
+    <div class="mx-auto flex max-w-7xl flex-col gap-2 px-6 py-6 text-xs text-base-content/60 sm:flex-row sm:items-center sm:justify-between">
+      <p>© {{sw-date "now" "YYYY"}} Sitewright contributors</p>
+      <p>This site is built and published with Sitewright.</p>
+    </div>
+  </div>
+</div>

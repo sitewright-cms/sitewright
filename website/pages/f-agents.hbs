@@ -1,0 +1,136 @@
+{{!-- META {"path":"ai-agents","title":"AI agents & MCP","description":"Every instance serves an MCP endpoint with 82 tools. Agents sign in with OAuth, get only the permissions you grant, see their work as screenshots, and build with the same pages, datasets and components as your team.","parent":"features","order":14,"data":{"icon":"robot","eyebrow":"AI agents & MCP","headline":"Point an agent at your instance. Watch it build."}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.15fr]">
+  <div data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">Connect</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="connect_title">One command, one approval.</h2>
+    <ol class="mt-8 list-none space-y-5 p-0">
+      <li class="flex gap-4"><span class="ws-numeral w-10 shrink-0 text-4xl">1</span><p class="text-base-content/80"><strong class="text-base-content">Add the server.</strong> The endpoint is <code class="font-code">/mcp</code> on your instance, over HTTP. Claude Code, Cursor, VS Code, ChatGPT and claude.ai all connect to it.</p></li>
+      <li class="flex gap-4"><span class="ws-numeral w-10 shrink-0 text-4xl">2</span><p class="text-base-content/80"><strong class="text-base-content">Approve in the browser.</strong> Sign in, pick the project, and tick the permissions this agent gets. One connection reaches one project.</p></li>
+      <li class="flex gap-4"><span class="ws-numeral w-10 shrink-0 text-4xl">3</span><p class="text-base-content/80"><strong class="text-base-content">Ask for a page.</strong> The editor shows a live indicator while an agent is editing, and every change lands in History like anyone else's.</p></li>
+    </ol>
+  </div>
+  <div class="min-w-0" data-sw-animation="fade-up" data-sw-delay="100">
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">terminal</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-com"># Sign in through the browser (OAuth)</span>
+<span class="tk-ok">$</span> claude mcp add --transport http sitewright \
+    https://cms.example.com/mcp
+
+<span class="tk-com"># Or, with no browser, a project token</span>
+<span class="tk-ok">$</span> claude mcp add --transport http sitewright \
+    https://cms.example.com/mcp \
+    -H <span class="tk-str">"Authorization: Bearer swk_…"</span></code></pre>
+    </div>
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">cms.example.com · Authorize</span></div>
+      {{> ws-media slot="feat_agents_consent" class="rounded-none"}}
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+    <div class="grid gap-6 lg:grid-cols-[1fr_1.2fr] lg:items-end" data-sw-animation="fade-up">
+      <h2 class="ws-display text-3xl font-bold sm:text-5xl" data-sw-text="tools_title">82 tools, the whole platform.</h2>
+      <p class="max-w-xl text-lg leading-relaxed text-base-content/70" data-sw-text="tools_lead">Each tool calls the same API routes the editor uses, with the same checks. An agent starts with the capabilities and guides, then works the way a developer would.</p>
+    </div>
+    <div class="mt-10 overflow-x-auto rounded-2xl border border-base-content/10 bg-base-100" data-sw-animation="fade-up">
+      <table class="w-full min-w-[44rem] border-collapse text-left text-sm">
+        <thead><tr class="bg-base-200/70"><th class="px-5 py-4 font-heading text-base font-semibold">Family</th><th class="px-5 py-4 text-right font-heading text-base font-semibold">Tools</th><th class="px-5 py-4 font-heading text-base font-semibold">For example</th></tr></thead>
+        <tbody class="align-top text-base-content/80">
+          <tr class="border-t border-base-content/10"><th class="px-5 py-3.5 font-medium text-base-content">Media</th><td class="px-5 py-3.5 text-right font-code">19</td><td class="px-5 py-3.5 font-code text-xs leading-relaxed">upload_media · import_media · transform_image · set_media_alt · search_stock_images</td></tr>
+          <tr class="border-t border-base-content/10"><th class="px-5 py-3.5 font-medium text-base-content">Pages and content</th><td class="px-5 py-3.5 text-right font-code">17</td><td class="px-5 py-3.5 font-code text-xs leading-relaxed">put_page · patch_page · patch_text · put_content · add_language · restore_revision</td></tr>
+          <tr class="border-t border-base-content/10"><th class="px-5 py-3.5 font-medium text-base-content">Forms, shop, booking</th><td class="px-5 py-3.5 text-right font-code">13</td><td class="px-5 py-3.5 font-code text-xs leading-relaxed">list_submissions · list_orders · set_order_fulfilment · answer_booking</td></tr>
+          <tr class="border-t border-base-content/10"><th class="px-5 py-3.5 font-medium text-base-content">Import and clone</th><td class="px-5 py-3.5 text-right font-code">9</td><td class="px-5 py-3.5 font-code text-xs leading-relaxed">import_website · inspect_source · visual_audit · clone_audit</td></tr>
+          <tr class="border-t border-base-content/10"><th class="px-5 py-3.5 font-medium text-base-content">Connection and reference</th><td class="px-5 py-3.5 text-right font-code">7</td><td class="px-5 py-3.5 font-code text-xs leading-relaxed">get_scope · get_capabilities · get_guide · get_reference · get_components</td></tr>
+          <tr class="border-t border-base-content/10"><th class="px-5 py-3.5 font-medium text-base-content">Preview and audits</th><td class="px-5 py-3.5 text-right font-code">6</td><td class="px-5 py-3.5 font-code text-xs leading-relaxed">preview_page · pagespeed_audit · measure_header · create_preview_share</td></tr>
+          <tr class="border-t border-base-content/10"><th class="px-5 py-3.5 font-medium text-base-content">Fonts, icons, textures</th><td class="px-5 py-3.5 text-right font-code">5</td><td class="px-5 py-3.5 font-code text-xs leading-relaxed">search_icons · search_google_fonts · select_google_font · search_textures</td></tr>
+          <tr class="border-t border-base-content/10"><th class="px-5 py-3.5 font-medium text-base-content">Statistics and rankings</th><td class="px-5 py-3.5 text-right font-code">3</td><td class="px-5 py-3.5 font-code text-xs leading-relaxed">get_site_stats · get_rankings · get_search_performance</td></tr>
+          <tr class="border-t border-base-content/10"><th class="px-5 py-3.5 font-medium text-base-content">Publish</th><td class="px-5 py-3.5 text-right font-code">3</td><td class="px-5 py-3.5 font-code text-xs leading-relaxed">deploy_project · get_publish_status</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="mt-4 text-sm text-base-content/60" data-sw-animation="fade-up">A member token, held by agency staff, reaches every project its owner can and adds six more: list, create and duplicate projects, list and invite members, and approve invites.</p>
+    <a class="btn btn-ghost mt-4 px-0 hover:bg-transparent" href="{{sw-url '/docs/reference/mcp-tools'}}">Every tool, with its arguments {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid gap-12 lg:grid-cols-[1fr_1.2fr]">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">Permissions</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="caps_title">An agent can do what you tick. No more.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="caps_lead">A grant holds a project, a role and a set of capabilities. What the agent may do is where the role and the capabilities overlap, so it never outranks the person who approved it. By default a browser sign-in lasts up to eight hours before the agent has to ask again.</p>
+      <a class="btn btn-ghost mt-6 px-0 hover:bg-transparent" href="{{sw-url '/docs/guides/api-keys'}}">API keys and tokens {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+    <div class="overflow-x-auto rounded-2xl border border-base-content/10 bg-base-100" data-sw-animation="fade-up" data-sw-delay="100">
+      <table class="w-full min-w-[34rem] border-collapse text-left text-sm">
+        <thead><tr class="bg-base-200/70"><th class="px-5 py-4 font-heading font-semibold">Capability</th><th class="px-5 py-4 font-heading font-semibold">Lets the agent</th></tr></thead>
+        <tbody class="align-top text-base-content/80">
+          <tr class="border-t border-base-content/10"><td class="px-5 py-3.5 font-code text-xs text-base-content">content:read</td><td class="px-5 py-3.5">Read everything, preview, audit, see statistics and orders</td></tr>
+          <tr class="border-t border-base-content/10"><td class="px-5 py-3.5 font-code text-xs text-base-content">content:write</td><td class="px-5 py-3.5">Create and change pages, data, media and share links</td></tr>
+          <tr class="border-t border-base-content/10"><td class="px-5 py-3.5 font-code text-xs text-base-content">content:delete <span class="ml-1 rounded-full border border-base-content/20 px-2 py-0.5 font-sans text-[0.7rem] text-base-content/70">elevated</span></td><td class="px-5 py-3.5">Delete pages, entries, media, submissions and languages</td></tr>
+          <tr class="border-t border-base-content/10"><td class="px-5 py-3.5 font-code text-xs text-base-content">publish</td><td class="px-5 py-3.5">Publish to Local Hosting</td></tr>
+          <tr class="border-t border-base-content/10"><td class="px-5 py-3.5 font-code text-xs text-base-content">deploy <span class="ml-1 rounded-full border border-base-content/20 px-2 py-0.5 font-sans text-[0.7rem] text-base-content/70">elevated</span></td><td class="px-5 py-3.5">Deploy to FTP, SFTP and Git targets</td></tr>
+          <tr class="border-t border-base-content/10"><td class="px-5 py-3.5 font-code text-xs text-base-content">payments:provider:write</td><td class="px-5 py-3.5">Edit payment provider definitions, only on an instance admin's grant, and never a project's keys</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="bg-neutral text-white">
+  <div class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.1fr]">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index text-accent">Agents see their work</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="see_title">Every preview comes back as screenshots.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-white/70" data-sw-text="see_lead"><span class="font-code text-accent">preview_page</span> renders a page, saved or not, at the widths the agent asks for and returns the images. Nothing is saved by looking. Thirteen guides, from design to datasets, tell the agent how the platform expects things done.</p>
+      <div class="mt-6 flex flex-wrap gap-2">
+        <span class="rounded-full border border-white/15 px-3 py-1 font-code text-xs text-white/80">wqhd 2560</span>
+        <span class="rounded-full border border-white/15 px-3 py-1 font-code text-xs text-white/80">fullhd 1920</span>
+        <span class="rounded-full border border-white/15 px-3 py-1 font-code text-xs text-white/80">laptop 1440</span>
+        <span class="rounded-full border border-white/15 px-3 py-1 font-code text-xs text-white/80">tablet 767</span>
+        <span class="rounded-full border border-white/15 px-3 py-1 font-code text-xs text-white/80">mobile 390</span>
+      </div>
+    </div>
+    <div class="ws-window overflow-hidden rounded-2xl" data-sw-animation="fade-up" data-sw-delay="100">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">claude</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-dim">&gt;</span> Add an About page in our style, with the
+  team from the dataset, and check it on a phone.
+
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">get_guide</span>        <span class="tk-dim">design</span>
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">list_content</span>     <span class="tk-dim">dataset team</span>
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">put_page</span>         <span class="tk-dim">about</span>
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">preview_page</span>     <span class="tk-dim">fullhd · mobile</span>
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">patch_page</span>       <span class="tk-dim">about</span>
+<span class="tk-hb">●</span> sitewright · <span class="tk-kw">preview_page</span>     <span class="tk-dim">mobile</span>
+<span class="tk-ok">✓</span> The team grid now stacks to one column
+  on mobile. Want a share link for the client?</code></pre>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid items-center gap-12 lg:grid-cols-[1.15fr_1fr]">
+    <div class="ws-browser order-2 lg:order-1" data-sw-animation="fade-up">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Preview · AI Assistant</span></div>
+      {{> ws-media slot="feat_agents_assistant" class="rounded-none"}}
+    </div>
+    <div class="sw-border-beam order-1 rounded-3xl border border-base-content/10 bg-base-100 p-8 lg:order-2 [--sw-beam-width:2px]" data-sw-animation="fade-up" data-sw-delay="100">
+      {{sw-icon "chat-circle-dots" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold" data-sw-text="assistant_title">An assistant on the page itself.</h3>
+      <p class="mt-3 leading-relaxed text-base-content/70" data-sw-text="assistant_lead">Open the site preview and the AI Assistant button opens a chat beside it. The assistant runs on your server and drives the same tools in a loop, up to 72 of them, next to the page it is changing.</p>
+      <ul class="mt-5 list-none space-y-2 p-0 text-sm text-base-content/80">
+        <li class="flex gap-2">{{sw-icon "check:bold" "mt-0.5 h-4 w-4 shrink-0 text-accent"}} Anthropic, OpenRouter or any OpenAI-compatible endpoint.</li>
+        <li class="flex gap-2">{{sw-icon "check:bold" "mt-0.5 h-4 w-4 shrink-0 text-accent"}} A project's own key, or the platform key with monthly token caps.</li>
+        <li class="flex gap-2">{{sw-icon "check:bold" "mt-0.5 h-4 w-4 shrink-0 text-accent"}} Attach images to a message. With Anthropic models it also sees its screenshots.</li>
+        <li class="flex gap-2">{{sw-icon "check:bold" "mt-0.5 h-4 w-4 shrink-0 text-accent"}} It can publish to Local Hosting, never deploy to other servers.</li>
+      </ul>
+      <a class="btn btn-ghost btn-sm mt-5 px-0 hover:bg-transparent" href="{{sw-url '/docs/guides/ai-agents'}}">The AI agents guide {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+  </div>
+</section>
+
+{{> feature-next features=pages.features._attributes.children}}

@@ -1,0 +1,642 @@
+{
+  "id": "sc_floorplan",
+  "general": {
+    "name": "Studio floor plan",
+    "width": 1000,
+    "height": 600,
+    "ui_theme": "light"
+  },
+  "tooltips": {
+    "enable_tooltips": true,
+    "show_tooltips": "mouseover",
+    "tooltip_animation": "fade-up"
+  },
+  "zooming": {
+    "enable_zooming": false
+  },
+  "object_list": {
+    "enable_object_list": false
+  },
+  "artboards": [
+    {
+      "id": "ground",
+      "title": "Ground floor",
+      "background_type": "color",
+      "background_color": "#F8FAFC",
+      "width": 1000,
+      "height": 600,
+      "children": [
+        {
+          "id": "studio-a",
+          "title": "Studio A",
+          "type": "rect",
+          "x": 3,
+          "y": 4,
+          "width": 44,
+          "height": 52,
+          "default_style": {
+            "background_color": "#4F2DD8",
+            "background_opacity": 0.1,
+            "border_radius": 10,
+            "border_width": 2,
+            "border_color": "#4F2DD8",
+            "border_opacity": 0.55
+          },
+          "mouseover_style": {
+            "background_color": "#4F2DD8",
+            "background_opacity": 0.32,
+            "border_radius": 10,
+            "border_width": 2,
+            "border_color": "#4F2DD8",
+            "border_opacity": 1
+          },
+          "tooltip_style": {
+            "background_color": "#0F172A",
+            "border_radius": 12,
+            "padding": 12,
+            "width": 240,
+            "auto_width": false
+          },
+          "tooltip_content": [
+            {
+              "type": "Heading",
+              "text": "Studio A",
+              "style": {
+                "fontFamily": "inherit",
+                "fontSize": 17,
+                "lineHeight": "normal",
+                "color": "#ffffff",
+                "textAlign": "left"
+              }
+            },
+            {
+              "type": "Paragraph",
+              "text": "Twelve desks, north light, two screens per desk.",
+              "style": {
+                "fontFamily": "inherit",
+                "fontSize": 14,
+                "lineHeight": 21,
+                "color": "#E2E8F0",
+                "textAlign": "left"
+              }
+            }
+          ]
+        },
+        {
+          "id": "studio-b",
+          "title": "Studio B",
+          "type": "rect",
+          "x": 50,
+          "y": 4,
+          "width": 47,
+          "height": 52,
+          "default_style": {
+            "background_color": "#4F2DD8",
+            "background_opacity": 0.1,
+            "border_radius": 10,
+            "border_width": 2,
+            "border_color": "#4F2DD8",
+            "border_opacity": 0.55
+          },
+          "mouseover_style": {
+            "background_color": "#4F2DD8",
+            "background_opacity": 0.32,
+            "border_radius": 10,
+            "border_width": 2,
+            "border_color": "#4F2DD8",
+            "border_opacity": 1
+          },
+          "tooltip_style": {
+            "background_color": "#0F172A",
+            "border_radius": 12,
+            "padding": 12,
+            "width": 240,
+            "auto_width": false
+          },
+          "tooltip_content": [
+            {
+              "type": "Heading",
+              "text": "Studio B",
+              "style": {
+                "fontFamily": "inherit",
+                "fontSize": 17,
+                "lineHeight": "normal",
+                "color": "#ffffff",
+                "textAlign": "left"
+              }
+            },
+            {
+              "type": "Paragraph",
+              "text": "The quiet room. Headphones on, notifications off.",
+              "style": {
+                "fontFamily": "inherit",
+                "fontSize": 14,
+                "lineHeight": 21,
+                "color": "#E2E8F0",
+                "textAlign": "left"
+              }
+            }
+          ]
+        },
+        {
+          "id": "reception",
+          "title": "Reception",
+          "type": "rect",
+          "x": 3,
+          "y": 60,
+          "width": 28,
+          "height": 36,
+          "default_style": {
+            "background_color": "#14B8A6",
+            "background_opacity": 0.1,
+            "border_radius": 10,
+            "border_width": 2,
+            "border_color": "#14B8A6",
+            "border_opacity": 0.55
+          },
+          "mouseover_style": {
+            "background_color": "#14B8A6",
+            "background_opacity": 0.32,
+            "border_radius": 10,
+            "border_width": 2,
+            "border_color": "#14B8A6",
+            "border_opacity": 1
+          },
+          "tooltip_style": {
+            "background_color": "#0F172A",
+            "border_radius": 12,
+            "padding": 12,
+            "width": 240,
+            "auto_width": false
+          },
+          "tooltip_content": [
+            {
+              "type": "Heading",
+              "text": "Reception",
+              "style": {
+                "fontFamily": "inherit",
+                "fontSize": 17,
+                "lineHeight": "normal",
+                "color": "#ffffff",
+                "textAlign": "left"
+              }
+            },
+            {
+              "type": "Paragraph",
+              "text": "Visitors sign in here. Parcels too.",
+              "style": {
+                "fontFamily": "inherit",
+                "fontSize": 14,
+                "lineHeight": 21,
+                "color": "#E2E8F0",
+                "textAlign": "left"
+              }
+            }
+          ]
+        },
+        {
+          "id": "kitchen",
+          "title": "Kitchen",
+          "type": "rect",
+          "x": 34,
+          "y": 60,
+          "width": 30,
+          "height": 36,
+          "default_style": {
+            "background_color": "#14B8A6",
+            "background_opacity": 0.1,
+            "border_radius": 10,
+            "border_width": 2,
+            "border_color": "#14B8A6",
+            "border_opacity": 0.55
+          },
+          "mouseover_style": {
+            "background_color": "#14B8A6",
+            "background_opacity": 0.32,
+            "border_radius": 10,
+            "border_width": 2,
+            "border_color": "#14B8A6",
+            "border_opacity": 1
+          },
+          "tooltip_style": {
+            "background_color": "#0F172A",
+            "border_radius": 12,
+            "padding": 12,
+            "width": 240,
+            "auto_width": false
+          },
+          "tooltip_content": [
+            {
+              "type": "Heading",
+              "text": "Kitchen",
+              "style": {
+                "fontFamily": "inherit",
+                "fontSize": 17,
+                "lineHeight": "normal",
+                "color": "#ffffff",
+                "textAlign": "left"
+              }
+            },
+            {
+              "type": "Paragraph",
+              "text": "Coffee, a long table and the lunch rota.",
+              "style": {
+                "fontFamily": "inherit",
+                "fontSize": 14,
+                "lineHeight": 21,
+                "color": "#E2E8F0",
+                "textAlign": "left"
+              }
+            }
+          ]
+        },
+        {
+          "id": "meeting",
+          "title": "Meeting room",
+          "type": "rect",
+          "x": 67,
+          "y": 60,
+          "width": 30,
+          "height": 36,
+          "default_style": {
+            "background_color": "#4F2DD8",
+            "background_opacity": 0.1,
+            "border_radius": 10,
+            "border_width": 2,
+            "border_color": "#4F2DD8",
+            "border_opacity": 0.55
+          },
+          "mouseover_style": {
+            "background_color": "#4F2DD8",
+            "background_opacity": 0.32,
+            "border_radius": 10,
+            "border_width": 2,
+            "border_color": "#4F2DD8",
+            "border_opacity": 1
+          },
+          "tooltip_style": {
+            "background_color": "#0F172A",
+            "border_radius": 12,
+            "padding": 12,
+            "width": 240,
+            "auto_width": false
+          },
+          "tooltip_content": [
+            {
+              "type": "Heading",
+              "text": "Meeting room",
+              "style": {
+                "fontFamily": "inherit",
+                "fontSize": 17,
+                "lineHeight": "normal",
+                "color": "#ffffff",
+                "textAlign": "left"
+              }
+            },
+            {
+              "type": "Paragraph",
+              "text": "Seats eight, with a screen and a whiteboard wall.",
+              "style": {
+                "fontFamily": "inherit",
+                "fontSize": 14,
+                "lineHeight": 21,
+                "color": "#E2E8F0",
+                "textAlign": "left"
+              }
+            }
+          ]
+        },
+        {
+          "id": "l-studio-a",
+          "title": "Studio A (label)",
+          "type": "text",
+          "static": true,
+          "x": 25,
+          "y": 30,
+          "text": {
+            "text": "Studio A",
+            "font_family": "inherit",
+            "font_size": 15,
+            "font_weight": 600,
+            "text_color": "#0F172A",
+            "text_opacity": 0.85
+          },
+          "tooltip": {
+            "enable_tooltip": false
+          }
+        },
+        {
+          "id": "l-studio-b",
+          "title": "Studio B (label)",
+          "type": "text",
+          "static": true,
+          "x": 73.5,
+          "y": 30,
+          "text": {
+            "text": "Studio B",
+            "font_family": "inherit",
+            "font_size": 15,
+            "font_weight": 600,
+            "text_color": "#0F172A",
+            "text_opacity": 0.85
+          },
+          "tooltip": {
+            "enable_tooltip": false
+          }
+        },
+        {
+          "id": "l-reception",
+          "title": "Reception (label)",
+          "type": "text",
+          "static": true,
+          "x": 17,
+          "y": 78,
+          "text": {
+            "text": "Reception",
+            "font_family": "inherit",
+            "font_size": 15,
+            "font_weight": 600,
+            "text_color": "#0F172A",
+            "text_opacity": 0.85
+          },
+          "tooltip": {
+            "enable_tooltip": false
+          }
+        },
+        {
+          "id": "l-kitchen",
+          "title": "Kitchen (label)",
+          "type": "text",
+          "static": true,
+          "x": 49,
+          "y": 78,
+          "text": {
+            "text": "Kitchen",
+            "font_family": "inherit",
+            "font_size": 15,
+            "font_weight": 600,
+            "text_color": "#0F172A",
+            "text_opacity": 0.85
+          },
+          "tooltip": {
+            "enable_tooltip": false
+          }
+        },
+        {
+          "id": "l-meeting",
+          "title": "Meeting room (label)",
+          "type": "text",
+          "static": true,
+          "x": 82,
+          "y": 78,
+          "text": {
+            "text": "Meeting room",
+            "font_family": "inherit",
+            "font_size": 15,
+            "font_weight": 600,
+            "text_color": "#0F172A",
+            "text_opacity": 0.85
+          },
+          "tooltip": {
+            "enable_tooltip": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "first",
+      "title": "First floor",
+      "background_type": "color",
+      "background_color": "#F8FAFC",
+      "width": 1000,
+      "height": 600,
+      "children": [
+        {
+          "id": "library",
+          "title": "Library",
+          "type": "rect",
+          "x": 3,
+          "y": 4,
+          "width": 56,
+          "height": 44,
+          "default_style": {
+            "background_color": "#4F2DD8",
+            "background_opacity": 0.1,
+            "border_radius": 10,
+            "border_width": 2,
+            "border_color": "#4F2DD8",
+            "border_opacity": 0.55
+          },
+          "mouseover_style": {
+            "background_color": "#4F2DD8",
+            "background_opacity": 0.32,
+            "border_radius": 10,
+            "border_width": 2,
+            "border_color": "#4F2DD8",
+            "border_opacity": 1
+          },
+          "tooltip_style": {
+            "background_color": "#0F172A",
+            "border_radius": 12,
+            "padding": 12,
+            "width": 240,
+            "auto_width": false
+          },
+          "tooltip_content": [
+            {
+              "type": "Heading",
+              "text": "Library",
+              "style": {
+                "fontFamily": "inherit",
+                "fontSize": 17,
+                "lineHeight": "normal",
+                "color": "#ffffff",
+                "textAlign": "left"
+              }
+            },
+            {
+              "type": "Paragraph",
+              "text": "Books, two sofas and the printer.",
+              "style": {
+                "fontFamily": "inherit",
+                "fontSize": 14,
+                "lineHeight": 21,
+                "color": "#E2E8F0",
+                "textAlign": "left"
+              }
+            }
+          ]
+        },
+        {
+          "id": "booths",
+          "title": "Phone booths",
+          "type": "rect",
+          "x": 62,
+          "y": 4,
+          "width": 35,
+          "height": 44,
+          "default_style": {
+            "background_color": "#14B8A6",
+            "background_opacity": 0.1,
+            "border_radius": 10,
+            "border_width": 2,
+            "border_color": "#14B8A6",
+            "border_opacity": 0.55
+          },
+          "mouseover_style": {
+            "background_color": "#14B8A6",
+            "background_opacity": 0.32,
+            "border_radius": 10,
+            "border_width": 2,
+            "border_color": "#14B8A6",
+            "border_opacity": 1
+          },
+          "tooltip_style": {
+            "background_color": "#0F172A",
+            "border_radius": 12,
+            "padding": 12,
+            "width": 240,
+            "auto_width": false
+          },
+          "tooltip_content": [
+            {
+              "type": "Heading",
+              "text": "Phone booths",
+              "style": {
+                "fontFamily": "inherit",
+                "fontSize": 17,
+                "lineHeight": "normal",
+                "color": "#ffffff",
+                "textAlign": "left"
+              }
+            },
+            {
+              "type": "Paragraph",
+              "text": "Four booths for calls. First come, first served.",
+              "style": {
+                "fontFamily": "inherit",
+                "fontSize": 14,
+                "lineHeight": 21,
+                "color": "#E2E8F0",
+                "textAlign": "left"
+              }
+            }
+          ]
+        },
+        {
+          "id": "terrace",
+          "title": "Roof terrace",
+          "type": "rect",
+          "x": 3,
+          "y": 52,
+          "width": 94,
+          "height": 44,
+          "default_style": {
+            "background_color": "#14B8A6",
+            "background_opacity": 0.1,
+            "border_radius": 10,
+            "border_width": 2,
+            "border_color": "#14B8A6",
+            "border_opacity": 0.55
+          },
+          "mouseover_style": {
+            "background_color": "#14B8A6",
+            "background_opacity": 0.32,
+            "border_radius": 10,
+            "border_width": 2,
+            "border_color": "#14B8A6",
+            "border_opacity": 1
+          },
+          "tooltip_style": {
+            "background_color": "#0F172A",
+            "border_radius": 12,
+            "padding": 12,
+            "width": 240,
+            "auto_width": false
+          },
+          "tooltip_content": [
+            {
+              "type": "Heading",
+              "text": "Roof terrace",
+              "style": {
+                "fontFamily": "inherit",
+                "fontSize": 17,
+                "lineHeight": "normal",
+                "color": "#ffffff",
+                "textAlign": "left"
+              }
+            },
+            {
+              "type": "Paragraph",
+              "text": "Open from May to September.",
+              "style": {
+                "fontFamily": "inherit",
+                "fontSize": 14,
+                "lineHeight": 21,
+                "color": "#E2E8F0",
+                "textAlign": "left"
+              }
+            }
+          ]
+        },
+        {
+          "id": "l-library",
+          "title": "Library (label)",
+          "type": "text",
+          "static": true,
+          "x": 31,
+          "y": 26,
+          "text": {
+            "text": "Library",
+            "font_family": "inherit",
+            "font_size": 15,
+            "font_weight": 600,
+            "text_color": "#0F172A",
+            "text_opacity": 0.85
+          },
+          "tooltip": {
+            "enable_tooltip": false
+          }
+        },
+        {
+          "id": "l-booths",
+          "title": "Phone booths (label)",
+          "type": "text",
+          "static": true,
+          "x": 79.5,
+          "y": 26,
+          "text": {
+            "text": "Phone booths",
+            "font_family": "inherit",
+            "font_size": 15,
+            "font_weight": 600,
+            "text_color": "#0F172A",
+            "text_opacity": 0.85
+          },
+          "tooltip": {
+            "enable_tooltip": false
+          }
+        },
+        {
+          "id": "l-terrace",
+          "title": "Roof terrace (label)",
+          "type": "text",
+          "static": true,
+          "x": 50,
+          "y": 74,
+          "text": {
+            "text": "Roof terrace",
+            "font_family": "inherit",
+            "font_size": 15,
+            "font_weight": 600,
+            "text_color": "#0F172A",
+            "text_opacity": 0.85
+          },
+          "tooltip": {
+            "enable_tooltip": false
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,168 @@
+{{!-- META {"path":"datasets","title":"Datasets and entries","description":"A dataset is a typed collection: define its fields once, add entries in a form, and loop over them in any page. Entries never create pages of their own.","parent":"concepts","order":5,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>A dataset has two parts: its <strong>fields</strong>, which say what every entry holds, and its <strong>entries</strong>, the rows. Pages read entries when the site is built, so the published site is plain HTML with the content already in it. Datasets are how you keep repeating content (a team, an FAQ, testimonials, slides, a price list) out of the markup, where anyone can edit it in a form.</p>
+
+    <h2 id="when">Dataset or page?</h2>
+    <p>Choose by whether an item needs its own URL.</p>
+    <ul>
+      <li><strong>No URL of its own</strong> (FAQ answers, team members, logos, slides): a dataset. All its entries render inside one page's loop.</li>
+      <li><strong>Its own URL</strong> (articles, services, products with a detail page): a real page per item, all rendering one shared template. Only pages get their own title and description, a nav and sitemap entry, revisions and a place in site search. See <a href="#detail-pages">detail pages</a> below.</li>
+    </ul>
+    <div class="ws-callout"><p class="!mt-0">A dataset never generates routes. There is no per-entry URL and no <code>[slug]</code> page; anything that owns a URL is a page.</p></div>
+
+    <h2 id="fields">Define the fields</h2>
+    <p>Create a dataset in the <strong>Datasets</strong> rail (the tab at the bottom-left edge of the editor), give it a name and a slug, then add fields. The slug is how pages address it: <code>dataset.team_members</code>. It must be lowercase letters and digits separated by underscores, because a hyphen would read as a minus sign in a template.</p>
+    <p>Each field has a name, one of 18 types, and a <code>required</code> flag that marks it in the entry form. Pick the most specific type: it decides the input the editor shows and what a template can do with the value.</p>
+    <table>
+      <thead><tr><th>Type</th><th>Stores</th><th>Read it with</th></tr></thead>
+      <tbody>
+        <tr><td><code>text</code></td><td>One line of plain text.</td><td><code>\{{name}}</code></td></tr>
+        <tr><td><code>richtext</code></td><td>Formatted text, edited with a toolbar.</td><td><code>\{{sw-html bio}}</code> (sanitized)</td></tr>
+        <tr><td><code>number</code></td><td>A number.</td><td><code>\{{price}}</code>, the arithmetic helpers</td></tr>
+        <tr><td><code>boolean</code></td><td>On or off.</td><td><code>\{{#if featured}}</code></td></tr>
+        <tr><td><code>date</code>, <code>time</code>, <code>datetime</code></td><td>A date, a time of day, or both, as ISO text.</td><td><code>\{{sw-date starts}}</code></td></tr>
+        <tr><td><code>image</code></td><td>An image from the media library.</td><td><code>\{{sw-image photo}}</code></td></tr>
+        <tr><td><code>icon</code></td><td>An icon name, chosen from a picker over the icon library.</td><td><code>\{{sw-icon icon}}</code></td></tr>
+        <tr><td><code>file</code></td><td>A media file, such as a PDF to download.</td><td><code>\{{sw-url brochure}}</code></td></tr>
+        <tr><td><code>folder</code></td><td>A media library folder path.</td><td><code>\{{#sw-folder gallery}}</code></td></tr>
+        <tr><td><code>reference</code></td><td>The id of an entry in another dataset (set the target dataset in the field's settings).</td><td><code>\{{#sw-pick-entry "authors" author}}</code></td></tr>
+        <tr><td><code>page</code></td><td>A page of this site, stored by its id.</td><td><code>\{{link.path}}</code>, <code>\{{link.title}}</code></td></tr>
+        <tr><td><code>prices</code></td><td>A shop product's price in each market.</td><td><code>\{{sw-price prices=price}}</code></td></tr>
+        <tr><td><code>select</code></td><td>One value from a fixed list of options.</td><td><code>\{{#if (eq size "large")}}</code></td></tr>
+        <tr><td><code>json</code></td><td>Any JSON value.</td><td>a path, or <code>\{{sw-json-data}}</code></td></tr>
+        <tr><td><code>list</code></td><td>An ordered, repeatable group of sub-fields.</td><td><code>\{{#each slides}}</code></td></tr>
+        <tr><td><code>object</code></td><td>A named group of sub-fields.</td><td><code>\{{hero.title}}</code></td></tr>
+      </tbody>
+    </table>
+    <p><code>list</code> and <code>object</code> carry their own child fields, so one entry can hold settings and a repeatable array, for example a slider with <code>autoplay</code>, <code>interval</code> and a list of <code>slides</code>. Nesting goes up to four levels and 1,000 fields per dataset. Every type is described in the <a href="{{sw-url '/docs/reference/field-types'}}">field types reference</a>.</p>
+    <p>A <code>page</code> field is the safe way to link an entry to a page. Because it stores the page's id, the link follows the page when it is renamed or moved, and a deleted page leaves the link empty instead of pointing at a 404.</p>
+
+    <h2 id="entries">Add entries</h2>
+    <p>Open the dataset in the Datasets rail and choose <strong>New entry</strong>. The form shows one input per field, with nested groups for <code>list</code> and <code>object</code> fields.</p>
+    <ul>
+      <li><strong>Key.</strong> Each entry has a key, its id. Like the slug it is a lowercase underscore identifier (<code>web_development</code>), unique within its dataset. Give it a readable one if a page will pick this entry by name.</li>
+      <li><strong>Order.</strong> Drag entries to reorder them. Loops render in that order.</li>
+      <li><strong>Draft or published.</strong> New entries start as published. A draft entry shows in the editor's preview but is left out of the published site, so you can prepare a row before it goes live.</li>
+      <li><strong>Languages.</strong> On a site with several languages an entry can carry a version per language, with only the fields that differ. A field you leave untranslated follows the main language. See <a href="{{sw-url '/docs/guides/languages'}}">Languages</a>.</li>
+    </ul>
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Datasets · team_members</span></div>
+      {{> ws-media slot="doc_datasets_editor" class="rounded-none"}}
+    </div>
+
+    <h2 id="loops">Loop over the entries</h2>
+    <p>In a page, a template or a snippet, <code>\{{#each dataset.&lt;slug&gt;}}</code> runs once per entry. Inside the loop you read the fields directly by name. The entry's key is on <code>@entry.id</code>, and the usual loop variables (<code>@index</code>, <code>@first</code>, <code>@last</code>) work.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/about.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;ul</span> <span class="tk-attr">class</span>=<span class="tk-str">"grid list-none gap-6 p-0 sm:grid-cols-3"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-hb">\{{#each dataset.team_members}}</span>
+  <span class="tk-tag">&lt;li</span> <span class="tk-attr">class</span>=<span class="tk-str">"rounded-xl bg-base-200 p-5"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-hb">\{{sw-image photo alt=name class="aspect-square w-full rounded-lg object-cover"}}</span>
+    <span class="tk-tag">&lt;h3&gt;</span><span class="tk-hb">\{{name}}</span><span class="tk-tag">&lt;/h3&gt;</span>
+    <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-base-content/70"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{role}}</span><span class="tk-tag">&lt;/p&gt;</span>
+    <span class="tk-hb">\{{#unless (sw-blank bio)}}</span><span class="tk-tag">&lt;div&gt;</span><span class="tk-hb">\{{sw-html bio}}</span><span class="tk-tag">&lt;/div&gt;</span><span class="tk-hb">\{{/unless}}</span>
+  <span class="tk-tag">&lt;/li&gt;</span>
+  <span class="tk-hb">\{{/each}}</span>
+<span class="tk-tag">&lt;/ul&gt;</span></code></pre>
+    </div>
+    <p>In the Content editor every row becomes clickable: the loop marks each entry's element, and a click opens that entry's form. Leave the fields inside the loop bare. <code>data-sw-*</code> attributes are for page content, not for dataset rows.</p>
+
+    <h3 id="windows">Filter, sort and window a loop</h3>
+    <p>A loop takes the list as given. To show part of it, wrap the list in a helper; rows stay click-to-edit through every one of them.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">loops</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-com">\{{!-- the first six --}}</span>
+<span class="tk-hb">\{{#each (sw-limit dataset.projects 6)}}</span>…<span class="tk-hb">\{{/each}}</span>
+
+<span class="tk-com">\{{!-- the next four events, soonest first --}}</span>
+<span class="tk-hb">\{{#each (sw-limit
+    (sw-sort (sw-where dataset.events "starts" "gte" "now") "starts") 4)}}</span>…<span class="tk-hb">\{{/each}}</span>
+
+<span class="tk-com">\{{!-- grouped under a heading per team --}}</span>
+<span class="tk-hb">\{{#each (sw-group (sw-sort dataset.team_members "name") "team")}}</span>
+  <span class="tk-tag">&lt;h3&gt;</span><span class="tk-hb">\{{key}}</span><span class="tk-tag">&lt;/h3&gt;</span>
+  <span class="tk-hb">\{{#each items}}</span><span class="tk-tag">&lt;p&gt;</span><span class="tk-hb">\{{name}}</span><span class="tk-tag">&lt;/p&gt;</span><span class="tk-hb">\{{/each}}</span>
+<span class="tk-hb">\{{/each}}</span></code></pre>
+    </div>
+    <p><code>sw-limit</code>, <code>sw-offset</code>, <code>sw-slice</code> and <code>sw-paginate</code> pick by position; <code>sw-where</code>, <code>sw-sort</code> and <code>sw-group</code> pick by value. The <a href="{{sw-url '/docs/reference/helpers'}}">helpers reference</a> has the details.</p>
+
+    <h2 id="one-entry">Pick one entry</h2>
+    <p>To show a single entry outside a loop, address it by its key. <code>item.&lt;slug&gt;.&lt;key&gt;.&lt;field&gt;</code> reads one value; <code>sw-pick-entry</code> makes the whole entry the context of a block, and marks it click-to-edit like a loop row.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/services.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;p&gt;</span>From <span class="tk-hb">\{{item.services.web_development.price}}</span><span class="tk-tag">&lt;/p&gt;</span>
+
+<span class="tk-hb">\{{#sw-pick-entry dataset.services "web_development"}}</span>
+  <span class="tk-tag">&lt;h2&gt;</span><span class="tk-hb">\{{title}}</span><span class="tk-tag">&lt;/h2&gt;</span>
+  <span class="tk-hb">\{{sw-html summary}}</span>
+<span class="tk-hb">\{{else}}</span>
+  <span class="tk-com">\{{!-- the dataset has no entries --}}</span>
+<span class="tk-hb">\{{/sw-pick-entry}}</span></code></pre>
+    </div>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>An unknown key falls back to the first entry.</strong> <code>sw-pick-entry</code> renders the dataset's first entry when the key is empty or matches nothing, so a typo shows the wrong row rather than nothing. The <code>\{{else}}</code> branch runs only when the dataset is empty.</p></div>
+
+    <h3 id="references">References between datasets</h3>
+    <p>A <code>reference</code> field stores the key of an entry in its target dataset; the entry form offers a searchable list of that dataset's entries. In a loop, pick the referenced entry by that key. Pass the target dataset by its slug as a string: inside a loop the context is the current entry, so <code>dataset.authors</code> would not resolve there. Guard against an empty reference, or the fallback above shows the first author.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/reviews.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-hb">\{{#each dataset.reviews}}</span>
+  <span class="tk-tag">&lt;blockquote&gt;</span><span class="tk-hb">\{{quote}}</span><span class="tk-tag">&lt;/blockquote&gt;</span>
+  <span class="tk-hb">\{{#if author}}</span>
+    <span class="tk-hb">\{{#sw-pick-entry "authors" author}}</span><span class="tk-tag">&lt;p&gt;</span><span class="tk-hb">\{{name}}</span>, <span class="tk-hb">\{{company}}</span><span class="tk-tag">&lt;/p&gt;</span><span class="tk-hb">\{{/sw-pick-entry}}</span>
+  <span class="tk-hb">\{{/if}}</span>
+<span class="tk-hb">\{{/each}}</span></code></pre>
+    </div>
+
+    <h2 id="detail-pages">Detail pages</h2>
+    <p>When each item needs its own URL, make one page per item and let them all render one template. Each page names its entry in its page data; the template picks that entry. Editing the entry updates the page, and the page itself carries the title, description and share image that search engines see.</p>
+    <ol>
+      <li>Create a template (the Templates rail) that reads the entry named by <code>page.data.product</code>.</li>
+      <li>Create a page per product under a parent such as <code>/products</code>, set its template, and set <code>product</code> in its page data to the entry's key.</li>
+      <li>List the products on the parent page with <code>\{{#each page.children}}</code>, or loop the dataset and link each entry to its page through a <code>page</code> field.</li>
+    </ol>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">templates/product.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-hb">\{{#sw-pick-entry dataset.products page.data.product}}</span>
+<span class="tk-tag">&lt;section</span> <span class="tk-attr">class</span>=<span class="tk-str">"py-16"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"sw-container grid gap-10 lg:grid-cols-2"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-hb">\{{sw-image photo alt=name loading="eager"}}</span>
+    <span class="tk-tag">&lt;div&gt;</span>
+      <span class="tk-tag">&lt;h1&gt;</span><span class="tk-hb">\{{name}}</span><span class="tk-tag">&lt;/h1&gt;</span>
+      <span class="tk-hb">\{{sw-html description}}</span>
+    <span class="tk-tag">&lt;/div&gt;</span>
+  <span class="tk-tag">&lt;/div&gt;</span>
+<span class="tk-tag">&lt;/section&gt;</span>
+<span class="tk-hb">\{{/sw-pick-entry}}</span></code></pre>
+    </div>
+    <p>More on templates and page data in <a href="{{sw-url '/docs/concepts/templates-and-snippets'}}">Templates and snippets</a>.</p>
+
+    <h2 id="json">Hand entries to a script</h2>
+    <p>When page JavaScript needs the data (a list it filters or sorts in the browser, a widget's settings), emit it as an inert JSON island. A template may not interpolate values inside a <code>&lt;script&gt;</code> body, so <code>sw-json-data</code> writes the whole element and escapes the payload.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/shop.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-hb">\{{sw-json-data dataset.products id="products" fields="name,price,photo" size="sm"}}</span>
+
+<span class="tk-com">&lt;!-- renders --&gt;</span>
+<span class="tk-tag">&lt;script</span> <span class="tk-attr">type</span>=<span class="tk-str">"application/json"</span> <span class="tk-attr">id</span>=<span class="tk-str">"products"</span><span class="tk-tag">&gt;</span>[{"name":"Trail shoe","price":129,…}]<span class="tk-tag">&lt;/script&gt;</span>
+
+<span class="tk-com">// and a script reads it</span>
+<span class="tk-kw">const</span> products = JSON.parse(document.getElementById(<span class="tk-str">'products'</span>).textContent);</code></pre>
+    </div>
+    <ul>
+      <li><code>fields=</code> keeps only the listed fields of each entry (dotted paths allowed; <code>description:130</code> caps a text field at 130 characters).</li>
+      <li><code>size=</code> (<code>xs</code> to <code>xl</code>) picks the image variant written into every media URL, so a script painting small cards does not download the largest file.</li>
+      <li>The helper refuses, with a visible HTML comment, a whole namespace such as <code>dataset</code>, a key that looks like a credential, and anything over 256 KB.</li>
+    </ul>
+    <p>For a list too big to inline, or one several pages share, declare a data file in the website settings (<code>website.dataFiles</code>). Publishing writes it to <code>data/&lt;name&gt;.json</code> with the dataset's published entries, and the script fetches it once. Reach for real pages instead when each item should be findable: search engines and site search do not read JSON.</p>
+
+    <h2 id="next">Next</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/concepts/client-editing'}}">Making content editable</a></li>
+      <li><a href="{{sw-url '/docs/reference/field-types'}}">Field types reference</a></li>
+      <li><a href="{{sw-url '/docs/reference/helpers'}}">Helpers reference</a></li>
+    </ul>
+  </article>
+</div>

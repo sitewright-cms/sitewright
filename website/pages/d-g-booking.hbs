@@ -1,0 +1,103 @@
+{{!-- META {"path":"booking","title":"Take bookings","description":"Let visitors book appointments, classes, rooms or stays: describe what is booked and when it is open, connect calendars, put the widget on a page, and answer requests.","parent":"guides","order":4,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>A project has one booking set-up with two lists. <strong>Resources</strong> are who or what gets booked: a person, a room, a court, a holiday flat, each with its time zone and opening hours. <strong>Offerings</strong> are what a visitor can book: a 60-minute consultation, a Tuesday class, a stay of two to fourteen nights. A widget on a page shows what is free on the business's clock and takes the booking.</p>
+
+    <h2 id="resources">1. Describe the resources</h2>
+    <p>Edit the set-up in <strong>Settings → Website → Booking</strong>. For each resource:</p>
+    <table>
+      <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code>, <code>name</code></td><td>Lowercase id with <code>-</code> (up to 48 characters); a display name.</td></tr>
+        <tr><td><code>timeZone</code></td><td>An IANA zone such as <code>Europe/Berlin</code>. All times are shown on this clock.</td></tr>
+        <tr><td><code>capacity</code></td><td>How many bookings can overlap (default 1).</td></tr>
+        <tr><td><code>hours</code></td><td>Opening rules: days (<code>mon</code> … <code>sun</code>) with <code>from</code> and <code>to</code> as <code>HH:MM</code>. Two rules cross midnight.</td></tr>
+        <tr><td><code>blocks</code></td><td>Closed times: whole <code>dates</code> (holidays), a <code>once</code> stretch, or the same hours <code>weekly</code> (a lunch break).</td></tr>
+        <tr><td><code>email</code></td><td>Optional; receives calendar invitations. Never shown to visitors.</td></tr>
+      </tbody>
+    </table>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>No hours, no bookings.</strong> A resource without opening hours takes no <code>duration</code> or <code>range</code> bookings. Only <code>slots</code> and <code>days</code> offerings work without them.</p></div>
+
+    <h2 id="offerings">2. Describe the offerings</h2>
+    <p>Each offering names one or more resources (all in the same time zone) and a mode:</p>
+    <table>
+      <thead><tr><th>Mode</th><th>For</th><th class="min-w-56">Settings</th></tr></thead>
+      <tbody>
+        <tr><td><code>duration</code></td><td>Appointments of a fixed length</td><td><code>durationMin</code> (5 to 1440), <code>stepMin</code> between start times (default: the duration), <code>bufferBeforeMin</code> and <code>bufferAfterMin</code></td></tr>
+        <tr><td><code>slots</code></td><td>Set times: classes, tours</td><td><code>slots</code>: days, start time <code>at</code>, <code>durationMin</code>, optional <code>capacity</code></td></tr>
+        <tr><td><code>range</code></td><td>A start and a length the visitor picks: a court, a desk</td><td><code>minMin</code>, <code>maxMin</code>, <code>stepMin</code> (default 30; must divide the day)</td></tr>
+        <tr><td><code>days</code></td><td>Stays and day rentals, on a month calendar</td><td><code>unit</code> <code>night</code> (default) or <code>day</code>, <code>minUnits</code> (1), <code>maxUnits</code> (30), <code>checkIn</code> (15:00), <code>checkOut</code> (11:00)</td></tr>
+      </tbody>
+    </table>
+    <p>Every offering also takes <code>confirmation</code> (<code>instant</code>, the default, or <code>request</code> to accept each one yourself), <code>minNoticeMin</code> (0), <code>maxAdvanceDays</code> (90, at most 730), <code>maxQuantity</code> (1), <code>chooseResource</code> (let the visitor pick who), and an optional <code>price</code>.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">booking set-up</span></div>
+<pre class="overflow-x-auto"><code>{ <span class="tk-attr">"statusPath"</span>: <span class="tk-str">"/booking/"</span>,
+  <span class="tk-attr">"notifyEmail"</span>: <span class="tk-str">"desk@example.com"</span>,
+  <span class="tk-attr">"resources"</span>: [
+    { <span class="tk-attr">"id"</span>: <span class="tk-str">"anna"</span>, <span class="tk-attr">"name"</span>: <span class="tk-str">"Anna"</span>, <span class="tk-attr">"timeZone"</span>: <span class="tk-str">"Europe/Berlin"</span>,
+      <span class="tk-attr">"hours"</span>: [ { <span class="tk-attr">"days"</span>: [<span class="tk-str">"mon"</span>, <span class="tk-str">"tue"</span>, <span class="tk-str">"wed"</span>, <span class="tk-str">"thu"</span>, <span class="tk-str">"fri"</span>], <span class="tk-attr">"from"</span>: <span class="tk-str">"09:00"</span>, <span class="tk-attr">"to"</span>: <span class="tk-str">"17:00"</span> } ],
+      <span class="tk-attr">"blocks"</span>: [ { <span class="tk-attr">"kind"</span>: <span class="tk-str">"weekly"</span>, <span class="tk-attr">"days"</span>: [<span class="tk-str">"mon"</span>, <span class="tk-str">"tue"</span>, <span class="tk-str">"wed"</span>, <span class="tk-str">"thu"</span>, <span class="tk-str">"fri"</span>], <span class="tk-attr">"from"</span>: <span class="tk-str">"12:00"</span>, <span class="tk-attr">"to"</span>: <span class="tk-str">"13:00"</span> } ] }
+  ],
+  <span class="tk-attr">"offerings"</span>: [
+    { <span class="tk-attr">"id"</span>: <span class="tk-str">"consultation"</span>, <span class="tk-attr">"name"</span>: <span class="tk-str">"Consultation"</span>, <span class="tk-attr">"resourceIds"</span>: [<span class="tk-str">"anna"</span>],
+      <span class="tk-attr">"mode"</span>: <span class="tk-str">"duration"</span>, <span class="tk-attr">"durationMin"</span>: <span class="tk-kw">60</span>, <span class="tk-attr">"bufferAfterMin"</span>: <span class="tk-kw">15</span>, <span class="tk-attr">"minNoticeMin"</span>: <span class="tk-kw">720</span> }
+  ] }</code></pre>
+    </div>
+    <p>An agent reads and writes the same object as the <code>booking</code> content kind (<code>get_content</code> / <code>put_content</code>, id <code>booking</code>). A write replaces the whole set-up, and unknown keys are refused.</p>
+
+    <h2 id="calendars">3. Connect calendars (optional)</h2>
+    <p>A resource can read busy times from external calendars, up to 50 per project: an <code>https</code> or <code>webcal</code> ICS feed (read only), a CalDAV calendar (with an app password, optionally written to), or a Google Calendar shared with the platform's service account (optionally written to). If a calendar cannot be read, the last good reading is used for a while and then the resource reads as busy, never as free. The project also offers its own bookings as an ICS feed to subscribe to.</p>
+
+    <h2 id="widget">4. Put the widget on a page</h2>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/book.hbs and pages/booking.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-com">&lt;!-- the page visitors book on --&gt;</span>
+<span class="tk-hb">\{{sw-booking "consultation" class="mx-auto max-w-3xl"}}</span>
+
+<span class="tk-com">&lt;!-- the page at statusPath, where booking emails link --&gt;</span>
+<span class="tk-hb">\{{sw-booking-status}}</span></code></pre>
+    </div>
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">example.com/book/</span></div>
+      {{> ws-media slot="doc_booking_widget" class="rounded-none"}}
+    </div>
+    <p>The visitor gives a name and an email (required), and optionally a phone number and a note. The booking's own page, at <code>statusPath</code>, shows its state and lets the customer cancel until it starts. Write your own markup for it with the block form and its <code>data-sw-part</code> parts. Proof of work and the project's captcha can be required in the set-up (<code>pow</code>, <code>captcha</code>).</p>
+
+    <h2 id="mail">5. Emails and reminders</h2>
+    <p>Customers get mail for each step (booked, requested, accepted, declined, canceled, refunded, a reminder) in the page's language, with a calendar file attached. The business gets its own copy at <code>notifyEmail</code>, which is also the Reply-To customers see. <code>remindBeforeMin</code> (60 to 10080) sends a reminder before the start. Mail goes through the project's SMTP, or the instance's when the project has none. Links in the mails point at the site URL (or the hosted address) plus <code>statusPath</code>, so set <strong>Settings → Website → Site → Production URL</strong> when the site lives on its own domain.</p>
+
+    <h2 id="payments">6. Take payment (optional)</h2>
+    <p>Give an offering a <code>price</code> (per booking, per unit, or per night for stays) and the set-up a <code>payment</code> with a payment provider and an ISO currency. The provider must be set up as for the shop (see <a href="{{sw-url '/docs/guides/shop'}}#checkout">Take real payments</a>).</p>
+    <ul>
+      <li>An instant, priced booking holds the time for 20 minutes while the customer pays, and is confirmed by the provider's callback.</li>
+      <li>A priced request is paid on the booking's page once you accept it, within <code>payWindowMin</code> (48 hours by default). A priced request needs a <code>statusPath</code>.</li>
+      <li>A customer who cancels gets a full refund until <code>refundUntilMin</code> before the start (24 hours by default), nothing after. When the business cancels, the refund is always full.</li>
+    </ul>
+
+    <h2 id="answer">7. Answer bookings</h2>
+    <p>The project's <strong>Bookings</strong> tab lists upcoming bookings, open requests and past ones, with the customer's details on the resource's clock. Accept or decline a request, or cancel a booking; each sends the customer a mail. A request nobody answers lapses after three days. Agents use <code>list_bookings</code>, <code>answer_booking</code> and <code>booking_availability</code>, but a paid booking is canceled only by a person, because that refunds it.</p>
+
+    <h2 id="verify">Check your work</h2>
+    <ul>
+      <li>In the draft preview a booking is a dry run: the widget shows real availability and checks the input, and nothing is stored or mailed.</li>
+      <li><code>booking_availability</code> (or the widget) for a week ahead should match the hours, minus blocks and busy calendar times.</li>
+      <li>After a deploy, make one real booking and cancel it from its own page.</li>
+    </ul>
+
+    <h2 id="pitfalls">Pitfalls</h2>
+    <ul>
+      <li><strong>One clock per offering.</strong> All resources of an offering must share a time zone.</li>
+      <li><strong>Spam limits.</strong> 10 booking attempts per minute per address, 60 bookings per project per hour, 10 live bookings per email address.</li>
+      <li><strong>Demo copies</strong> offer sample times on weekdays from 9:00 to 17:00 and keep bookings in the browser tab. See <a href="{{sw-url '/docs/guides/demo-copies'}}">Demo copies</a>.</li>
+    </ul>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/reference/helpers'}}#booking">Booking helpers</a></li>
+      <li><a href="{{sw-url '/features/booking'}}">Booking</a></li>
+    </ul>
+  </article>
+</div>

@@ -1,0 +1,395 @@
+{{!-- META {"path":"carousel","title":"Carousel","description":"One slider component, configured with attributes: crossfade or slide, autoplay, multi-item rows with a peek, a continuous ticker, wheel gestures and auto height. Every demo runs live, with its markup underneath.","parent":"showcase","order":1,"data":{"icon":"slideshow","preset":"mesh-gradient"}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">01 · The defaults</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="c1_title">No options at all.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="c1_lead">A root, a track and its slides. Slides crossfade and loop, full-height arrows sit on each edge, the dots are generated, and a click anywhere on a slide moves it on. Swipe and the arrow keys work too. The height is set once, on the root.</p>
+  </div>
+  <div class="mt-10">
+
+<div class="relative h-[22rem] overflow-hidden rounded-3xl sm:h-[28rem]" data-sw-component="carousel" data-sw-block="Carousel" aria-label="Sitewright in four slides">
+  <div data-sw-part="track">
+    <figure data-sw-part="slide" class="grid place-items-center bg-gradient-to-br from-primary to-neutral px-16 text-center text-white">
+      <div>
+        {{sw-icon "code" "mx-auto h-10 w-10"}}
+        <p class="ws-display mt-5 text-3xl font-bold sm:text-5xl">Pages are code.</p>
+        <p class="mt-3 text-white/75">Handlebars, HTML and Tailwind, written by you.</p>
+      </div>
+    </figure>
+    
+    <figure data-sw-part="slide" class="grid place-items-center bg-gradient-to-br from-neutral to-secondary px-16 text-center text-white">
+      <div>
+        {{sw-icon "cursor-text" "mx-auto h-10 w-10"}}
+        <p class="ws-display mt-5 text-3xl font-bold sm:text-5xl">Content is data.</p>
+        <p class="mt-3 text-white/75">Clients edit it in place, without touching the layout.</p>
+      </div>
+    </figure>
+    <figure data-sw-part="slide" class="grid place-items-center bg-gradient-to-br from-secondary to-primary px-16 text-center text-white">
+      <div>
+        {{sw-icon "robot" "mx-auto h-10 w-10"}}
+        <p class="ws-display mt-5 text-3xl font-bold sm:text-5xl">Agents build through MCP.</p>
+        <p class="mt-3 text-white/75">The same pages, written by Claude or another agent.</p>
+      </div>
+    </figure>
+    <figure data-sw-part="slide" class="grid place-items-center bg-gradient-to-br from-neutral via-primary to-accent px-16 text-center text-white">
+      <div>
+        {{sw-icon "rocket-launch" "mx-auto h-10 w-10"}}
+        <p class="ws-display mt-5 text-3xl font-bold sm:text-5xl">Publish anywhere.</p>
+        <p class="mt-3 text-white/75">Plain static files, on your instance or any server.</p>
+      </div>
+    </figure>
+
+  </div>
+  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "caret-double-left:bold" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "caret-double-right:bold" ""}}</button>
+  <div data-sw-part="dots" aria-hidden="true"></div>
+</div>
+
+  </div>
+  <div class="mt-6">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">carousel · defaults</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"relative h-[22rem] overflow-hidden rounded-3xl sm:h-[28rem]"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"carousel"</span> <span class="tk-attr">data-sw-block</span>=<span class="tk-str">"Carousel"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Sitewright in four slides"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"track"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"grid place-items-center bg-gradient-to-br from-primary to-neutral px-16 text-center text-white"</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;div</span><span class="tk-tag">&gt;</span>
+        <span class="tk-hb">\{{sw-icon "code" "mx-auto h-10 w-10"}}</span>
+        <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"ws-display mt-5 text-3xl font-bold sm:text-5xl"</span><span class="tk-tag">&gt;</span>Pages are code.<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+        <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-3 text-white/75"</span><span class="tk-tag">&gt;</span>Handlebars, HTML and Tailwind, written by you.<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+    <span class="tk-com">&lt;!-- three more slides, same shape --&gt;</span>
+  <span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"prev"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Previous slide"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "caret-double-left:bold" ""}}</span><span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"next"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Next slide"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "caret-double-right:bold" ""}}</span><span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"dots"</span> <span class="tk-attr">aria-hidden</span>=<span class="tk-str">"true"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">02 · Slide and autoplay</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="c2_title">A moving strip that advances on its own.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="c2_lead"><code class="font-code text-base">data-effect="slide"</code> swaps the crossfade for a translating strip, and <code class="font-code text-base">data-autoplay</code> steps it every <code class="font-code text-base">data-interval</code> milliseconds. Hovering or focusing it pauses the timer, and visitors who prefer reduced motion get no autoplay at all.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+
+<div class="relative overflow-hidden rounded-3xl border border-base-content/10 bg-base-100" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-autoplay="true" data-interval="3500" data-arrows="circle" aria-label="Sitewright by the numbers">
+  <div data-sw-part="track">
+    <figure data-sw-part="slide" class="px-14 py-14 text-center">
+      <p class="ws-numeral text-7xl sm:text-8xl">82</p>
+      <p class="mt-3 text-base-content/70">MCP tools for AI agents</p>
+    </figure>
+    <figure data-sw-part="slide" class="px-14 py-14 text-center">
+      <p class="ws-numeral text-7xl sm:text-8xl">57</p>
+      <p class="mt-3 text-base-content/70">template helpers</p>
+    </figure>
+    <figure data-sw-part="slide" class="px-14 py-14 text-center">
+      <p class="ws-numeral text-7xl sm:text-8xl">31</p>
+      <p class="mt-3 text-base-content/70">animated backgrounds</p>
+    </figure>
+    <figure data-sw-part="slide" class="px-14 py-14 text-center">
+      <p class="ws-numeral text-7xl sm:text-8xl">18</p>
+      <p class="mt-3 text-base-content/70">dataset field types</p>
+    </figure>
+  </div>
+  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "caret-double-left:bold" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "caret-double-right:bold" ""}}</button>
+  <div data-sw-part="dots" aria-hidden="true"></div>
+</div>
+
+      <div>
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">carousel · slide + autoplay</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"relative overflow-hidden rounded-3xl border border-base-content/10 bg-base-100"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"carousel"</span> <span class="tk-attr">data-sw-block</span>=<span class="tk-str">"Carousel"</span> <span class="tk-attr">data-effect</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">data-autoplay</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-interval</span>=<span class="tk-str">"3500"</span> <span class="tk-attr">data-arrows</span>=<span class="tk-str">"circle"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Sitewright by the numbers"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"track"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"px-14 py-14 text-center"</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"ws-numeral text-7xl sm:text-8xl"</span><span class="tk-tag">&gt;</span>82<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-3 text-base-content/70"</span><span class="tk-tag">&gt;</span>MCP tools for AI agents<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"px-14 py-14 text-center"</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"ws-numeral text-7xl sm:text-8xl"</span><span class="tk-tag">&gt;</span>57<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-3 text-base-content/70"</span><span class="tk-tag">&gt;</span>template helpers<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"px-14 py-14 text-center"</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"ws-numeral text-7xl sm:text-8xl"</span><span class="tk-tag">&gt;</span>31<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-3 text-base-content/70"</span><span class="tk-tag">&gt;</span>animated backgrounds<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"px-14 py-14 text-center"</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"ws-numeral text-7xl sm:text-8xl"</span><span class="tk-tag">&gt;</span>18<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-3 text-base-content/70"</span><span class="tk-tag">&gt;</span>dataset field types<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"prev"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Previous slide"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "caret-double-left:bold" ""}}</span><span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"next"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Next slide"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "caret-double-right:bold" ""}}</span><span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"dots"</span> <span class="tk-attr">aria-hidden</span>=<span class="tk-str">"true"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">03 · Several at once</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="c3_title">A row of cards with a peek.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="c3_lead">The <code class="font-code text-base">--sw-items</code> variable sets how many slides fit the row. A fraction leaves the next card peeking, and responsive classes change it per breakpoint. <code class="font-code text-base">data-item-align="center"</code> centres the active card. Multi-item rows get compact round arrows. The cards here are this showcase's own pages, looped from the page tree.</p>
+  </div>
+  <div class="mt-10">
+
+<div class="relative [--sw-items:1.15] md:[--sw-items:2.4] lg:[--sw-items:3.3]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-item-align="center" aria-label="Showcase pages">
+  <div data-sw-part="track">
+    {{#each pages.showcase._attributes.children}}
+    <figure data-sw-part="slide" class="px-2 py-1">
+      <a class="ws-tile block h-full rounded-2xl border border-base-content/10 bg-base-100 p-6" href="{{sw-url path}}">
+        {{sw-icon data.icon "h-7 w-7 ws-ink"}}
+        <span class="mt-4 block font-heading text-lg font-bold">{{title}}</span>
+        <span class="mt-1 block text-sm leading-relaxed text-base-content/70">{{description}}</span>
+      </a>
+    </figure>
+    {{/each}}
+  </div>
+  <button type="button" data-sw-part="prev" aria-label="Previous">{{sw-icon "caret-double-left:bold" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next">{{sw-icon "caret-double-right:bold" ""}}</button>
+</div>
+
+  </div>
+  <div class="mt-6">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">carousel · multi-item peek</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"relative [--sw-items:1.15] md:[--sw-items:2.4] lg:[--sw-items:3.3]"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"carousel"</span> <span class="tk-attr">data-sw-block</span>=<span class="tk-str">"Carousel"</span> <span class="tk-attr">data-effect</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">data-item-align</span>=<span class="tk-str">"center"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Showcase pages"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"track"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-hb">\{{#each pages.showcase._attributes.children}}</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"px-2 py-1"</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;a</span> <span class="tk-attr">class</span>=<span class="tk-str">"ws-tile block h-full rounded-2xl border border-base-content/10 bg-base-100 p-6"</span> <span class="tk-attr">href</span>=<span class="tk-str">"</span><span class="tk-hb">\{{sw-url path}}</span><span class="tk-str">"</span><span class="tk-tag">&gt;</span>
+        <span class="tk-hb">\{{sw-icon data.icon "h-7 w-7 ws-ink"}}</span>
+        <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-4 block font-heading text-lg font-bold"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{title}}</span><span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>
+        <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-1 block text-sm leading-relaxed text-base-content/70"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{description}}</span><span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;/a</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+    <span class="tk-hb">\{{/each}}</span>
+  <span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"prev"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Previous"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "caret-double-left:bold" ""}}</span><span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"next"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Next"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "caret-double-right:bold" ""}}</span><span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+  </div>
+</section>
+
+<section class="bg-neutral text-white">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index text-accent">04 · Continuous ticker</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="c4_title">A logo wall that never stops.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-white/70" data-sw-text="c4_lead"><code class="font-code text-base">data-autoscroll</code> turns the steps into a steady scroll, measured in pixels per frame. It pauses while hovered or focused. Pair it with the slide effect and leave looping on, so the ticker never reaches an end. Below: the projects and standards Sitewright is built on.</p>
+    </div>
+    <div class="mt-10">
+
+<div class="relative [--sw-items:3] md:[--sw-items:6]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-autoscroll="true" data-autoscroll-speed="1" aria-label="Built on">
+  <div data-sw-part="track">
+    <figure data-sw-part="slide" class="px-6 py-4">{{sw-icon "brand:typescript" "mx-auto h-10 w-10 text-white/80"}}</figure>
+    <figure data-sw-part="slide" class="px-6 py-4">{{sw-icon "brand:nodedotjs" "mx-auto h-10 w-10 text-white/80"}}</figure>
+    <figure data-sw-part="slide" class="px-6 py-4">{{sw-icon "brand:react" "mx-auto h-10 w-10 text-white/80"}}</figure>
+    <figure data-sw-part="slide" class="px-6 py-4">{{sw-icon "brand:tailwindcss" "mx-auto h-10 w-10 text-white/80"}}</figure>
+    <figure data-sw-part="slide" class="px-6 py-4">{{sw-icon "brand:docker" "mx-auto h-10 w-10 text-white/80"}}</figure>
+    <figure data-sw-part="slide" class="px-6 py-4">{{sw-icon "brand:github" "mx-auto h-10 w-10 text-white/80"}}</figure>
+    <figure data-sw-part="slide" class="px-6 py-4">{{sw-icon "brand:html5" "mx-auto h-10 w-10 text-white/80"}}</figure>
+    <figure data-sw-part="slide" class="px-6 py-4">{{sw-icon "brand:css" "mx-auto h-10 w-10 text-white/80"}}</figure>
+  </div>
+</div>
+
+    </div>
+    <div class="mt-10">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">carousel · auto-scroll ticker</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"relative [--sw-items:3] md:[--sw-items:6]"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"carousel"</span> <span class="tk-attr">data-sw-block</span>=<span class="tk-str">"Carousel"</span> <span class="tk-attr">data-effect</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">data-autoscroll</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-autoscroll-speed</span>=<span class="tk-str">"1"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Built on"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"track"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"px-6 py-4"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "brand:typescript" "mx-auto h-10 w-10 text-white/80"}}</span><span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"px-6 py-4"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "brand:nodedotjs" "mx-auto h-10 w-10 text-white/80"}}</span><span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"px-6 py-4"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "brand:react" "mx-auto h-10 w-10 text-white/80"}}</span><span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"px-6 py-4"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "brand:tailwindcss" "mx-auto h-10 w-10 text-white/80"}}</span><span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"px-6 py-4"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "brand:docker" "mx-auto h-10 w-10 text-white/80"}}</span><span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"px-6 py-4"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "brand:github" "mx-auto h-10 w-10 text-white/80"}}</span><span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"px-6 py-4"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "brand:html5" "mx-auto h-10 w-10 text-white/80"}}</span><span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"px-6 py-4"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "brand:css" "mx-auto h-10 w-10 text-white/80"}}</span><span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">05 · Wheel and auto height</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="c5_title">Slides of different heights.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="c5_lead">Scroll the mouse wheel or a trackpad over this one to move it. The track animates its height to fit each answer. It also opts out of looping, so the arrows dim at the first and the last slide, and it asks for the round arrow style.</p>
+  </div>
+  <div class="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
+
+<div class="relative" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-wheel="true" data-autoheight="true" data-loop="false" data-arrows="circle" aria-label="Questions about the carousel">
+  <div data-sw-part="track">
+    <figure data-sw-part="slide" class="px-1 pb-12">
+      <div class="rounded-3xl border border-base-content/10 bg-base-100 p-8 px-14">
+        <p class="font-heading text-lg font-bold">Does it work without JavaScript?</p>
+        <p class="mt-3 leading-relaxed text-base-content/70">Yes. The track is a CSS scroll-snap row, so it still swipes and scrolls. Arrows and dots stay hidden, so no dead controls show.</p>
+      </div>
+    </figure>
+    <figure data-sw-part="slide" class="px-1 pb-12">
+      <div class="rounded-3xl border border-base-content/10 bg-base-100 p-8 px-14">
+        <p class="font-heading text-lg font-bold">Which library runs it?</p>
+        <p class="mt-3 leading-relaxed text-base-content/70">Embla. It ships with the page only when the page contains a carousel.</p>
+      </div>
+    </figure>
+    <figure data-sw-part="slide" class="px-1 pb-12">
+      <div class="rounded-3xl border border-base-content/10 bg-base-100 p-8 px-14">
+        <p class="font-heading text-lg font-bold">What does it do for screen readers?</p>
+        <p class="mt-3 leading-relaxed text-base-content/70">The runtime adds a region role, the carousel role description and a hidden live region that announces the active slide. It stays silent while the carousel rotates on its own. Keep an <code class="font-code">aria-label</code> on the root.</p>
+      </div>
+    </figure>
+    <figure data-sw-part="slide" class="px-1 pb-12">
+      <div class="rounded-3xl border border-base-content/10 bg-base-100 p-8 px-14">
+        <p class="font-heading text-lg font-bold">How do I space the cards?</p>
+        <p class="mt-3 leading-relaxed text-base-content/70">With padding inside each slide. Slide margins are reset.</p>
+      </div>
+    </figure>
+  </div>
+  <button type="button" data-sw-part="prev" aria-label="Previous question">{{sw-icon "caret-double-left:bold" ""}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next question">{{sw-icon "caret-double-right:bold" ""}}</button>
+  <div data-sw-part="dots" aria-hidden="true"></div>
+</div>
+
+    <div>
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">carousel · wheel + auto height</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"relative"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"carousel"</span> <span class="tk-attr">data-sw-block</span>=<span class="tk-str">"Carousel"</span> <span class="tk-attr">data-effect</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">data-wheel</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-autoheight</span>=<span class="tk-str">"true"</span> <span class="tk-attr">data-loop</span>=<span class="tk-str">"false"</span> <span class="tk-attr">data-arrows</span>=<span class="tk-str">"circle"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Questions about the carousel"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"track"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"px-1 pb-12"</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"rounded-3xl border border-base-content/10 bg-base-100 p-8 px-14"</span><span class="tk-tag">&gt;</span>
+        <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"font-heading text-lg font-bold"</span><span class="tk-tag">&gt;</span>Does it work without JavaScript?<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+        <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-3 leading-relaxed text-base-content/70"</span><span class="tk-tag">&gt;</span>Yes. The track is a CSS scroll-snap row, so it still swipes and scrolls. Arrows and dots stay hidden, so no dead controls show.<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"px-1 pb-12"</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"rounded-3xl border border-base-content/10 bg-base-100 p-8 px-14"</span><span class="tk-tag">&gt;</span>
+        <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"font-heading text-lg font-bold"</span><span class="tk-tag">&gt;</span>Which library runs it?<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+        <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-3 leading-relaxed text-base-content/70"</span><span class="tk-tag">&gt;</span>Embla. It ships with the page only when the page contains a carousel.<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"px-1 pb-12"</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"rounded-3xl border border-base-content/10 bg-base-100 p-8 px-14"</span><span class="tk-tag">&gt;</span>
+        <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"font-heading text-lg font-bold"</span><span class="tk-tag">&gt;</span>What does it do for screen readers?<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+        <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-3 leading-relaxed text-base-content/70"</span><span class="tk-tag">&gt;</span>The runtime adds a region role, the carousel role description and a hidden live region that announces the active slide. It stays silent while the carousel rotates on its own. Keep an <span class="tk-tag">&lt;code</span> <span class="tk-attr">class</span>=<span class="tk-str">"font-code"</span><span class="tk-tag">&gt;</span>aria-label<span class="tk-tag">&lt;/code</span><span class="tk-tag">&gt;</span> on the root.<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"px-1 pb-12"</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"rounded-3xl border border-base-content/10 bg-base-100 p-8 px-14"</span><span class="tk-tag">&gt;</span>
+        <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"font-heading text-lg font-bold"</span><span class="tk-tag">&gt;</span>How do I space the cards?<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+        <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-3 leading-relaxed text-base-content/70"</span><span class="tk-tag">&gt;</span>With padding inside each slide. Slide margins are reset.<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"prev"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Previous question"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "caret-double-left:bold" ""}}</span><span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"button"</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"next"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Next question"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-icon "caret-double-right:bold" ""}}</span><span class="tk-tag">&lt;/button</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"dots"</span> <span class="tk-attr">aria-hidden</span>=<span class="tk-str">"true"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">06 · Click to slide</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="c6_title">No arrows, just the slides.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="c6_lead">Leave a part out and that control is gone. With <code class="font-code text-base">data-click-next="true"</code> a click or tap anywhere on a slide moves to the next one, with a ripple. Links inside a slide stay links, a drag still swipes, and the arrow keys work once the carousel has focus.</p>
+    </div>
+    <div class="mt-10">
+
+<div class="relative overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-click-next="true" aria-label="Three steps">
+  <div data-sw-part="track">
+    <figure data-sw-part="slide" class="flex aspect-[5/2] items-end sm:aspect-[3/1] bg-gradient-to-tr from-neutral to-primary p-8 text-white sm:p-12">
+      <p class="ws-display text-2xl font-bold sm:text-4xl"><span class="ws-index block text-sm text-white/60">Step 1</span>Write the page.</p>
+    </figure>
+    <figure data-sw-part="slide" class="flex aspect-[5/2] items-end sm:aspect-[3/1] bg-gradient-to-tr from-primary to-secondary p-8 text-white sm:p-12">
+      <p class="ws-display text-2xl font-bold sm:text-4xl"><span class="ws-index block text-sm text-white/60">Step 2</span>Let the client edit the words.</p>
+    </figure>
+    <figure data-sw-part="slide" class="flex aspect-[5/2] items-end sm:aspect-[3/1] bg-gradient-to-tr from-secondary to-neutral p-8 text-white sm:p-12">
+      <p class="ws-display text-2xl font-bold sm:text-4xl"><span class="ws-index block text-sm text-white/60">Step 3</span>Publish the static site.</p>
+    </figure>
+  </div>
+  <div data-sw-part="dots" aria-hidden="true"></div>
+</div>
+
+    </div>
+    <div class="mt-6">
+<div class="ws-window overflow-hidden rounded-2xl">
+  <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">carousel · click to slide</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"relative overflow-hidden rounded-3xl"</span> <span class="tk-attr">data-sw-component</span>=<span class="tk-str">"carousel"</span> <span class="tk-attr">data-sw-block</span>=<span class="tk-str">"Carousel"</span> <span class="tk-attr">data-effect</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">data-click-next</span>=<span class="tk-str">"true"</span> <span class="tk-attr">aria-label</span>=<span class="tk-str">"Three steps"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"track"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"flex aspect-[5/2] items-end sm:aspect-[3/1] bg-gradient-to-tr from-neutral to-primary p-8 text-white sm:p-12"</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"ws-display text-2xl font-bold sm:text-4xl"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"ws-index block text-sm text-white/60"</span><span class="tk-tag">&gt;</span>Step 1<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>Write the page.<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"flex aspect-[5/2] items-end sm:aspect-[3/1] bg-gradient-to-tr from-primary to-secondary p-8 text-white sm:p-12"</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"ws-display text-2xl font-bold sm:text-4xl"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"ws-index block text-sm text-white/60"</span><span class="tk-tag">&gt;</span>Step 2<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>Let the client edit the words.<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;figure</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"slide"</span> <span class="tk-attr">class</span>=<span class="tk-str">"flex aspect-[5/2] items-end sm:aspect-[3/1] bg-gradient-to-tr from-secondary to-neutral p-8 text-white sm:p-12"</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"ws-display text-2xl font-bold sm:text-4xl"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"ws-index block text-sm text-white/60"</span><span class="tk-tag">&gt;</span>Step 3<span class="tk-tag">&lt;/span</span><span class="tk-tag">&gt;</span>Publish the static site.<span class="tk-tag">&lt;/p</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;/figure</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">data-sw-part</span>=<span class="tk-str">"dots"</span> <span class="tk-attr">aria-hidden</span>=<span class="tk-str">"true"</span><span class="tk-tag">&gt;</span><span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span>
+<span class="tk-tag">&lt;/div</span><span class="tk-tag">&gt;</span></code></pre>
+</div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">Reference</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-4xl" data-sw-text="ref_title">Every attribute.</h2>
+  </div>
+  <div class="mt-8 overflow-x-auto rounded-2xl border border-base-content/10 bg-base-100">
+    <table class="table">
+      <thead><tr><th>Attribute</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-effect</td><td><code class="font-code text-sm">fade</code> (default) or <code class="font-code text-sm">slide</code>. Multi-item rows need <code class="font-code text-sm">slide</code>.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-loop</td><td>Looping is on by default. <code class="font-code text-sm">false</code> stops at the ends and dims the arrow there.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-autoplay · data-interval</td><td>Advance in steps, every N ms (default 5000). Pauses on hover and focus.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-autoscroll · data-autoscroll-speed</td><td>A continuous ticker instead of steps, in px per frame (default 2).</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-wheel</td><td>Mouse wheel and trackpad gestures move the slides.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-autoheight</td><td>Animates the height to the slide in view. Needs the slide effect.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-item-align</td><td><code class="font-code text-sm">center</code> (default), <code class="font-code text-sm">start</code> or <code class="font-code text-sm">end</code>, for scrolling and for a row with fewer slides than it fits.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-arrows</td><td><code class="font-code text-sm">edge</code> or <code class="font-code text-sm">circle</code>. By default a single-slide carousel gets edge arrows and a multi-item row gets circles.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-click-next</td><td>A click on a slide advances it. On by default for the single-slide edge style.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">data-kenburns</td><td>The hero look: the active slide's <code class="font-code text-sm">.sw-kenburns</code> layer pans and zooms, and its <code class="font-code text-sm">.sw-caption</code> rises in.</td></tr>
+        <tr><td class="whitespace-nowrap font-code text-sm">--sw-items</td><td>Slides per view, as a CSS variable on the root. Fractions leave a peek.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="border-t border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-20">
+    <div class="flex flex-wrap items-end justify-between gap-4">
+      <h2 class="ws-display text-3xl font-bold sm:text-4xl">More of the showcase</h2>
+      <a class="btn btn-ghost btn-sm" href="{{sw-url '/showcase'}}">All demos {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+    <div class="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {{#each pages.showcase._attributes.children}}
+      {{#unless (eq path @root.page.path)}}
+      <a class="ws-tile rounded-2xl border border-base-content/10 bg-base-100 p-4" href="{{sw-url path}}">
+        <span class="flex items-center gap-2 font-heading font-semibold">{{#if data.icon}}{{sw-icon data.icon "h-4 w-4 ws-ink"}}{{/if}}{{title}}</span>
+      </a>
+      {{/unless}}
+      {{/each}}
+    </div>
+  </div>
+</section>

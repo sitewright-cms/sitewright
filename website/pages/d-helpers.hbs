@@ -1,0 +1,175 @@
+{{!-- META {"path":"helpers","title":"Template helpers","description":"All 57 sw-* helpers a page, template or snippet can call, grouped by job, with the syntax and what each one returns.","parent":"reference","order":1,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>Page sources are Handlebars. On top of the logic built-ins (<code>if</code>, <code>unless</code>, <code>each</code>, <code>with</code>, <code>lookup</code>, and the strict comparisons <code>eq</code> and <code>ne</code>), the platform registers 57 helpers, all prefixed <code>sw-</code> so they never shadow a dataset field called <code>url</code>, <code>date</code> or <code>icon</code>. Projects cannot register helpers of their own.</p>
+    <p>This list is the same one the editor's Template reference and the <code>get_reference</code> agent tool serve. A test pins it to the helpers the engine actually registers, so it cannot drift.</p>
+    <div class="ws-callout"><p class="!mt-0"><strong>Unknown helpers.</strong> A save that calls a helper the engine does not have (say <code>multiply</code> with arguments) is refused, with the name and the line. Arithmetic is <code>sw-mul</code>, not <code>multiply</code>. A source stored before that check still renders: the call becomes <code>&lt;!-- sw:unknown-helper multiply --&gt;</code>, which is invisible inside an attribute. A bare <code>\{{missingField}}</code> renders empty.</p></div>
+
+    <h2 id="links">Links and navigation</h2>
+    <table>
+      <thead><tr><th>Helper</th><th>Syntax</th><th class="min-w-56">What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>sw-url</code></td><td><code>\{{sw-url value}}</code></td><td>Sanitizes a URL for <code>href</code>/<code>src</code> (blocks <code>javascript:</code>, <code>data:</code> and protocol-relative URLs) and rebases internal links at publish. Use it on every <code>href</code> and <code>src</code>. It adds no language prefix.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-page-url</code></td><td><code>\{{sw-page-url "&lt;page id&gt;"}}</code></td><td>The route of another page by id, in the reader's language (<code>/de/kontakt/</code> on a German page). Survives renames and moves. An unknown id renders <code>#</code>.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-active</code></td><td><code>\{{#if (sw-active path exact=true)}}</code></td><td>True when <code>path</code> is the current page. Matches the active trail by default; <code>exact=true</code> matches only the page itself (use it for <code>aria-current</code>).</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-label</code></td><td><code>\{{sw-label}}</code></td><td>The current menu item's label inside <code>\{{#each nav.*}}</code>, including icons a menu label may carry.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="media">Images, icons and media</h2>
+    <table>
+      <thead><tr><th>Helper</th><th>Syntax</th><th class="min-w-56">What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>sw-image</code></td><td><code>\{{sw-image url alt= sizes= class= loading=eager format=avif lightbox=true caption=}}</code></td><td>A responsive <code>&lt;img&gt;</code> for a project image: WebP <code>srcset</code>, intrinsic width and height, a blur-up placeholder, <code>loading="lazy"</code>. <code>format=avif</code> adds an AVIF tier in a <code>&lt;picture&gt;</code>; <code>lightbox=true</code> wraps it for a Lightbox gallery.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-folder</code></td><td><code>\{{#sw-folder "name" kind="image" sort="name"}}…\{{/sw-folder}}</code></td><td>Loops the files of a media folder. Each item has <code>url</code>, <code>filename</code>, <code>kind</code>, <code>alt</code>, <code>width</code>, <code>height</code>. <code>kind</code> is <code>image</code> (default), <code>file</code> or <code>all</code>; an empty folder runs <code>\{{else}}</code>.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-icon</code></td><td><code>\{{sw-icon "name:weight" "classes"}}</code></td><td>Inlines an SVG icon. A bare name is a Phosphor icon, filled by default; <code>:thin</code>, <code>:light</code>, <code>:regular</code>, <code>:bold</code>, <code>:duotone</code> pick a weight. <code>brand:&lt;slug&gt;</code> is a brand logo, <code>flag:&lt;cc&gt;</code> a country flag.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-flag</code></td><td><code>\{{sw-flag "de" "classes"}}</code></td><td>A full-color country flag by ISO 3166-1 alpha-2 code (plus <code>eu</code>); <code>"de-circle"</code> for the round one. Takes a country, not a language.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-imagemap</code></td><td><code>\{{sw-imagemap "id" class=}}</code></td><td>Embeds a stored interactive image map: hotspots, tooltips, artboards, zoom and a searchable list, with a plain <code>&lt;img&gt;</code> fallback.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="text">Text and values</h2>
+    <table>
+      <thead><tr><th>Helper</th><th>Syntax</th><th class="min-w-56">What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>sw-default</code></td><td><code>\{{sw-default a b "fallback"}}</code></td><td>The first argument that is present. Only <code>null</code>, <code>undefined</code> and <code>""</code> count as absent, so <code>0</code> and <code>false</code> are kept.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-blank</code></td><td><code>\{{#unless (sw-blank value)}}</code></td><td>True when a value has no visible content, including the <code>&lt;p&gt;&lt;/p&gt;</code> a cleared rich-text editor leaves behind. Embedded media counts as content.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-truncate</code></td><td><code>\{{sw-truncate text 120}}</code></td><td>Clips text to N characters (default 100) and adds an ellipsis when it clips.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-date</code></td><td><code>\{{sw-date value "long" locale="de"}}</code></td><td>Formats a date. Default <code>YYYY-MM-DD</code> (UTC); also <code>"iso"</code>, <code>"YYYY"</code>, and <code>"short"</code>/<code>"medium"</code>/<code>"long"</code> in the page's language. <code>"now"</code> is today: <code>\{{sw-date "now" "YYYY"}}</code>.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-concat</code></td><td><code>\{{sw-concat a b …}}</code></td><td>Joins its arguments into one escaped string, for building an <code>href</code>, <code>id</code> or class. Missing values add nothing.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-html</code></td><td><code>\{{sw-html value}}</code></td><td>Outputs rich HTML through the sanitizer: scripts, event handlers and forms are stripped; https iframes are kept sandboxed.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-json</code></td><td><code>&lt;pre&gt;\{{sw-json page.data}}&lt;/pre&gt;</code></td><td>Pretty-prints a value as escaped JSON, for reading data while you build. Not valid inside a script block.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-translate</code></td><td><code>\{{sw-translate "key" default="…"}}</code></td><td>A string from the project's translation catalog for the page's language, falling back to the main language, then <code>default=</code>. Escaped, so it works in attributes.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="lists">Datasets and lists</h2>
+    <p>The list helpers return new lists, so they nest: <code>\{{#each (sw-limit (sw-where dataset.events "starts" "gte" "now") 4)}}</code> is the next four events.</p>
+    <table>
+      <thead><tr><th>Helper</th><th>Syntax</th><th class="min-w-56">What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>sw-pick-entry</code></td><td><code>\{{#sw-pick-entry dataset.team "anna"}}…\{{/sw-pick-entry}}</code></td><td>One dataset entry by id, as the block context or a subexpression. An unknown id falls back to the first entry; an empty dataset runs <code>\{{else}}</code>.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-where</code></td><td><code>(sw-where list "field" "op" value)</code></td><td>Filters by a field. Ops: <code>eq</code> (default), <code>ne</code>, <code>lt</code>, <code>gt</code>, <code>lte</code>, <code>gte</code>, <code>has</code>. The value <code>"now"</code> is today. An unknown op matches nothing.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-sort</code></td><td><code>(sw-sort list "field" "desc")</code></td><td>A sorted copy. Numbers compare as numbers, everything else as text (ISO dates sort correctly). Rows without the field stay last.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-group</code></td><td><code>(sw-group list "field")</code></td><td>Groups rows by a field into <code>{key, items}</code> pairs in first-seen order. Rows without the field are dropped.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-limit</code></td><td><code>(sw-limit list 6)</code></td><td>The first N items. A missing N leaves the list whole.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-offset</code></td><td><code>(sw-offset list 6)</code></td><td>Everything after the first N items. A negative N counts as 0.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-slice</code></td><td><code>(sw-slice list -3)</code></td><td>Like <code>Array.prototype.slice</code>: <code>[start, end)</code>, negative indexes count from the end.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-paginate</code></td><td><code>(sw-paginate list page.data.page_no 10)</code></td><td>Page N (1-based) of fixed-size pages. Page 0 or missing is page 1; past the end is empty.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-split</code></td><td><code>(sw-split sizes ",")</code></td><td>A delimited text field as a list: pieces trimmed, empties dropped. Comma by default.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-join</code></td><td><code>\{{sw-join list ", " field="name"}}</code></td><td>Joins a list into text. <code>field=</code> reads one field off each row (named, not positional).</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-length</code></td><td><code>\{{sw-length list}}</code></td><td>Length of an array or string, or an object's key count; otherwise 0.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-includes</code></td><td><code>\{{#if (sw-includes page.data.tags "sport")}}</code></td><td>True when the needle is in the list, or is a substring of the string.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-json-data</code></td><td><code>\{{sw-json-data dataset.products id="products" fields="name,price" size="sm"}}</code></td><td>Hands data to your own script as an inert <code>&lt;script type="application/json"&gt;</code> island. <code>fields=</code> narrows each row, <code>size=</code> sizes the image URLs. Refuses whole namespaces, credential-shaped keys and anything over 256 KB.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="compare">Numeric comparison</h2>
+    <p>These compare as numbers and return false for a non-numeric operand, so <code>"10"</code> is never smaller than <code>"9"</code>. For equality use <code>eq</code> and <code>ne</code>.</p>
+    <table>
+      <thead><tr><th>Helper</th><th>Syntax</th><th class="min-w-56">True when</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>sw-gt</code></td><td><code>\{{#if (sw-gt a b)}}</code></td><td>a &gt; b</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-gte</code></td><td><code>\{{#if (sw-gte a b)}}</code></td><td>a ≥ b</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-lt</code></td><td><code>\{{#if (sw-lt a b)}}</code></td><td>a &lt; b</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-lte</code></td><td><code>\{{#if (sw-lte a b)}}</code></td><td>a ≤ b</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="math">Arithmetic</h2>
+    <p>Numeric strings count as numbers (a <code>page.data</code> value is often text); anything else counts as 0. Results are always finite: division by zero is 0, never <code>Infinity</code> or <code>NaN</code>.</p>
+    <table>
+      <thead><tr><th>Helper</th><th>Syntax</th><th class="min-w-56">Result</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>sw-add</code></td><td><code>\{{sw-add a b}}</code></td><td>a + b</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-sub</code></td><td><code>\{{sw-sub a b}}</code></td><td>a − b</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-mul</code></td><td><code>\{{sw-mul a b}}</code></td><td>a × b</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-div</code></td><td><code>\{{sw-div a b}}</code></td><td>a ÷ b (0 when b is 0)</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-mod</code></td><td><code>\{{sw-mod a b}}</code></td><td>The remainder of a ÷ b (0 when b is 0)</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-ceil</code></td><td><code>\{{sw-ceil value}}</code></td><td>Rounded up. A page count is <code>\{{sw-ceil (sw-div total per_page)}}</code></td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-floor</code></td><td><code>\{{sw-floor value}}</code></td><td>Rounded down</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-round</code></td><td><code>\{{sw-round value 2}}</code></td><td>Rounded to the nearest whole number, or to N decimals (max 10)</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-min</code></td><td><code>\{{sw-min a b …}}</code></td><td>The smallest numeric argument (none: 0)</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-max</code></td><td><code>\{{sw-max a b …}}</code></td><td>The largest numeric argument (none: 0)</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="forms">Forms, search and consent</h2>
+    <table>
+      <thead><tr><th>Helper</th><th>Syntax</th><th class="min-w-56">What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>sw-form</code></td><td><code>\{{sw-form "contact"}}</code></td><td>Embeds a stored form by id, with its endpoint, honeypot and captcha. On a German page it uses <code>contact-de</code> when that form exists. See <a href="{{sw-url '/docs/guides/forms'}}">Forms and spam protection</a>.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-search</code></td><td><code>\{{sw-search placeholder= label= empty= class= limit=}}</code></td><td>A full-text site search box over the static index the publish build writes. Results are pages; each language has its own index.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-consent-settings</code></td><td><code>\{{sw-consent-settings label= class=}}</code></td><td>A button that reopens the cookie preferences, for a footer "Cookie settings" link.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="shop">Shop</h2>
+    <table>
+      <thead><tr><th>Helper</th><th>Syntax</th><th class="min-w-56">What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>sw-add-to-cart</code></td><td><code>\{{sw-add-to-cart sku= name= price= prices= image= label= class=}}</code></td><td>An add-to-cart button. <code>prices=</code> takes a price per market (<code>{ eu: 95, ch: 99 }</code>); <code>price=</code> alone sells in the default market only.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-price</code></td><td><code>\{{sw-price prices= price= class=}}</code></td><td>A price as text in the default market's currency, switched in the browser to the visitor's market. Display only.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-market-switcher</code></td><td><code>\{{sw-market-switcher label= class=}}</code></td><td>A <code>&lt;select&gt;</code> of the shop's markets. Renders nothing with fewer than two.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-cart</code></td><td><code>\{{sw-cart}}</code> or <code>\{{#sw-cart}}…\{{/sw-cart}}</code></td><td>The cart. Bare, the runtime builds the platform drawer. As a block, it binds to your markup through <code>data-sw-part</code>, <code>data-sw-field</code> and <code>data-sw-action</code>.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-order-status</code></td><td><code>\{{sw-order-status}}</code> or block form</td><td>The thank-you panel a payment provider returns the buyer to. The status is read from the platform, never assumed from arriving on the page.</td></tr>
+      </tbody>
+    </table>
+    <p>Setup and channels: <a href="{{sw-url '/docs/guides/shop'}}">Set up the shop</a>.</p>
+
+    <h2 id="booking">Booking</h2>
+    <table>
+      <thead><tr><th>Helper</th><th>Syntax</th><th class="min-w-56">What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>sw-booking</code></td><td><code>\{{sw-booking "offering-id" class="…"}}</code></td><td>The booking widget for one offering: days and times, a start and a length, or check-in and check-out, depending on the offering's mode. An unknown offering renders nothing. In the preview a booking is a dry run.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-booking-status</code></td><td><code>\{{sw-booking-status}}</code> or block form</td><td>A booking's own page, where booking emails link: shows its state and lets the customer cancel until it starts.</td></tr>
+      </tbody>
+    </table>
+    <p>Setup: <a href="{{sw-url '/docs/guides/booking'}}">Take bookings</a>.</p>
+
+    <h2 id="motion">Motion and theme</h2>
+    <table>
+      <thead><tr><th>Helper</th><th>Syntax</th><th class="min-w-56">What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>sw-stagger</code></td><td><code>data-sw-delay="\{{sw-stagger @index 90}}"</code></td><td>A reveal delay for item N of a loop: index × step (default 100 ms), capped at max (default 600 ms).</td></tr>
+        <tr><td class="whitespace-nowrap"><code>sw-theme-toggle</code></td><td><code>\{{sw-theme-toggle class=}}</code></td><td>A light/dark toggle that remembers the visitor's choice without a flash. Needs themes switched on in the website settings.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="editor-only">Editor only</h2>
+    <table>
+      <thead><tr><th>Helper</th><th>Syntax</th><th class="min-w-56">What it does</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>sw-control</code></td><td><code>\{{sw-control target="page.data.gallery" as="folder" label="Gallery"}}</code></td><td>An inline control chip in the content editor that sets a page or site value. Removed from the published page. See <a href="{{sw-url '/docs/reference/editing-attributes'}}#sw-control">Editing attributes</a>.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="example">Putting them together</h2>
+    <p>A news archive page: the newest posts first, ten per page, with a page count and a link to the next page.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/news.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-hb">\{{#each (sw-paginate (sw-sort dataset.posts "date" "desc") page.data.page_no 10)}}</span>
+  <span class="tk-tag">&lt;article</span> <span class="tk-attr">data-sw-animation</span>=<span class="tk-str">"fade-up"</span> <span class="tk-attr">data-sw-delay</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-stagger @index 60}}</span>"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;h2&gt;</span><span class="tk-hb">\{{title}}</span><span class="tk-tag">&lt;/h2&gt;</span>
+    <span class="tk-tag">&lt;time&gt;</span><span class="tk-hb">\{{sw-date date "long"}}</span><span class="tk-tag">&lt;/time&gt;</span>
+    <span class="tk-tag">&lt;p&gt;</span><span class="tk-hb">\{{sw-truncate summary 140}}</span><span class="tk-tag">&lt;/p&gt;</span>
+  <span class="tk-tag">&lt;/article&gt;</span>
+<span class="tk-hb">\{{/each}}</span>
+
+<span class="tk-tag">&lt;p&gt;</span>Page <span class="tk-hb">\{{page.data.page_no}}</span> of <span class="tk-hb">\{{page.data.page_count}}</span><span class="tk-tag">&lt;/p&gt;</span>
+<span class="tk-hb">\{{#if (sw-lt page.data.page_no page.data.page_count)}}</span>
+  <span class="tk-tag">&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-url (sw-concat "/news-" (sw-add page.data.page_no 1))}}</span>"</span><span class="tk-tag">&gt;</span>Older posts<span class="tk-tag">&lt;/a&gt;</span>
+<span class="tk-hb">\{{/if}}</span></code></pre>
+    </div>
+    <p>Each archive page is its own page (<code>news</code>, <code>news-2</code>, …) sharing one template and carrying its own <code>page.data.page_no</code>. A dataset never generates pages by itself.</p>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/reference/editing-attributes'}}">Editing attributes</a>: the <code>data-sw-*</code> directives that make output click-to-edit.</li>
+      <li><a href="{{sw-url '/docs/concepts/templates-and-snippets'}}">Templates and snippets</a></li>
+      <li><a href="{{sw-url '/docs/concepts/datasets'}}">Datasets</a> and <a href="{{sw-url '/docs/reference/field-types'}}">Dataset field types</a></li>
+    </ul>
+  </article>
+</div>

@@ -1,0 +1,95 @@
+{{!-- META {"path":"ai-agents","title":"Connect an AI agent","description":"Connect Claude Code, Claude.ai, ChatGPT or any MCP client to a project over the OAuth MCP endpoint at /mcp, or with a token, and choose what it may do.","parent":"guides","order":8,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>Every instance serves a remote MCP endpoint at <code>https://&lt;your instance&gt;/mcp</code>: Streamable HTTP, stateless, nothing to install. An agent signs in with OAuth 2.1 and PKCE in the browser, or sends a token. Either way it acts on one project, with your role there, limited to the capabilities you grant, and every tool call goes through the same API the editor uses. Keep the editor open and you watch the changes arrive.</p>
+
+    <h2 id="claude-code">Claude Code</h2>
+    <ol>
+      <li>Add the server, using your instance's address:</li>
+    </ol>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">terminal</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-ok">$</span> claude mcp add --transport http sitewright https://sites.example.com/mcp</code></pre>
+    </div>
+    <ol start="2">
+      <li>In Claude Code, run <code>/mcp</code>, pick <code>sitewright</code> and authenticate. Your browser opens the instance's sign-in.</li>
+      <li>On the consent screen, choose the project and the capabilities to grant, and approve. Then return to Claude Code; the page also offers the callback URL to copy if your client asks for it.</li>
+      <li>Ask for something small first ("list the pages of this project") to see the connection work.</li>
+    </ol>
+    <div class="ws-browser mt-6">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">sites.example.com/oauth/authorize</span></div>
+      {{> ws-media slot="doc_agent_consent" class="rounded-none"}}
+    </div>
+    <p>Browser sign-in needs the instance on HTTPS (or <code>localhost</code>).</p>
+
+    <h2 id="headless">Without a browser</h2>
+    <p>For CI, a server or a remote shell, create a project token (see <a href="{{sw-url '/docs/guides/api-keys'}}">API keys and member tokens</a>) and send it as a header. No OAuth round trip, and it works over plain HTTP too:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">terminal</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-ok">$</span> claude mcp add --transport http sitewright https://sites.example.com/mcp \
+    -H "Authorization: Bearer swk_…"</code></pre>
+    </div>
+
+    <h2 id="other">Other clients</h2>
+    <p>Cursor, Cline, Windsurf, Gemini CLI, VS Code and most other MCP tools take an HTTP server entry. Check your client's docs for its exact key:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">mcp.json</span></div>
+<pre class="overflow-x-auto"><code>{ <span class="tk-attr">"mcpServers"</span>: { <span class="tk-attr">"sitewright"</span>: { <span class="tk-attr">"type"</span>: <span class="tk-str">"http"</span>, <span class="tk-attr">"url"</span>: <span class="tk-str">"https://sites.example.com/mcp"</span> } } }</code></pre>
+    </div>
+    <p>Hosted assistants (Claude.ai, ChatGPT in developer mode, Le Chat) connect as a custom connector with the same URL and OAuth. The editor's <strong>AI agent details</strong> dialog has the exact steps for each, with your instance's URL filled in.</p>
+
+    <h2 id="oauth">How the sign-in works</h2>
+    <table>
+      <thead><tr><th>Piece</th><th>Detail</th></tr></thead>
+      <tbody>
+        <tr><td>Discovery</td><td>An unauthenticated call gets a 401 pointing at <code>/.well-known/oauth-protected-resource</code>; the server metadata is at <code>/.well-known/oauth-authorization-server</code>.</td></tr>
+        <tr><td>Client registration</td><td>Dynamic (<code>/oauth/register</code>), public clients only, PKCE with S256, no client secret.</td></tr>
+        <tr><td>Scope</td><td>One project per connection. Add another connection for another project, or use a member token.</td></tr>
+        <tr><td>Consent</td><td>Every capability is a checkbox. With no scope requested, all are ticked except <code>payments:provider:write</code>; <code>content:delete</code>, <code>deploy</code> and <code>payments:provider:write</code> are marked as elevated.</td></tr>
+        <tr><td>Role</td><td>Your role on the project is fixed into the grant when you approve.</td></tr>
+        <tr><td>Lifetime</td><td>Access tokens last an hour and refresh by themselves. The whole session ends after 8 hours by default (an admin sets 1 to 720 in <strong>System Settings → AI Assistant → Agent session length</strong>); then you sign in again.</td></tr>
+        <tr><td>Rate</td><td>600 calls per minute per token.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="capabilities">Choosing capabilities</h2>
+    <table>
+      <thead><tr><th>Capability</th><th>Grant it when the agent should</th></tr></thead>
+      <tbody>
+        <tr><td class="whitespace-nowrap"><code>content:read</code></td><td>Read pages, data, media, submissions, statistics, orders and bookings.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>content:write</code></td><td>Write pages, data, settings and media.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>content:delete</code></td><td>Delete things. Not included in write.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>publish</code></td><td>Deploy to Local Hosting.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>deploy</code></td><td>Deploy to FTP, SFTP and git targets, which often hold the client's live site.</td></tr>
+        <tr><td class="whitespace-nowrap"><code>payments:provider:write</code></td><td>Write instance-wide payment provider definitions. Only honored for an instance admin.</td></tr>
+      </tbody>
+    </table>
+    <p>Some actions are never an agent's, whatever it is granted: entering payment keys, refunds, cancelling a paid booking, and creating or revoking tokens. Those need a person signed in to the editor. The full list of tools and what each needs is in <a href="{{sw-url '/docs/reference/mcp-tools'}}">MCP tools</a>.</p>
+
+    <h2 id="first-calls">What the agent gets</h2>
+    <p>On connecting, the agent receives the platform's instructions (an instance admin can replace them) and can fetch more on demand: <code>get_reference</code> for every helper and directive, <code>get_components</code> for the component contracts, <code>get_guide</code> for a feature area, and <code>get_capabilities</code> for a map of what the platform can do. <code>preview_page</code> lets it see its work as desktop and mobile screenshots before saving.</p>
+
+    <h2 id="verify">Check your work</h2>
+    <ul>
+      <li>Ask the agent to call <code>get_scope</code>: it reports the project, role and capabilities of the connection.</li>
+      <li>Have it change one heading with <code>patch_page</code> and watch the editor's preview update.</li>
+    </ul>
+
+    <h2 id="pitfalls">Pitfalls</h2>
+    <ul>
+      <li><strong>"Unknown client" at sign-in.</strong> The client registration it remembers is gone. In Claude Code, run <code>/mcp</code>, pick the server, choose <em>Clear authentication</em> and connect again.</li>
+      <li><strong>The stdio bridge is deprecated.</strong> Do not install <code>sitewright-mcp</code>; connect to <code>/mcp</code> over HTTP. On <code>/mcp</code>, <code>login</code> and <code>switch_project</code> only report that the connection's token is fixed.</li>
+      <li><strong>A web application firewall in front of the instance</strong> with default rules refuses agents' writes. See <a href="{{sw-url '/docs/self-hosting/security'}}">Security</a>.</li>
+      <li><strong>Deploying replaces the live site.</strong> Grant <code>deploy</code> only to an agent you want to put things live.</li>
+    </ul>
+
+    <h2 id="next">Related</h2>
+    <ul>
+      <li><a href="{{sw-url '/docs/reference/mcp-tools'}}">MCP tools</a></li>
+      <li><a href="{{sw-url '/docs/guides/api-keys'}}">API keys and member tokens</a></li>
+      <li><a href="{{sw-url '/features/ai-agents'}}">AI agents</a></li>
+    </ul>
+  </article>
+</div>

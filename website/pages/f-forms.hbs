@@ -1,0 +1,104 @@
+{{!-- META {"path":"forms","title":"Forms & spam protection","description":"Define a form once, place it on any page with one helper, and keep every submission in an inbox. Bots are filtered in layers before a message is stored or sent.","parent":"features","order":6,"data":{"icon":"envelope-simple","eyebrow":"Forms & spam protection","headline":"Define the form once. Keep every message."}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.15fr]">
+  <div data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">The form editor</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="editor_title">Fields, messages and delivery in one place.</h2>
+    <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="editor_lead">In the Forms tab you set the recipient, up to 50 fields, the submit label, the success and error messages or a thank-you page, and how the message is delivered. Twelve field types cover the usual cases.</p>
+    <div class="mt-6 flex flex-wrap gap-2">
+      {{#each (sw-split "text|email|tel|url|number|textarea|select|radio|checkbox|date|time|datetime" "|")}}
+      <span class="rounded-full border border-base-content/10 bg-base-200/60 px-3 py-1 font-code text-xs">{{this}}</span>
+      {{/each}}
+    </div>
+    <p class="mt-4 text-sm text-base-content/60">A checkbox with options is a multiple choice; without, it is one yes-or-no box. Date and time fields open the built-in date picker.</p>
+  </div>
+  <div class="ws-browser" data-sw-animation="fade-up" data-sw-delay="100">
+    <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Forms · Edit form · contact</span></div>
+    {{> ws-media slot="feat_forms_editor" class="rounded-none"}}
+  </div>
+</section>
+
+<section class="bg-neutral text-white">
+  <div class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1.1fr_1fr]">
+    <div class="ws-window overflow-hidden rounded-2xl" data-sw-animation="fade-up">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/contact.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-com">\{{!-- The whole form, generated from its definition --}}</span>
+<span class="tk-hb">\{{sw-form "contact" class="max-w-lg"}}</span>
+
+<span class="tk-com">\{{!-- Or your own markup, wired to the same form --}}</span>
+<span class="tk-tag">&lt;form</span> <span class="tk-attr">data-sw-form</span>=<span class="tk-str">"contact"</span> <span class="tk-attr">class</span>=<span class="tk-str">"grid gap-3"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;input</span> <span class="tk-attr">name</span>=<span class="tk-str">"name"</span> <span class="tk-attr">required</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;input</span> <span class="tk-attr">name</span>=<span class="tk-str">"email"</span> <span class="tk-attr">type</span>=<span class="tk-str">"email"</span> <span class="tk-attr">required</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;button</span> <span class="tk-attr">type</span>=<span class="tk-str">"submit"</span><span class="tk-tag">&gt;</span>Send<span class="tk-tag">&lt;/button&gt;</span>
+<span class="tk-tag">&lt;/form&gt;</span></code></pre>
+    </div>
+    <div data-sw-animation="fade-up" data-sw-delay="100">
+      <p class="ws-index text-accent">On the page</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="embed_title">Generated, or your own markup.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-white/70" data-sw-text="embed_lead">Either way the platform adds the submit address, the hidden spam traps, the captcha when you want one, and the messages. On a German page, a form named <span class="font-code text-accent">contact-de</span> is used when it exists.</p>
+      <p class="mt-4 leading-relaxed text-white/60">The browser checks required fields first. The server checks them again, along with email addresses, links, numbers and choices.</p>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid gap-12 lg:grid-cols-[1fr_1.2fr]">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">Spam protection</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="spam_title">Six checks before a message counts.</h2>
+      <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="spam_lead">A bot caught by the first checks gets an ordinary success reply, so it learns nothing. Nothing is stored or sent, and the inbox shows how many were filtered and why.</p>
+      <a class="btn btn-ghost mt-6 px-0 hover:bg-transparent" href="{{sw-url '/docs/guides/forms'}}">The forms guide {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+    <ol class="list-none space-y-3 p-0">
+      <li class="flex gap-5 rounded-2xl border border-base-content/10 bg-base-100 p-5" data-sw-animation="fade-up"><span class="ws-numeral w-10 shrink-0 text-4xl">1</span><div><h3 class="font-heading font-bold">Honeypot</h3><p class="mt-1 text-sm text-base-content/70">A hidden field people never see and bots fill in.</p></div></li>
+      <li class="flex gap-5 rounded-2xl border border-base-content/10 bg-base-100 p-5" data-sw-animation="fade-up" data-sw-delay="40"><span class="ws-numeral w-10 shrink-0 text-4xl">2</span><div><h3 class="font-heading font-bold">Time trap</h3><p class="mt-1 text-sm text-base-content/70">A form sent faster than a person could fill it is dropped.</p></div></li>
+      <li class="flex gap-5 rounded-2xl border border-base-content/10 bg-base-100 p-5" data-sw-animation="fade-up" data-sw-delay="80"><span class="ws-numeral w-10 shrink-0 text-4xl">3</span><div><h3 class="font-heading font-bold">Interaction check</h3><p class="mt-1 text-sm text-base-content/70">At least one real input event has to have happened.</p></div></li>
+      <li class="flex gap-5 rounded-2xl border border-base-content/10 bg-base-100 p-5" data-sw-animation="fade-up" data-sw-delay="120"><span class="ws-numeral w-10 shrink-0 text-4xl">4</span><div><h3 class="font-heading font-bold">Validation</h3><p class="mt-1 text-sm text-base-content/70">Every field is checked on the server against the form's definition.</p></div></li>
+      <li class="flex gap-5 rounded-2xl border border-base-content/10 bg-base-100 p-5" data-sw-animation="fade-up" data-sw-delay="160"><span class="ws-numeral w-10 shrink-0 text-4xl">5</span><div><h3 class="font-heading font-bold">Proof of work <span class="ml-1 rounded-full bg-accent/15 px-2 py-0.5 align-middle text-xs font-medium text-accent">opt-in</span></h3><p class="mt-1 text-sm text-base-content/70">The visitor's browser solves a small SHA-256 puzzle first, served by your own instance. Each challenge works once, for one form, for 30 minutes.</p></div></li>
+      <li class="flex gap-5 rounded-2xl border border-base-content/10 bg-base-100 p-5" data-sw-animation="fade-up" data-sw-delay="200"><span class="ws-numeral w-10 shrink-0 text-4xl">6</span><div><h3 class="font-heading font-bold">Captcha <span class="ml-1 rounded-full bg-accent/15 px-2 py-0.5 align-middle text-xs font-medium text-accent">opt-in</span></h3><p class="mt-1 text-sm text-base-content/70">hCaptcha, reCAPTCHA v2 or reCAPTCHA v3 with a score threshold, set once per project and switched on per form.</p></div></li>
+    </ol>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+    <div class="grid gap-6 lg:grid-cols-[1fr_1.2fr] lg:items-end" data-sw-animation="fade-up">
+      <h2 class="ws-display text-3xl font-bold sm:text-5xl" data-sw-text="delivery_title">Delivered the way the host allows.</h2>
+      <p class="max-w-xl text-lg leading-relaxed text-base-content/70" data-sw-text="delivery_lead">Each form picks a delivery mode from the ones the instance admin has enabled. A third-party endpoint is an option too.</p>
+    </div>
+    <div class="mt-10 overflow-x-auto rounded-2xl border border-base-content/10 bg-base-100" data-sw-animation="fade-up">
+      <table class="w-full min-w-[40rem] border-collapse text-left text-sm">
+        <thead><tr class="bg-base-200/70"><th class="px-5 py-4 font-heading text-base font-semibold">Mode</th><th class="px-5 py-4 font-heading text-base font-semibold">Sent by</th><th class="px-5 py-4 font-heading text-base font-semibold">Kept in the inbox</th><th class="px-5 py-4 font-heading text-base font-semibold">Spam checks</th></tr></thead>
+        <tbody class="align-top text-base-content/80">
+          <tr class="border-t border-base-content/10"><th class="px-5 py-4 font-medium text-base-content">Platform email</th><td class="px-5 py-4">The instance's SMTP, or the project's own</td><td class="px-5 py-4">{{sw-icon "check:bold" "h-4 w-4 text-accent"}}</td><td class="px-5 py-4">All six</td></tr>
+          <tr class="border-t border-base-content/10"><th class="px-5 py-4 font-medium text-base-content">contact.php</th><td class="px-5 py-4">A PHP file published with the site, using the host's mail or SMTP</td><td class="px-5 py-4">{{sw-icon "minus:bold" "h-4 w-4 text-base-content/40"}}</td><td class="px-5 py-4">Honeypot and time trap</td></tr>
+          <tr class="border-t border-base-content/10"><th class="px-5 py-4 font-medium text-base-content">WhatsApp</th><td class="px-5 py-4">The visitor's own WhatsApp, opened with the message</td><td class="px-5 py-4">{{sw-icon "minus:bold" "h-4 w-4 text-base-content/40"}}</td><td class="px-5 py-4">None</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="mt-4 text-sm text-base-content/60" data-sw-animation="fade-up">With contact.php the recipient's address stays in the PHP file and never appears in the page.</p>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid items-center gap-12 lg:grid-cols-[1.15fr_1fr]">
+    <div class="ws-browser order-2 lg:order-1" data-sw-animation="fade-up">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Forms · contact · submissions</span></div>
+      {{> ws-media slot="feat_forms_inbox" class="rounded-none"}}
+    </div>
+    <div class="sw-border-beam order-1 rounded-3xl border border-base-content/10 bg-base-100 p-8 lg:order-2 [--sw-beam-width:2px]" data-sw-animation="fade-up" data-sw-delay="100">
+      {{sw-icon "tray" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold" data-sw-text="inbox_title">Stored first, then sent.</h3>
+      <p class="mt-3 leading-relaxed text-base-content/70" data-sw-text="inbox_lead">With platform email, a submission is saved before any email goes out. If the mail server fails, the email is tried again six more times over about 31 hours, and you can resend it from the inbox.</p>
+      <ul class="mt-5 list-none space-y-2 p-0 text-sm text-base-content/80">
+        <li class="flex gap-2">{{sw-icon "check:bold" "mt-0.5 h-4 w-4 shrink-0 text-accent"}} Reply-To is the sender's address, so you answer with one click.</li>
+        <li class="flex gap-2">{{sw-icon "check:bold" "mt-0.5 h-4 w-4 shrink-0 text-accent"}} Every submission counts as a goal in the statistics.</li>
+        <li class="flex gap-2">{{sw-icon "check:bold" "mt-0.5 h-4 w-4 shrink-0 text-accent"}} Agents read the inbox with <code class="whitespace-nowrap font-code">list_submissions</code>.</li>
+      </ul>
+      <a class="btn btn-ghost btn-sm mt-5 px-0 hover:bg-transparent" href="{{sw-url '/showcase/forms'}}">Try a live form {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+    </div>
+  </div>
+</section>
+
+{{> feature-next features=pages.features._attributes.children}}

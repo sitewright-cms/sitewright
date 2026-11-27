@@ -1,0 +1,53 @@
+{
+  "dataset": {
+    "id": "home_services",
+    "name": "Home: live demo cards",
+    "slug": "home_services",
+    "fields": [
+      {
+        "name": "title",
+        "type": "text",
+        "required": true,
+        "localized": false
+      },
+      {
+        "name": "summary",
+        "type": "text",
+        "required": true,
+        "localized": false
+      },
+      {
+        "name": "icon",
+        "type": "icon",
+        "required": false,
+        "localized": false
+      }
+    ]
+  },
+  "entries": [
+    {
+      "id": "launch",
+      "values": {
+        "title": "Launch",
+        "summary": "From brief to a live site in days, not months.",
+        "icon": "rocket-launch"
+      }
+    },
+    {
+      "id": "design",
+      "values": {
+        "title": "Design",
+        "summary": "Your brand in every token, in light and dark.",
+        "icon": "palette"
+      }
+    },
+    {
+      "id": "grow",
+      "values": {
+        "title": "Grow",
+        "summary": "Visits, rankings and leads, built in.",
+        "icon": "chart-line-up"
+      }
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{{!-- META {"path":"templates-and-snippets","title":"Templates and snippets","description":"Share one layout across many pages with a template, and one piece of markup across many places with a snippet. Widgets are snippets that bring their own data.","parent":"concepts","order":3,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>Two kinds of reuse cover most sites. A <strong>template</strong> is a whole page layout that many pages render. A <strong>snippet</strong> is a named fragment you include wherever you need it. Both are Handlebars source, checked by the same rules as a page, and both are versioned in History.</p>
+
+    <h2 id="templates">Templates</h2>
+    <p>Give a page a template and it renders the template's source instead of its own. The page keeps only its settings and its content: every value a client edits on it is stored in that page's <code>page.data</code>. Fifty case studies on one template are fifty pages with fifty sets of content and a single layout to change.</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">templates/case-study</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;article</span> <span class="tk-attr">class</span>=<span class="tk-str">"mx-auto max-w-3xl px-6 py-16"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-sm font-semibold uppercase text-primary"</span> <span class="tk-attr">data-sw-text</span>=<span class="tk-str">"client"</span><span class="tk-tag">&gt;</span>Client<span class="tk-tag">&lt;/p&gt;</span>
+  <span class="tk-tag">&lt;h1</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-2 text-4xl font-bold"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{page.title}}</span><span class="tk-tag">&lt;/h1&gt;</span>
+  <span class="tk-tag">&lt;p</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-4 text-lg text-base-content/70"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{page.description}}</span><span class="tk-tag">&lt;/p&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"prose mt-10"</span> <span class="tk-attr">data-sw-html</span>=<span class="tk-str">"story"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;p&gt;</span>Tell the story of the project here.<span class="tk-tag">&lt;/p&gt;</span>
+  <span class="tk-tag">&lt;/div&gt;</span>
+<span class="tk-tag">&lt;/article&gt;</span></code></pre>
+    </div>
+    <p>Each page on this template shows its own title and description from its settings, and its own <code>client</code> and <code>story</code> values from its <code>page.data</code>.</p>
+    <h3 id="template-workflow">Working with templates</h3>
+    <ul>
+      <li>Create one in the <strong>Templates</strong> rail, or turn an existing page into one with <strong>Save as template</strong> from its row menu.</li>
+      <li>Apply it in the page settings with <strong>Use a template</strong>. A template can declare default <code>page.data</code> values; they are copied into a page when you apply the template, without overwriting values the page already has.</li>
+      <li>In the page editor, a templated page's code is locked. Edit the template where it lives, and every page on it changes. Or <strong>fork</strong> it into the page: the source and its default data are copied into the page, the link to the template is dropped, and the page's code is its own from then on.</li>
+      <li>Over the API, a templated page sets <code>"template"</code> and leaves <code>source</code> empty. A project template is referenced by its id; a built-in one as <code>global:&lt;id&gt;</code>.</li>
+    </ul>
+    <p>Six built-in templates ship with the platform: <code>global:landing</code>, <code>global:text</code>, <code>global:blog-article</code>, <code>global:blog-overview</code>, <code>global:thank-you</code> and <code>global:shop</code>. An instance administrator can edit them, for every project at once.</p>
+    <div class="ws-callout"><p class="!mt-0"><strong>Long archives.</strong> A blog with hundreds of posts is a parent page with one child page per post, all on one post template. The archive lists <code>page.children</code> in windows with <code>sw-paginate</code>, <code>sw-limit</code> or <code>sw-slice</code>, and archive page 2 reaches the same posts as <code>pages.news._attributes.children</code>. See the <a href="{{sw-url '/docs/reference/helpers'}}">helper reference</a>.</p></div>
+
+    <h2 id="snippets">Snippets</h2>
+    <p>A snippet is a named fragment. You include it with the Handlebars partial syntax, in a page, a template or another snippet:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">any page</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-hb">\{{&gt; contact-block}}</span></code></pre>
+    </div>
+    <ul>
+      <li>Create snippets in the <strong>Snippets</strong> rail. The name is the partial name: letters, digits, <code>_</code> and <code>-</code>, starting with a letter. The rail copies the include line or the source for you and previews each snippet.</li>
+      <li>The include runs in the <strong>current context</strong>. Inside <code>\{{#each dataset.team}}</code>, <code>\{{&gt; team-card}}</code> sees the current entry and reads <code>\{{name}}</code> directly.</li>
+      <li>A snippet's <code>data-sw-*</code> attributes edit the <strong>including page's</strong> data. The same snippet on two pages holds two separate sets of text.</li>
+      <li>A snippet that includes itself, directly or through other snippets, fails with a clear error instead of hanging the build.</li>
+    </ul>
+
+    <h3 id="parameters">Passing parameters</h3>
+    <p>Add <code>key=value</code> pairs after the name. Inside the snippet they read like any other value, next to everything the surrounding context already has:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">snippets/cta-band</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;section</span> <span class="tk-attr">class</span>=<span class="tk-str">"bg-neutral text-neutral-content"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-tag">&lt;div</span> <span class="tk-attr">class</span>=<span class="tk-str">"mx-auto max-w-5xl px-6 py-16"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;h2</span> <span class="tk-attr">class</span>=<span class="tk-str">"text-3xl font-bold"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{heading}}</span><span class="tk-tag">&lt;/h2&gt;</span>
+    <span class="tk-tag">&lt;a</span> <span class="tk-attr">class</span>=<span class="tk-str">"btn btn-primary mt-6"</span> <span class="tk-attr">href</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-url link}}</span>"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{label}}</span><span class="tk-tag">&lt;/a&gt;</span>
+  <span class="tk-tag">&lt;/div&gt;</span>
+<span class="tk-tag">&lt;/section&gt;</span></code></pre>
+    </div>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/services · source</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-hb">\{{&gt; cta-band heading="Ready when you are." label="Get in touch" link="/contact/"}}</span></code></pre>
+    </div>
+    <p>Parameters can be values from the page as well as literals, for example <code>\{{&gt; cta-band heading=page.data.cta_heading …}}</code>. They are also the way to hand a snippet data that the page has to ask for, described next.</p>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>A snippet cannot ask for page-tree data on its own.</strong> <code>page.parent</code>, <code>page.children</code> and <code>pages.*</code> are only built for a page whose own source (or template) names them, and a snippet's source is not scanned. A breadcrumb snippet that reads <code>page.parent</code> renders nothing unless the page passes it in: <code>\{{&gt; breadcrumb parent=page.parent}}</code>. This site's own page header works that way.</p></div>
+
+    <h3 id="cookbook">The built-in cookbook</h3>
+    <p>The Snippets rail also lists the global snippets that ship with the platform, grouped by purpose: sliders, galleries and lightboxes, tabs, modals, forms and inputs, the shop, data and loops, site chrome and effects. Each is a worked example of one component or technique. Include one as it is, or copy its source into a project snippet and make it yours. <code>nav-header</code> and <code>nav-footer</code> are the recipes every new project's header and footer start from.</p>
+    <table>
+      <thead><tr><th>Same name in…</th><th>Which one renders</th></tr></thead>
+      <tbody>
+        <tr><td>a project snippet and a global snippet</td><td>The project snippet. Name yours after a global one to override it in this project only.</td></tr>
+        <tr><td>a global snippet edited by an administrator</td><td>The edited version, in every project that has no snippet of that name.</td></tr>
+        <tr><td>a built-in widget</td><td>The widget. A project snippet cannot use a widget's name; saving it is refused.</td></tr>
+      </tbody>
+    </table>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>Not in header, footer or sidebar slots.</strong> The chrome slots render without snippets, so <code>\{{&gt; name}}</code> in a slot fails: the preview leaves that slot out and reports why, and a publish stops with an error naming the slot. Write the markup into the slot itself. See <a href="{{sw-url '/docs/concepts/header-footer-sidebars'}}">Header, footer and sidebars</a>.</p></div>
+
+    <h2 id="widgets">Widgets</h2>
+    <p>A widget is a snippet with a data manifest. When you save a page that includes one, the platform creates the dataset the widget needs, with sample content, if the project does not have it yet. It never overwrites a dataset that exists, so re-saving a page keeps the client's slides. Typing the include, pasting it or having an agent write it all provision the same way. Removing the include leaves the dataset in place.</p>
+    <table>
+      <thead><tr><th>Widget</th><th>What it renders</th><th>Its dataset</th></tr></thead>
+      <tbody>
+        <tr><td><code>\{{&gt; hero-slider}}</code></td><td>A background slideshow with captions, built on the carousel component. Its settings: autoplay and interval, a slow Ken Burns drift, arrows, dots, full-bleed or contained, light or dark captions, and an optional fixed height.</td><td><code>hero</code></td></tr>
+        <tr><td><code>\{{&gt; logo-marquee}}</code></td><td>A CSS-only strip of logos that scrolls on its own, from a list or from every image in a media folder.</td><td><code>marquee</code></td></tr>
+      </tbody>
+    </table>
+    <p>Both are edited in the <strong>Datasets</strong> rail, with no code. If the dataset holds several configurations, set <code>page.data.hero_config</code> to an entry id to choose one; otherwise the first entry renders. The <strong>Widgets</strong> rail lists them and copies the include line.</p>
+
+    <h2 id="choose">Template, snippet or widget?</h2>
+    <ul>
+      <li>Many pages, one layout: a <strong>template</strong>.</li>
+      <li>One block, many places, written by you: a <strong>snippet</strong>.</li>
+      <li>One block a client fills in without code: a <strong>widget</strong>, or a snippet that loops over a dataset you define.</li>
+      <li>On every page: a <a href="{{sw-url '/docs/concepts/header-footer-sidebars'}}">slot</a>, not any of these.</li>
+    </ul>
+  </article>
+</div>

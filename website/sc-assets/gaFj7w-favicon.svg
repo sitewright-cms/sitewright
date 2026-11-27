@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" fill="none" role="img" aria-label="Sitewright">
+  <title>Sitewright</title>
+  <!-- App-tile favicon: indigo tile + white square + teal/white blocks. The tile guarantees
+       contrast on any browser chrome (light or dark); stroke is slightly heavier (8) so the
+       mark survives at 16px. -->
+  <rect width="96" height="96" rx="20" fill="#4F2DD8"/>
+  <path d="M30 20 V72 H76" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="40" y="52" width="26" height="14" rx="3" fill="#2DD4BF"/>
+  <rect x="40" y="34" width="26" height="14" rx="3" fill="#FFFFFF"/>
+</svg>

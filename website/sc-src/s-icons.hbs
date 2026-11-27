@@ -1,0 +1,155 @@
+{{!-- META {"path":"icons","title":"Icons and flags","description":"1,512 Phosphor icons in six weights, 274 brand logos and the flags of about 250 countries, inlined as SVG by one helper. Only the icons a page uses are shipped, and they take the text colour and any size class.","parent":"showcase","order":14,"data":{"icon":"smiley","preset":"halftone-pulse"}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">01 · Six weights</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="i1_title">One name, six weights.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="i1_lead">A bare name is a Phosphor icon, filled by default. Add a weight after a colon: thin, light, regular, bold, fill or duotone. The second argument is the class list, so size and colour are ordinary utilities.</p>
+  </div>
+  <div class="mt-10 overflow-x-auto rounded-3xl border border-base-content/10 bg-base-100 p-6">
+<!--demo:weights-->
+<div class="grid min-w-[36rem] grid-cols-6 gap-4 text-center">
+  <div>{{sw-icon "rocket-launch:thin" "mx-auto h-12 w-12 ws-ink"}}<p class="mt-3 font-code text-xs">thin</p></div>
+  <div>{{sw-icon "rocket-launch:light" "mx-auto h-12 w-12 ws-ink"}}<p class="mt-3 font-code text-xs">light</p></div>
+  <div>{{sw-icon "rocket-launch:regular" "mx-auto h-12 w-12 ws-ink"}}<p class="mt-3 font-code text-xs">regular</p></div>
+  <div>{{sw-icon "rocket-launch:bold" "mx-auto h-12 w-12 ws-ink"}}<p class="mt-3 font-code text-xs">bold</p></div>
+  <div>{{sw-icon "rocket-launch" "mx-auto h-12 w-12 ws-ink"}}<p class="mt-3 font-code text-xs">fill (default)</p></div>
+  <div>{{sw-icon "rocket-launch:duotone" "mx-auto h-12 w-12 ws-ink"}}<p class="mt-3 font-code text-xs">duotone</p></div>
+</div>
+<!--/demo-->
+  </div>
+  <div class="mt-6">
+<!--code:weights file="icons · weights"-->
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:items-start">
+      <div data-sw-animation="fade-up">
+        <p class="ws-index ws-ink">02 · Size and colour</p>
+        <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="i2_title">Utilities do the styling.</h2>
+        <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="i2_lead">Icons draw in <code class="font-code text-base">currentColor</code>, so a text colour class tints them and they follow the theme. Familiar names from other sets, such as <code class="font-code text-base">settings</code>, <code class="font-code text-base">search</code> or <code class="font-code text-base">mail</code>, map to their Phosphor twins. An unknown name renders nothing.</p>
+      </div>
+      <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6">
+<!--demo:sizes-->
+<div class="flex flex-wrap items-end gap-6">
+  {{sw-icon "lightning" "h-4 w-4"}}
+  {{sw-icon "lightning" "h-6 w-6 text-accent"}}
+  {{sw-icon "lightning" "h-8 w-8 ws-ink"}}
+  {{sw-icon "lightning:duotone" "h-12 w-12 text-secondary"}}
+  {{sw-icon "settings:bold" "h-12 w-12"}}
+  {{sw-icon "search:bold" "h-12 w-12"}}
+  {{sw-icon "mail:bold" "h-12 w-12"}}
+</div>
+<!--/demo-->
+        <div class="mt-6">
+<!--code:sizes file="icons · size, colour, aliases"-->
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">03 · Brands</p>
+    <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="i3_title">Logos, in two cuts.</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="i3_lead">The <code class="font-code text-base">brand:</code> prefix draws a logo from the Simple Icons set, the right shape for a row of social links. A bare brand name such as <code class="font-code text-base">github</code> draws Phosphor's own logo instead, which takes a weight and sits well inline with text. Note that <code class="font-code text-base">x</code> is the close glyph and <code class="font-code text-base">brand:x</code> is the logo.</p>
+  </div>
+  <div class="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6">
+      <p class="ws-index text-base-content/60">brand: tiles</p>
+<!--demo:brands-->
+<div class="mt-4 flex flex-wrap gap-5">
+  {{sw-icon "brand:github" "h-8 w-8"}}
+  {{sw-icon "brand:linkedin" "h-8 w-8"}}
+  {{sw-icon "brand:x" "h-8 w-8"}}
+  {{sw-icon "brand:bluesky" "h-8 w-8"}}
+  {{sw-icon "brand:mastodon" "h-8 w-8"}}
+  {{sw-icon "brand:youtube" "h-8 w-8"}}
+  {{sw-icon "brand:instagram" "h-8 w-8"}}
+  {{sw-icon "brand:whatsapp" "h-8 w-8"}}
+  {{sw-icon "brand:discord" "h-8 w-8"}}
+  {{sw-icon "brand:figma" "h-8 w-8"}}
+</div>
+<!--/demo-->
+    </div>
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6">
+      <p class="ws-index text-base-content/60">Bare names, with weights</p>
+<!--demo:bare-->
+<div class="mt-4 flex flex-wrap gap-5">
+  {{sw-icon "github" "h-8 w-8"}}
+  {{sw-icon "github:regular" "h-8 w-8"}}
+  {{sw-icon "linkedin" "h-8 w-8"}}
+  {{sw-icon "linkedin:bold" "h-8 w-8"}}
+  {{sw-icon "youtube:duotone" "h-8 w-8"}}
+  {{sw-icon "slack:bold" "h-8 w-8"}}
+  {{sw-icon "x:bold" "h-8 w-8"}}
+</div>
+<!--/demo-->
+    </div>
+  </div>
+  <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+    <div class="min-w-0">
+<!--code:brands file="icons · brand tiles"-->
+    </div>
+    <div class="min-w-0">
+<!--code:bare file="icons · bare brand names"-->
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-16 sm:py-24">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">04 · Flags</p>
+      <h2 class="ws-display mt-3 text-3xl font-bold sm:text-5xl" data-sw-text="i4_title">Full-colour flags.</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/70" data-sw-text="i4_lead">Flags keep their own colours, so they have their own helper: <code class="font-code text-base">sw-flag</code> with an ISO country code, plus <code class="font-code text-base">eu</code>. Add <code class="font-code text-base">-circle</code> for the round cut. The country name becomes the accessible label. For a language switcher, prefer language names: Spanish is not only Spain.</p>
+    </div>
+    <div class="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6">
+<!--demo:flags-->
+<div class="flex flex-wrap items-center gap-4">
+  {{sw-flag "de" "h-6 rounded-sm"}}
+  {{sw-flag "fr" "h-6 rounded-sm"}}
+  {{sw-flag "es" "h-6 rounded-sm"}}
+  {{sw-flag "it" "h-6 rounded-sm"}}
+  {{sw-flag "gb" "h-6 rounded-sm"}}
+  {{sw-flag "us" "h-6 rounded-sm"}}
+  {{sw-flag "ca" "h-6 rounded-sm"}}
+  {{sw-flag "br" "h-6 rounded-sm"}}
+  {{sw-flag "jp" "h-6 rounded-sm"}}
+  {{sw-flag "in" "h-6 rounded-sm"}}
+  {{sw-flag "za" "h-6 rounded-sm"}}
+  {{sw-flag "eu" "h-6 rounded-sm"}}
+</div>
+<!--/demo-->
+      </div>
+      <div class="rounded-3xl border border-base-content/10 bg-base-100 p-6">
+<!--demo:circles-->
+<div class="flex flex-wrap items-center gap-4">
+  {{sw-flag "de-circle" "h-9 w-9"}}
+  {{sw-flag "fr-circle" "h-9 w-9"}}
+  {{sw-flag "es-circle" "h-9 w-9"}}
+  {{sw-flag "jp-circle" "h-9 w-9"}}
+  {{sw-flag "br-circle" "h-9 w-9"}}
+  {{sw-flag "eu-circle" "h-9 w-9"}}
+</div>
+<!--/demo-->
+      </div>
+    </div>
+    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div class="min-w-0">
+<!--code:flags file="flags · rectangular"-->
+      </div>
+      <div class="min-w-0">
+<!--code:circles file="flags · round"-->
+      </div>
+    </div>
+    <p class="mt-8 max-w-3xl leading-relaxed text-base-content/70">The same artwork is also reachable as an icon name, <code class="font-code">flag:de</code>, which is what an icon picker stores in a dataset's icon field. Write <code class="font-code">sw-flag</code> by hand. Agents find flags through the <code class="font-code">search_icons</code> tool, which matches country names.</p>
+  </div>
+</section>
+
+{{> showcase-next}}

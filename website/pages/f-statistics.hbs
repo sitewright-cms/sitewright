@@ -1,0 +1,123 @@
+{{!-- META {"path":"statistics","title":"Statistics & consent","description":"Built-in statistics that set no cookies and never store an IP address, and a consent manager that holds embeds and third-party scripts back until a visitor agrees.","parent":"features","order":12,"data":{"icon":"chart-bar","eyebrow":"Statistics & consent","headline":"Count your visitors. Leave nothing on their device."}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.15fr]">
+  <div data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">Built-in statistics</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="stats_title">Visits, counted by the platform.</h2>
+    <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="stats_lead">Switch statistics on for a project and every page carries a small counter. No cookie, no local storage, no third party. The Statistics tab shows visitors, pageviews, bot pageviews and goals for today, 7, 30 or 90 days, or 12 months.</p>
+    <ul class="mt-6 grid list-none gap-2 p-0 text-base-content/80 sm:grid-cols-2">
+      <li class="flex gap-2">{{sw-icon "check" "mt-1 h-4 w-4 shrink-0 text-accent"}} Pageviews per day</li>
+      <li class="flex gap-2">{{sw-icon "check" "mt-1 h-4 w-4 shrink-0 text-accent"}} Top pages and sources</li>
+      <li class="flex gap-2">{{sw-icon "check" "mt-1 h-4 w-4 shrink-0 text-accent"}} Countries on a world map</li>
+      <li class="flex gap-2">{{sw-icon "check" "mt-1 h-4 w-4 shrink-0 text-accent"}} Filters by device and country</li>
+      <li class="flex gap-2">{{sw-icon "check" "mt-1 h-4 w-4 shrink-0 text-accent"}} Form submissions as goals</li>
+      <li class="flex gap-2">{{sw-icon "check" "mt-1 h-4 w-4 shrink-0 text-accent"}} CSV export of every table</li>
+    </ul>
+  </div>
+  <div class="ws-browser" data-sw-animation="fade-up" data-sw-delay="100">
+    <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Statistics · Visits</span></div>
+    {{> ws-media slot="feat_stats_dashboard" class="rounded-none"}}
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+    <div class="grid gap-6 lg:grid-cols-[1fr_1.2fr] lg:items-end" data-sw-animation="fade-up">
+      <h2 class="ws-display text-3xl font-bold sm:text-5xl" data-sw-text="count_title">How a visit is counted.</h2>
+      <p class="max-w-xl text-lg leading-relaxed text-base-content/70" data-sw-text="count_lead">The counter is designed to know as little as it can and still tell you what happened on the site.</p>
+    </div>
+    <ol class="mt-12 grid list-none gap-4 p-0 lg:grid-cols-3">
+      <li class="rounded-3xl border border-base-content/10 bg-base-100 p-7" data-sw-animation="fade-up"><span class="ws-numeral text-6xl">01</span><h3 class="mt-6 font-heading text-xl font-bold">A beacon, nothing stored</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">The page sends one beacon with its signed route. Nothing is written to the visitor's device, and referrers are kept by host only, never path or query.</p></li>
+      <li class="rounded-3xl border border-base-content/10 bg-base-100 p-7" data-sw-animation="fade-up" data-sw-delay="80"><span class="ws-numeral text-6xl">02</span><h3 class="mt-6 font-heading text-xl font-bold">An id that lasts one day</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">A visitor is a short hash of a daily salt, the project, the address and the browser. The salt changes at midnight UTC, so nobody can be followed from one day to the next. The IP address is never stored.</p></li>
+      <li class="rounded-3xl border border-base-content/10 bg-base-100 p-7" data-sw-animation="fade-up" data-sw-delay="160"><span class="ws-numeral text-6xl">03</span><h3 class="mt-6 font-heading text-xl font-bold">Daily totals only</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Counts are kept as daily totals, with no record of single visits, and deleted after 25 months. With a filter on, rows counted fewer than three times stay hidden.</p></li>
+    </ol>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">What the numbers tell you</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="what_title">People and bots, counted apart.</h2>
+  </div>
+  <div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">{{sw-icon "signpost" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Sources</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Direct, search, social, AI assistant, referral or campaign. Campaigns come from <code class="whitespace-nowrap font-code">utm_source</code> or <code class="font-code">ref</code>.</p></div>
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "globe-hemisphere-west" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Countries</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Looked up in a bundled country database, on your server. <code class="whitespace-nowrap font-code">SW_GEOIP_DB</code> swaps in a fresher one.</p></div>
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "devices" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Devices</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Desktop, mobile or tablet, as a breakdown and as a filter for every other panel.</p></div>
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">{{sw-icon "robot" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Bots, by kind</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Search engines, AI crawlers and assistants, SEO tools, uptime monitors and link previews, reported apart from people. On Local Hosting they are counted as pages are served.</p></div>
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "flag-checkered" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Goals</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Every form submission is a goal, so you see which pages turn visits into enquiries.</p></div>
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "users-three" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Shared with clients</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Agency staff switch statistics on. Clients then see the same view, and agents read it with the <code class="whitespace-nowrap font-code">get_site_stats</code> tool.</p></div>
+  </div>
+</section>
+
+<section class="bg-neutral text-white">
+  <div class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+    <div class="grid gap-6 lg:grid-cols-[1fr_1.2fr] lg:items-end" data-sw-animation="fade-up">
+      <div>
+        <p class="ws-index text-accent">Consent manager</p>
+        <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="consent_title">Embeds wait for a yes.</h2>
+      </div>
+      <p class="max-w-xl text-lg leading-relaxed text-white/70" data-sw-text="consent_lead">Turn the consent manager on and the banner appears on every page, in four categories: strictly necessary, functional, analytics and marketing. Every cross-origin iframe is held back at publish until its category is allowed, and a visitor can allow it once from its placeholder.</p>
+    </div>
+    <div class="mt-14 grid items-start gap-8 lg:grid-cols-2">
+      <div class="ws-browser text-base-content" data-sw-animation="fade-up">
+        <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">acme.example · consent banner</span></div>
+        {{> ws-media slot="feat_consent_banner" class="rounded-none"}}
+      </div>
+      <div class="min-w-0" data-sw-animation="fade-up" data-sw-delay="100">
+        <div class="ws-window overflow-hidden rounded-2xl">
+          <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">pages/contact.hbs</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-com">&lt;!-- What you write --&gt;</span>
+<span class="tk-tag">&lt;iframe</span> <span class="tk-attr">src</span>=<span class="tk-str">"https://www.youtube.com/embed/ID"</span>
+        <span class="tk-attr">data-sw-consent</span>=<span class="tk-str">"marketing"</span><span class="tk-tag">&gt;&lt;/iframe&gt;</span>
+
+<span class="tk-com">&lt;!-- What the published site serves --&gt;</span>
+<span class="tk-tag">&lt;iframe</span> <span class="tk-attr">data-sw-consent-src</span>=<span class="tk-str">"https://www.youtube.com/embed/ID"</span>
+        <span class="tk-attr">data-sw-consent-cat</span>=<span class="tk-str">"marketing"</span><span class="tk-tag">&gt;&lt;/iframe&gt;</span>
+
+<span class="tk-com">&lt;!-- A script that waits for analytics consent --&gt;</span>
+<span class="tk-tag">&lt;script</span> <span class="tk-attr">type</span>=<span class="tk-str">"text/plain"</span> <span class="tk-attr">data-sw-consent</span>=<span class="tk-str">"analytics"</span>
+        <span class="tk-attr">src</span>=<span class="tk-str">"https://…"</span><span class="tk-tag">&gt;&lt;/script&gt;</span></code></pre>
+        </div>
+        <ul class="mt-8 grid list-none gap-3 p-0 text-white/80 sm:grid-cols-2">
+          <li class="flex gap-3">{{sw-icon "check-circle" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Accept all, Reject all and Customize, as a bar or a box.</span></li>
+          <li class="flex gap-3">{{sw-icon "check-circle" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Held-back scripts run once their category is allowed.</span></li>
+          <li class="flex gap-3">{{sw-icon "check-circle" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Google Consent Mode v2 signals, updated live.</span></li>
+          <li class="flex gap-3">{{sw-icon "check-circle" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span>Withdrawing consent deletes the known tracker cookies.</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid gap-6 lg:grid-cols-2">
+    <div class="rounded-3xl border border-base-content/10 bg-base-100 p-8" data-sw-animation="fade-up">
+      {{sw-icon "plugs-connected" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold" data-sw-text="presets_title">Third-party analytics, by preset.</h3>
+      <p class="mt-3 leading-relaxed text-base-content/70" data-sw-text="presets_lead">Add an integration by name and its ID. It loads only after its category is allowed. Cookieless tools can be set to load without asking, and Plausible, Umami and Matomo can point at your own instance.</p>
+      <div class="mt-6 flex flex-wrap gap-2">
+        <span class="rounded-full border border-base-content/10 bg-base-200/60 px-3.5 py-1.5 text-sm">Google Analytics 4</span>
+        <span class="rounded-full border border-base-content/10 bg-base-200/60 px-3.5 py-1.5 text-sm">Google Tag Manager</span>
+        <span class="rounded-full border border-base-content/10 bg-base-200/60 px-3.5 py-1.5 text-sm">Plausible</span>
+        <span class="rounded-full border border-base-content/10 bg-base-200/60 px-3.5 py-1.5 text-sm">Umami</span>
+        <span class="rounded-full border border-base-content/10 bg-base-200/60 px-3.5 py-1.5 text-sm">Matomo</span>
+        <span class="rounded-full border border-base-content/10 bg-base-200/60 px-3.5 py-1.5 text-sm">Fathom</span>
+        <span class="rounded-full border border-base-content/10 bg-base-200/60 px-3.5 py-1.5 text-sm">Simple Analytics</span>
+        <span class="rounded-full border border-base-content/10 bg-base-200/60 px-3.5 py-1.5 text-sm">Custom script</span>
+      </div>
+    </div>
+    <div class="sw-border-beam flex flex-col rounded-3xl border border-base-content/10 bg-base-100 p-8 [--sw-beam-width:2px]" data-sw-animation="fade-up" data-sw-delay="100">
+      {{sw-icon "shield-check" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold" data-sw-text="csp_title">A Content-Security-Policy per site.</h3>
+      <p class="mt-3 leading-relaxed text-base-content/70" data-sw-text="csp_lead">At publish, Sitewright works out which origins a site really uses: its integrations, its iframes and media, the hosts you list, and the platform's own form and statistics endpoints. Sites on Local Hosting are served with that policy, so a script from anywhere else does not load.</p>
+      <p class="mt-4 text-sm leading-relaxed text-base-content/60">The consent choice stays in the visitor's browser. The banner itself makes no network calls, and the editor preview never runs analytics or marketing code.</p>
+      <div class="mt-auto flex flex-wrap gap-3 pt-8">
+        <a class="btn btn-primary btn-sm" href="{{sw-url '/docs/guides/analytics-and-consent'}}">Analytics &amp; consent guide</a>
+        <a class="btn btn-ghost btn-sm" href="{{sw-url '/showcase/consent'}}">See the banner {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+{{> feature-next features=pages.features._attributes.children}}

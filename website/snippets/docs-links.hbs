@@ -1,0 +1,15 @@
+{{!-- The documentation menu: every docs group in the CUSTOM nav slot (a dropdown parent), with its pages. --}}
+<ul class="list-none space-y-6 p-0 text-sm">
+  {{#each @root.nav.custom}}
+  <li>
+    <a class="font-heading text-xs font-semibold uppercase tracking-wider {{#if (sw-active path exact=true)}}ws-ink{{else}}text-base-content/60 hover:text-base-content{{/if}}" href="{{sw-url path}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a>
+    {{#if children}}
+    <ul class="mt-2 list-none space-y-0.5 border-l border-base-content/10 p-0">
+      {{#each children}}
+      <li><a class="-ml-px block border-l py-1 pl-3 {{#if (sw-active path exact=true)}}border-primary font-medium ws-ink{{else}}border-transparent text-base-content/70 hover:border-base-content/30 hover:text-base-content{{/if}}" href="{{sw-url path}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a></li>
+      {{/each}}
+    </ul>
+    {{/if}}
+  </li>
+  {{/each}}
+</ul>

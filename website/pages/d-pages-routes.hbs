@@ -1,0 +1,138 @@
+{{!-- META {"path":"pages-and-routes","title":"Pages and routes","description":"How the page tree turns into URLs and menus, how drafts differ from published pages, and what the site preview shows.","parent":"concepts","order":2,"data":{}} --}}
+{{> page-hero parent=page.parent}}
+<div class="ws-docs">
+  {{> docs-nav}}
+  <article class="ws-article">
+    <p>Every page in a project sits in one tree under the home page. A page's place in that tree decides its URL, its menus and its sitemap entry. There are no route files and no parameter routes: each URL belongs to one real page.</p>
+
+    <h2 id="tree">The page tree and paths</h2>
+    <p>A page's <code>path</code> is its <strong>own segment</strong> only: lowercase letters, digits and hyphens, no slashes. The full route is built from the parent chain. The home page is the root of the tree and its path is empty, so it is <code>/</code> and adds nothing to the routes below it.</p>
+    <table>
+      <thead><tr><th>Page</th><th>Parent</th><th>Path</th><th>Route</th></tr></thead>
+      <tbody>
+        <tr><td>Home</td><td>none</td><td>(empty)</td><td><code>/</code></td></tr>
+        <tr><td>Services</td><td>Home</td><td><code>services</code></td><td><code>/services/</code></td></tr>
+        <tr><td>Web design</td><td>Services</td><td><code>web-design</code></td><td><code>/services/web-design/</code></td></tr>
+        <tr><td>Imprint</td><td>Home</td><td><code>imprint</code></td><td><code>/imprint/</code></td></tr>
+      </tbody>
+    </table>
+    <ul>
+      <li>Leave the parent empty and the page is filed under the home page of its language. Set a parent only to make a sub-page.</li>
+      <li>Moving a page to another parent changes its URL and the URLs of everything below it.</li>
+      <li>Every page builds to <code>&lt;route&gt;/index.html</code>, and the platform links to pages in that directory form, with the closing slash. <code>\{{page.path}}</code> and the menu items give you <code>/services/</code>, not <code>/services</code>, so no click costs a redirect.</li>
+      <li>On a multilingual site each language has its own home page, such as <code>/de/</code>, and its pages hang below it. See <a href="{{sw-url '/docs/guides/languages'}}">Languages</a>.</li>
+    </ul>
+    <div class="ws-callout"><p class="!mt-0"><strong>Something with its own URL is a page.</strong> Fifty case studies are fifty pages that share one template, so each one gets its own SEO fields, menu placement, revisions and search entry. Content that repeats without needing a URL of its own, such as team members or FAQs, belongs in a <a href="{{sw-url '/docs/concepts/datasets'}}">dataset</a>.</p></div>
+
+    <h2 id="order">Order</h2>
+    <p>Siblings are sorted by the page's <code>order</code>, ascending, with ties broken by title. Drag a row in the Pages list (or move it with the arrow keys) to change it. That one order drives the Pages list and every automatic menu; there is no separate order per menu. A menu that must run in a different order, such as a footer that lists the legal pages first, is written by hand in its slot as a list of links.</p>
+
+    <h2 id="menus">Menus: the nav slots</h2>
+    <p>In its settings, each page chooses the menus it appears in. New pages start in the main navigation.</p>
+    <table>
+      <thead><tr><th>Setting</th><th>Slot</th><th>Loop it with</th></tr></thead>
+      <tbody>
+        <tr><td>Main navigation</td><td><code>header</code></td><td><code>\{{#each nav.header}}</code></td></tr>
+        <tr><td>Mobile menu</td><td><code>mobile</code></td><td><code>\{{#each nav.mobile}}</code></td></tr>
+        <tr><td>Footer</td><td><code>footer</code></td><td><code>\{{#each nav.footer}}</code></td></tr>
+        <tr><td>Custom</td><td><code>custom</code></td><td><code>\{{#each nav.custom}}</code>, wherever you want it</td></tr>
+      </tbody>
+    </table>
+    <p>The default header and footer read the first three. Nothing reads <code>custom</code> unless you loop it yourself, which makes it the slot for a bespoke list, such as the documentation menu on this site. Each menu item has <code>path</code>, <code>children</code>, <code>newTab</code> and <code>external</code>. Print its label with <code>\{{sw-label}}</code>.</p>
+    <p>The <strong>Nav menu label</strong> overrides the title in menus. It may contain simple HTML and icons, for example <code>&lt;span class="inline-flex items-center gap-2"&gt;\{{sw-icon "wrench" "size-4"}} Services&lt;/span&gt;</code>. The page title itself stays plain text, because it is also the document title and the share title.</p>
+
+    <h3 id="dropdowns">Dropdowns</h3>
+    <p>Turn on <strong>Show in dropdown</strong> on a parent page and its child pages appear under it in every menu the parent is in. The children need no menu settings of their own. In the menu, they are the item's <code>children</code>:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">Main Navigation slot</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;ul</span> <span class="tk-attr">class</span>=<span class="tk-str">"menu menu-horizontal"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-hb">\{{#each nav.header}}</span>
+  <span class="tk-hb">\{{#if children}}</span>
+  <span class="tk-tag">&lt;li</span> <span class="tk-attr">class</span>=<span class="tk-str">"dropdown dropdown-hover"</span><span class="tk-tag">&gt;</span>
+    <span class="tk-tag">&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-url path}}</span>"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-label}}</span><span class="tk-tag">&lt;/a&gt;</span>
+    <span class="tk-tag">&lt;ul</span> <span class="tk-attr">class</span>=<span class="tk-str">"dropdown-content menu w-56 rounded-box bg-base-100 p-2 shadow"</span><span class="tk-tag">&gt;</span>
+      <span class="tk-hb">\{{#each children}}</span>
+      <span class="tk-tag">&lt;li&gt;&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-url path}}</span>"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-label}}</span><span class="tk-tag">&lt;/a&gt;&lt;/li&gt;</span>
+      <span class="tk-hb">\{{/each}}</span>
+    <span class="tk-tag">&lt;/ul&gt;</span>
+  <span class="tk-tag">&lt;/li&gt;</span>
+  <span class="tk-hb">\{{else}}</span>
+  <span class="tk-tag">&lt;li&gt;&lt;a</span> <span class="tk-attr">href</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-url path}}</span>"</span> <span class="tk-attr">class</span>=<span class="tk-str">"<span class="tk-hb">\{{#if (sw-active path)}}</span>active<span class="tk-hb">\{{/if}}</span>"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{sw-label}}</span><span class="tk-tag">&lt;/a&gt;&lt;/li&gt;</span>
+  <span class="tk-hb">\{{/if}}</span>
+  <span class="tk-hb">\{{/each}}</span>
+<span class="tk-tag">&lt;/ul&gt;</span></code></pre>
+    </div>
+    <p>The parent stays a real link and the submenu opens on hover with CSS alone. The platform lines the submenu up under its trigger. <code>(sw-active path)</code> is true for the current page and its ancestors, except the home page, which only matches itself; add <code>exact=true</code> to match the current page only.</p>
+    <p>A dropdown takes every child of the parent. To keep one child out of all automatic menus, for example the numbered pages of a long archive, set <code>nav.hidden</code> on it. The page settings dialog has no switch for this; set it over the API or let an agent do it.</p>
+
+    <h3 id="menu-items">Menu items without a page</h3>
+    <p><strong>New Menu Item</strong> in the Pages list adds an entry that appears in menus but has no page or route of its own. Its target decides what it does:</p>
+    <table>
+      <thead><tr><th>Target</th><th>Behaviour</th></tr></thead>
+      <tbody>
+        <tr><td><code>/path</code> or <code>/path#section</code></td><td>An internal link, prefixed with the current language on a multilingual site.</td></tr>
+        <tr><td><code>https://…</code>, <code>mailto:…</code>, <code>tel:…</code></td><td>An external link, optionally in a new tab.</td></tr>
+        <tr><td><code>#section</code></td><td>Scrolls to that section on the current page.</td></tr>
+        <tr><td><code>#dialog-id</code></td><td>Opens the <code>&lt;dialog id="dialog-id"&gt;</code> you placed in the Bottom slot, from any page.</td></tr>
+        <tr><td>(empty)</td><td>A label that only opens a dropdown of its child pages.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="drafts">Drafts and published pages</h2>
+    <p>A page's <strong>Status</strong> is Published or Draft. A draft is fully editable, but it is not part of the site:</p>
+    <table>
+      <thead><tr><th></th><th>Published</th><th>Draft</th></tr></thead>
+      <tbody>
+        <tr><td>Route and HTML file</td><td>yes</td><td>no</td></tr>
+        <tr><td>Automatic menus, <code>page.children</code>, <code>pages.*</code></td><td>yes</td><td>no</td></tr>
+        <tr><td>Sitemap, site search, language alternates</td><td>yes</td><td>no</td></tr>
+        <tr><td>Whole-site preview</td><td>yes</td><td>no</td></tr>
+        <tr><td>Page editor and single-page preview</td><td>yes</td><td>yes</td></tr>
+      </tbody>
+    </table>
+    <p>Dataset entries also have a status, but they behave differently: a draft entry stays visible in the preview, because an entry has no route of its own, and is left out of every publish and deploy.</p>
+
+    <h2 id="preview">The site preview</h2>
+    <p><strong>Preview</strong> in the editor's header opens the whole site as it would publish, built from what you have saved. Nothing has to be published or deployed first. Menus, links, the footer and every published page work, so you can click through the site as a visitor would.</p>
+    <ul>
+      <li>It shows saved work only. Unsaved changes in an open page editor appear in that editor's own preview.</li>
+      <li>Draft pages are left out, as on the published site. Open a draft in the page editor, or use <strong>Preview in new tab</strong> from its row menu; both render any page, whatever its status. An agent does the same with the <code>preview_page</code> tool.</li>
+      <li>The preview is sandboxed and is not a deploy. Share links from the caret next to Preview let people without an account look at it, and you can revoke each link.</li>
+    </ul>
+
+    <h2 id="bindings">The tree in your templates</h2>
+    <p>A page can read its own place in the tree and other pages' fields:</p>
+    <table>
+      <thead><tr><th>Binding</th><th>Gives</th></tr></thead>
+      <tbody>
+        <tr><td><code>\{{page.path}}</code>, <code>\{{page.slug}}</code></td><td>The full route and the page's own segment</td></tr>
+        <tr><td><code>\{{page.parent.path}}</code>, <code>\{{page.parent.data.x}}</code></td><td>The parent page, absent on the home page</td></tr>
+        <tr><td><code>\{{#each page.children}}</code></td><td>The child pages, each with <code>title</code>, <code>path</code>, <code>description</code>, <code>image</code> and <code>data</code></td></tr>
+        <tr><td><code>\{{pages.services._attributes.title}}</code></td><td>Another page by its path from home; its own fields sit under <code>_attributes</code></td></tr>
+      </tbody>
+    </table>
+    <p>A section index that lists its sub-pages needs no dataset:</p>
+    <div class="ws-window overflow-hidden rounded-2xl">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">Services · source</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-tag">&lt;ul</span> <span class="tk-attr">class</span>=<span class="tk-str">"grid gap-4 sm:grid-cols-2"</span><span class="tk-tag">&gt;</span>
+  <span class="tk-hb">\{{#each page.children}}</span>
+  <span class="tk-tag">&lt;li&gt;</span>
+    <span class="tk-tag">&lt;a</span> <span class="tk-attr">class</span>=<span class="tk-str">"block rounded-box bg-base-200 p-5"</span> <span class="tk-attr">href</span>=<span class="tk-str">"<span class="tk-hb">\{{sw-url path}}</span>"</span><span class="tk-tag">&gt;</span>
+      <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"font-semibold"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{title}}</span><span class="tk-tag">&lt;/span&gt;</span>
+      <span class="tk-tag">&lt;span</span> <span class="tk-attr">class</span>=<span class="tk-str">"mt-1 block text-sm text-base-content/70"</span><span class="tk-tag">&gt;</span><span class="tk-hb">\{{description}}</span><span class="tk-tag">&lt;/span&gt;</span>
+    <span class="tk-tag">&lt;/a&gt;</span>
+  <span class="tk-tag">&lt;/li&gt;</span>
+  <span class="tk-hb">\{{/each}}</span>
+<span class="tk-tag">&lt;/ul&gt;</span></code></pre>
+    </div>
+    <div class="ws-callout ws-callout-warn"><p class="!mt-0"><strong>Name the binding in the page itself.</strong> <code>page.parent</code>, <code>page.children</code> and <code>pages.*</code> are only built for a page whose own source or template mentions them (for <code>pages.*</code>, a chrome slot counts too). A snippet that reads them gets nothing unless the page passes them in, for example <code>\{{&gt; breadcrumb parent=page.parent}}</code>. <a href="{{sw-url '/docs/concepts/templates-and-snippets'}}">Templates and snippets</a> shows the pattern.</p></div>
+
+    <h2 id="settings">Other page settings</h2>
+    <ul>
+      <li><strong>Meta description</strong> and <strong>Image (Open Graph)</strong>: the search snippet and the share image, also readable as <code>\{{page.description}}</code> and <code>\{{page.image}}</code>. The title is the document title; there is no separate SEO title.</li>
+      <li><strong>Hide from search engines (noindex)</strong>: adds a robots <code>noindex</code> meta tag and leaves the page out of the sitemap.</li>
+      <li><strong>Use a template</strong>: the page renders a template's source and keeps only its own content. See <a href="{{sw-url '/docs/concepts/templates-and-snippets'}}">Templates and snippets</a>.</li>
+      <li><strong>Raw HTML page</strong>: renders the source as free-form HTML without the platform's CSS and scripts, for a self-contained page pasted from elsewhere.</li>
+    </ul>
+  </article>
+</div>

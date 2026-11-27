@@ -1,0 +1,116 @@
+{{!-- META {"path":"security","title":"Security, roles & white-label","description":"Invite-only accounts with passkeys, two-factor and single sign-on, clear roles per project, secrets encrypted at rest, a safety net for every change, and an admin panel that carries your name.","parent":"features","order":16,"data":{"icon":"shield-check","eyebrow":"Security, roles & white-label","headline":"Locked down by default. Branded as yours."}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid gap-6 lg:grid-cols-[1fr_1.2fr] lg:items-end" data-sw-animation="fade-up">
+    <div>
+      <p class="ws-index ws-ink">Roles</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="roles_title">Two roles for the agency. Two per project.</h2>
+    </div>
+    <p class="max-w-xl text-lg leading-relaxed text-base-content/70" data-sw-text="roles_lead">Agency staff are admins or developers. Everyone else, your clients included, sees only the projects they were invited to, as an owner or a member. A key used on the wrong project gets a 404, so it cannot even tell the project exists.</p>
+  </div>
+  <div class="mt-10 overflow-x-auto rounded-2xl border border-base-content/10 bg-base-100" data-sw-animation="fade-up">
+    <table class="w-full min-w-[40rem] border-collapse text-left text-sm">
+      <thead><tr class="bg-base-200/70"><th class="w-56 px-5 py-4 font-heading text-base font-semibold">Role</th><th class="px-5 py-4 font-heading text-base font-semibold">Can</th></tr></thead>
+      <tbody class="align-top text-base-content/80">
+        <tr class="border-t border-base-content/10"><th class="px-5 py-4 font-medium text-base-content"><span class="inline-flex items-center gap-2">{{sw-icon "crown" "h-4 w-4 ws-ink"}} Admin</span><span class="mt-1 block text-xs font-normal text-base-content/50">platform</span></th><td class="px-5 py-4">Everything: every project, the system settings and the user accounts. Counts as owner on every project.</td></tr>
+        <tr class="border-t border-base-content/10"><th class="px-5 py-4 font-medium text-base-content"><span class="inline-flex items-center gap-2">{{sw-icon "user-gear" "h-4 w-4 ws-ink"}} Developer</span><span class="mt-1 block text-xs font-normal text-base-content/50">platform</span></th><td class="px-5 py-4">Agency staff. Creates projects, works on the ones they belong to, and switches on staff-only features such as statistics.</td></tr>
+        <tr class="border-t border-base-content/10"><th class="px-5 py-4 font-medium text-base-content"><span class="inline-flex items-center gap-2">{{sw-icon "key" "h-4 w-4 ws-ink"}} Owner</span><span class="mt-1 block text-xs font-normal text-base-content/50">project</span></th><td class="px-5 py-4">Project settings, members, renaming and deleting, website import, and the project's API keys.</td></tr>
+        <tr class="border-t border-base-content/10"><th class="px-5 py-4 font-medium text-base-content"><span class="inline-flex items-center gap-2">{{sw-icon "user" "h-4 w-4 ws-ink"}} Member</span><span class="mt-1 block text-xs font-normal text-base-content/50">project</span></th><td class="px-5 py-4">Edits the content and publishes. This is the role a client is invited with.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+    <div class="max-w-3xl" data-sw-animation="fade-up">
+      <p class="ws-index ws-ink">Signing in</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="signin_title">No sign-up page. Strong ways in.</h2>
+    </div>
+    <div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">{{sw-icon "user-plus" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">By invitation only</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">An invite is a single-use link that lasts seven days and works only for the invited address. You copy it yourself, so no mail server is needed.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "password" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Passwords with rules</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">At least eight characters with upper and lower case, a digit and a symbol, hashed with scrypt. A temporary password allows nothing but choosing a new one.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "fingerprint" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Passkeys</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Sign in without a password or even a username. If two-factor is on, the code is still asked for.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">{{sw-icon "device-mobile" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Two-factor codes</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Authenticator-app codes, with ten recovery codes shown once. A used code cannot be replayed.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "sign-in" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Single sign-on</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Up to ten OpenID Connect providers. Only existing or invited users get in, never a stranger with an account somewhere.</p></div>
+      <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "key-return" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Scoped tokens</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Project API keys with chosen capabilities and an expiry of up to a year, shown once and stored only as a hash. Deleting is its own capability.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="bg-neutral text-white">
+  <div class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.05fr]">
+    <div data-sw-animation="fade-up">
+      <p class="ws-index text-accent">Under the hood</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="hood_title">Secrets stay secret, even from a database dump.</h2>
+      <ul class="mt-6 list-none space-y-4 p-0 text-white/80">
+        <li class="flex gap-3">{{sw-icon "vault" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span><strong class="text-white">Encrypted at rest.</strong> Deploy credentials, SMTP passwords, sign-in secrets, AI, captcha and payment keys are sealed with AES-256-GCM. The key lives only in the environment, and secrets never enter version history or exports.</span></li>
+        <li class="flex gap-3">{{sw-icon "globe-x" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span><strong class="text-white">No fetching the inside.</strong> Imports, remote media and screenshots refuse private, loopback and cloud-metadata addresses and check every redirect.</span></li>
+        <li class="flex gap-3">{{sw-icon "browser" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span><strong class="text-white">Sandboxed previews.</strong> The preview runs in a sandbox with no access to the editor's origin, and its forms send nothing.</span></li>
+        <li class="flex gap-3">{{sw-icon "cookie" "mt-0.5 h-5 w-5 shrink-0 text-accent"}}<span><strong class="text-white">Careful sessions.</strong> HttpOnly, SameSite=Strict, stored as a hash, ended on a password change. Failed sign-ins are throttled per address and per account.</span></li>
+      </ul>
+    </div>
+    <div class="ws-window overflow-hidden rounded-2xl" data-sw-animation="fade-up" data-sw-delay="100">
+      <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">environment</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-com"># Encrypts stored secrets. Env only, never in the DB.</span>
+<span class="tk-com"># 32 random bytes: openssl rand -base64 32</span>
+<span class="tk-attr">SW_ENCRYPTION_KEY</span>=<span class="tk-str">…</span>
+
+<span class="tk-com"># An https URL turns on Secure, __Host- cookies</span>
+<span class="tk-attr">SW_PUBLIC_URL</span>=<span class="tk-str">https://cms.example.com</span>
+
+<span class="tk-com"># Rate limits key on the real client address</span>
+<span class="tk-attr">TRUST_PROXY</span>=<span class="tk-str">true</span>
+
+<span class="tk-com"># Optional allowlists for deploy and SMTP hosts</span>
+<span class="tk-attr">SW_DEPLOY_ALLOWED_HOSTS</span>=<span class="tk-str">ftp.host.example</span>
+<span class="tk-attr">SW_SMTP_ALLOWED_HOSTS</span>=<span class="tk-str">smtp.mail.example</span>
+
+<span class="tk-com"># Published in /.well-known/security.txt</span>
+<span class="tk-attr">SW_SECURITY_CONTACT</span>=<span class="tk-str">mailto:security@agency.example</span></code></pre>
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="grid gap-6 lg:grid-cols-[1fr_1.2fr] lg:items-end" data-sw-animation="fade-up">
+    <div>
+      <p class="ws-index ws-ink">Safety net</p>
+      <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="net_title">Mistakes you can take back.</h2>
+    </div>
+    <a class="btn btn-ghost justify-self-start px-0 hover:bg-transparent lg:justify-self-end" href="{{sw-url '/docs/self-hosting/upgrades-and-backups'}}">Upgrades and backups {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+  </div>
+  <ol class="mt-12 grid list-none gap-4 p-0 md:grid-cols-2 lg:grid-cols-4">
+    <li class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up"><span class="ws-numeral text-5xl">01</span><h3 class="mt-5 font-heading text-lg font-bold">Version history</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Pages, data, forms and settings keep up to 50 versions each, for 90 days by default. A restore adds a version and can bring deleted items back.</p></li>
+    <li class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60"><span class="ws-numeral text-5xl">02</span><h3 class="mt-5 font-heading text-lg font-bold">Recycle bins</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Deleted media can be restored for 90 days. A deleted project can be restored by an admin.</p></li>
+    <li class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120"><span class="ws-numeral text-5xl">03</span><h3 class="mt-5 font-heading text-lg font-bold">A snapshot first</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Before an upgrade changes the database, a copy of it is written to the backups folder. The last two are kept by default.</p></li>
+    <li class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="180"><span class="ws-numeral text-5xl">04</span><h3 class="mt-5 font-heading text-lg font-bold">Upgrades you choose</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">The editor shows a banner when a release is out. Nothing updates on its own. Health and readiness probes tell your orchestrator how it is doing.</p></li>
+  </ol>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 pb-20 sm:pb-28">
+  <div class="grid items-center gap-12 lg:grid-cols-[1fr_1.15fr]">
+    <div class="sw-border-beam rounded-3xl border border-base-content/10 bg-base-100 p-8 [--sw-beam-width:2px]" data-sw-animation="fade-up">
+      {{sw-icon "palette" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold" data-sw-text="brand_title">Your name on the admin.</h3>
+      <p class="mt-3 leading-relaxed text-base-content/70" data-sw-text="brand_lead">Set the platform's name, two brand colors and a logo once. The editor, the sign-in screen, the browser tab and its icon, and the page where agents ask for access all carry them, and authenticator apps and passkeys show your name too.</p>
+      <ul class="mt-5 list-none space-y-2 p-0 text-sm text-base-content/80">
+        <li class="flex gap-2">{{sw-icon "check:bold" "mt-0.5 h-4 w-4 shrink-0 text-accent"}} Each project has its own corporate identity: names, logos, colors, fonts and contacts.</li>
+        <li class="flex gap-2">{{sw-icon "check:bold" "mt-0.5 h-4 w-4 shrink-0 text-accent"}} Shop and booking mails can go out through the project's own SMTP.</li>
+        <li class="flex gap-2">{{sw-icon "check:bold" "mt-0.5 h-4 w-4 shrink-0 text-accent"}} Published sites carry no "powered by" credit.</li>
+      </ul>
+      <p class="mt-4 text-xs leading-relaxed text-base-content/50">A few technical traces remain, such as a comment in the generated <span class="font-code">.htaccess</span> and the <span class="font-code">sw-</span> names in the markup.</p>
+      <div class="mt-5 flex flex-wrap gap-3">
+        <a class="btn btn-primary btn-sm" href="{{sw-url '/docs/self-hosting/white-label'}}">White-label guide</a>
+        <a class="btn btn-ghost btn-sm" href="{{sw-url '/docs/self-hosting/security'}}">Hardening {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+      </div>
+    </div>
+    <div class="ws-browser" data-sw-animation="fade-up" data-sw-delay="100">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">sites.youragency.example · sign in</span></div>
+      {{> ws-media slot="feat_security_branding" class="rounded-none"}}
+    </div>
+  </div>
+</section>
+
+{{> feature-next features=pages.features._attributes.children}}

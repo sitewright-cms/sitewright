@@ -1,0 +1,85 @@
+{{!-- META {"path":"hosting","title":"Hosting & custom domains","description":"Serve sites from the container that builds them, at a subdomain or the client's own domain, on an origin kept apart from the editor. Verify a domain with one TXT record.","parent":"features","order":10,"data":{"icon":"globe","eyebrow":"Hosting & custom domains","headline":"Host the site where you built it."}} --}}
+{{> page-hero parent=page.parent}}
+
+<section class="mx-auto grid max-w-7xl items-center gap-12 px-6 py-20 sm:py-28 lg:grid-cols-[1fr_1.1fr]">
+  <div data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">Local Hosting</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="local_title">One container builds it and serves it.</h2>
+    <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="local_lead">Give a project a Local Hosting target and publishing puts the site live on your instance. It always answers under a path, at its own subdomain once you set a sites domain with wildcard DNS, and at the client's domain once it is verified.</p>
+    <p class="mt-4 leading-relaxed text-base-content/70">The build runs to the side. If it fails, the live site is left as it was.</p>
+  </div>
+  <div class="ws-window overflow-hidden rounded-2xl" data-sw-animation="fade-up" data-sw-delay="100">
+    <div class="ws-dots flex items-center gap-1.5 border-b border-white/10 px-4 py-3"><i></i><i></i><i></i><span class="ml-3 font-code text-xs text-white/50">where the site answers</span></div>
+<pre class="overflow-x-auto"><code><span class="tk-com"># Always: a path on the instance</span>
+https://cms.example.com<span class="tk-hb">/sites/acme/</span>
+
+<span class="tk-com"># With SW_SITES_DOMAIN=sites.example.com</span>
+https://<span class="tk-hb">acme</span>.sites.example.com/
+
+<span class="tk-com"># With a verified custom domain</span>
+https://<span class="tk-hb">www.acme-bakery.com</span>/
+
+<span class="tk-com"># Once a subdomain or domain exists, the path</span>
+<span class="tk-com"># form answers with a 301 to it.</span></code></pre>
+  </div>
+</section>
+
+<section class="border-y border-base-content/10 bg-base-200/50">
+  <div class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+    <div class="grid gap-6 lg:grid-cols-[1fr_1.2fr] lg:items-end" data-sw-animation="fade-up">
+      <div>
+        <p class="ws-index ws-ink">Custom domains</p>
+        <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="domain_title">A client's domain in four steps.</h2>
+      </div>
+      <p class="max-w-xl text-lg leading-relaxed text-base-content/70" data-sw-text="domain_lead">Under Deploy targets, Local Hosting has a Custom domains panel. Until a domain is verified it is reserved for the project but serves nothing, so nobody else can claim it.</p>
+    </div>
+    <ol class="mt-12 grid list-none gap-4 p-0 md:grid-cols-2 lg:grid-cols-4">
+      <li class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up"><span class="ws-numeral text-5xl">01</span><h3 class="mt-5 font-heading text-lg font-bold">Point the DNS</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Send the domain to your instance, the way you would for any site behind your proxy.</p></li>
+      <li class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60"><span class="ws-numeral text-5xl">02</span><h3 class="mt-5 font-heading text-lg font-bold">Add one TXT record</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Its name and value are shown in the panel:</p><p class="mt-3 rounded-lg bg-base-200/70 p-3 font-code text-xs leading-relaxed">_sitewright.www.acme-bakery.com<br>sw-verify-…</p></li>
+      <li class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120"><span class="ws-numeral text-5xl">03</span><h3 class="mt-5 font-heading text-lg font-bold">Check DNS</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">One button looks the record up. Once it matches, the domain serves the site.</p></li>
+      <li class="rounded-3xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="180"><span class="ws-numeral text-5xl">04</span><h3 class="mt-5 font-heading text-lg font-bold">Your proxy adds TLS</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Sitewright does not issue certificates. The reverse proxy in front does, for example Caddy with on-demand TLS.</p></li>
+    </ol>
+    <div class="ws-browser mx-auto mt-14 max-w-5xl" data-sw-animation="fade-up">
+      <div class="ws-browser-bar"><i></i><i></i><i></i><span class="ws-browser-url">Deploy targets · Local Hosting · Custom domains</span></div>
+      {{> ws-media slot="feat_hosting_domains" class="rounded-none"}}
+    </div>
+    <a class="btn btn-ghost mt-8 px-0 hover:bg-transparent" href="{{sw-url '/docs/guides/custom-domains'}}">The custom domains guide {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 py-20 sm:py-28">
+  <div class="max-w-3xl" data-sw-animation="fade-up">
+    <p class="ws-index ws-ink">Served with care</p>
+    <h2 class="ws-display mt-4 text-3xl font-bold sm:text-5xl" data-sw-text="care_title">A site is not the editor's neighbor.</h2>
+  </div>
+  <div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">{{sw-icon "shield-check" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Isolated origins</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">A site's own scripts run only on its own host, where the editor's session cookie is never sent. On the path form, before a host exists, author scripts are switched off.</p></div>
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "arrows-split" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Several domains, one primary</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Add the bare domain and www, or an old domain. The others answer with a 301 to the primary, and Make primary switches it.</p></div>
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "eye-slash" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">The platform stays unindexed</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Every response outside the sites carries noindex. A switch also keeps sites' platform addresses out of search, so a site is indexed only at its verified primary domain.</p></div>
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up">{{sw-icon "arrow-bend-up-right" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">Redirect files</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Up to 500 redirects, written out as <code class="whitespace-nowrap font-code">.htaccess</code> and <code class="whitespace-nowrap font-code">_redirects</code> for Apache and Netlify-style hosts.</p></div>
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="60">{{sw-icon "file-lock" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">security.txt</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">The instance publishes one for itself. A site can publish its own, with contacts taken from its contact details.</p></div>
+    <div class="rounded-2xl border border-base-content/10 bg-base-100 p-6" data-sw-animation="fade-up" data-sw-delay="120">{{sw-icon "lock-key" "h-6 w-6 ws-ink"}}<h3 class="mt-4 font-heading text-lg font-bold">HSTS when you are ready</h3><p class="mt-2 text-sm leading-relaxed text-base-content/70">Off by default. Turn it on for the instance and, if you like, for the sites it serves.</p></div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-7xl px-6 pb-20 sm:pb-28">
+  <div class="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
+    <div class="sw-border-beam rounded-3xl border border-base-content/10 bg-base-100 p-8 [--sw-beam-width:2px]" data-sw-animation="fade-up">
+      {{sw-icon "link" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold" data-sw-text="share_title">Show the client before it is live.</h3>
+      <p class="mt-3 leading-relaxed text-base-content/70" data-sw-text="share_lead">A share link opens the draft preview of the whole site without a login. New links last 30 days unless you choose otherwise, and you can revoke one at any time.</p>
+      <div class="mt-6 overflow-hidden rounded-2xl border border-base-content/10">{{> ws-media slot="feat_hosting_share"}}</div>
+    </div>
+    <div class="flex flex-col rounded-3xl border border-base-content/10 bg-base-100 p-8" data-sw-animation="fade-up" data-sw-delay="100">
+      {{sw-icon "hard-drives" "h-6 w-6 ws-ink"}}
+      <h3 class="mt-4 font-heading text-2xl font-bold" data-sw-text="else_title">Rather host it somewhere else?</h3>
+      <p class="mt-3 leading-relaxed text-base-content/70" data-sw-text="else_lead">The same build deploys over FTP, FTPS, SFTP or Git, or downloads as a .zip. A project can have Local Hosting and remote targets side by side.</p>
+      <div class="mt-auto flex flex-wrap gap-3 pt-8">
+        <a class="btn btn-primary btn-sm" href="{{sw-url '/features/publishing'}}">Publishing &amp; deploy</a>
+        <a class="btn btn-ghost btn-sm" href="{{sw-url '/docs/reference/deploy-targets'}}">Deploy targets {{sw-icon "arrow-right" "h-4 w-4"}}</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+{{> feature-next features=pages.features._attributes.children}}

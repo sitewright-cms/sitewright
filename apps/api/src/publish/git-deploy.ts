@@ -1,4 +1,4 @@
-import { mkdtemp, rm, cp } from 'node:fs/promises';
+import { mkdtemp, rm, cp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import nodeFs from 'node:fs';
@@ -33,6 +33,18 @@ export interface GitDeployResult {
 }
 
 /**
+ * Copies the built site into a fresh git worktree, plus an empty `.nojekyll` at its root. GitHub Pages runs a
+ * branch through Jekyll unless that file is there, and Jekyll leaves out every `_`-prefixed folder, so the site's
+ * `_assets/` (its CSS, scripts and files) would 404 on every page. Other git hosts ignore the file. The site never
+ * contains a `.git` of its own, so a plain recursive copy is safe.
+ */
+export async function copySiteInto(siteDir: string, worktree: string): Promise<void> {
+  await cp(siteDir, worktree, { recursive: true });
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the caller's mkdtemp worktree
+  await writeFile(join(worktree, '.nojekyll'), '');
+}
+
+/**
  * Deploys a built site directory to a branch of a remote git repo by committing it as a SINGLE fresh
  * commit and force-pushing (gh-pages style — the branch always mirrors the latest build, no history
  * accumulation). Pure JS (isomorphic-git over HTTP), so no git binary is required in the image.
@@ -51,9 +63,8 @@ export async function deployGit(
   try {
     onProgress?.({ phase: 'preparing' });
     await git.init({ fs: nodeFs, dir, defaultBranch: config.branch });
-    // Copy the built artifact INTO the worktree (alongside the fresh .git). The site never contains a
-    // `.git` of its own, so a plain recursive copy is safe.
-    await cp(siteDir, dir, { recursive: true });
+    // Copy the built artifact INTO the worktree (alongside the fresh .git).
+    await copySiteInto(siteDir, dir);
     await git.add({ fs: nodeFs, dir, filepath: '.' });
     onProgress?.({ phase: 'committing' });
     const commit = await git.commit({

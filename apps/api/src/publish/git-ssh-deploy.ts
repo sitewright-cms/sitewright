@@ -1,8 +1,8 @@
-import { mkdtemp, rm, cp, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
-import type { GitDeployProgress, GitDeployResult } from './git-deploy.js';
+import { copySiteInto, type GitDeployProgress, type GitDeployResult } from './git-deploy.js';
 
 /** Transient SSH-key git-deploy config (decrypted at use; never persisted in plaintext). */
 export interface GitSshDeployConfig {
@@ -111,7 +111,7 @@ export async function deployGitSsh(
     env.GIT_SSH_COMMAND = `ssh ${sshOpts.join(' ')}`;
 
     await runGit(['init', '-q', '-b', config.branch], work, env);
-    await cp(siteDir, work, { recursive: true });
+    await copySiteInto(siteDir, work);
     await runGit(['add', '-A'], work, env);
     onProgress?.({ phase: 'committing' });
     await runGit(

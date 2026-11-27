@@ -9,6 +9,13 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **A site deployed to GitHub Pages through a Git target now keeps its styles and files.** Pages runs a branch
+  through Jekyll, which leaves out every folder whose name starts with `_`, so the site's `_assets/` folder (its CSS,
+  scripts and files) was missing and every page rendered unstyled. Git deploys now add an empty `.nojekyll` file
+  at the site root, which turns that processing off. Other Git hosts ignore the file.
+
 ## [0.85.0] — 2026-11-26
 
 ### Added

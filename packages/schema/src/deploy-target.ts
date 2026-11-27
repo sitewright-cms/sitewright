@@ -185,6 +185,14 @@ export const DeployTargetSchema = z
     previewToken: PreviewTokenSchema.optional(),
     /** Minify each page's HTML at build (collapse whitespace, drop comments). Off by default. */
     minifyHtml: z.boolean().optional(),
+    /**
+     * A DEMO COPY: this target's build shows the live features (forms, the cart's order form and checkout, order
+     * status, booking) working in the browser while nothing is sent anywhere. Every receiver is left out of the
+     * build: the platform's endpoints, email addresses, WhatsApp numbers, third-party form URLs, `contact.php`,
+     * payment links, captcha providers and the statistics counter. Remote targets only: Local Hosting IS the
+     * platform, so a demo there would only switch the site's own features off. Off by default.
+     */
+    demo: z.boolean().optional(),
     /** Transfer with rsync-over-SSH (delta + compression, one connection) instead of per-file SFTP —
      *  for a hardened SFTP server that refuses exec but permits rsync. SFTP-only; off by default. */
     useRsync: z.boolean().optional(),
@@ -226,6 +234,11 @@ export const DeployTargetSchema = z
   .refine((t) => t.protocol !== 'local' || (!t.host && !t.user && !t.secret && !t.repoUrl && !t.branch), {
     message: 'a local hosting target has no host, credentials or repository',
     path: ['protocol'],
+  })
+  // A demo copy leaves the platform's endpoints out of the build, and Local Hosting is served BY the platform.
+  .refine((t) => !t.demo || t.protocol !== 'local', {
+    message: 'a demo copy is only available for a remote target (FTP, FTPS, SFTP or git)',
+    path: ['demo'],
   })
   // TLS negotiation and a pinned certificate are FTPS concepts — a plain `ftp` target upgrades
   // opportunistically (unverified by definition), and SFTP/git pin an SSH host key via

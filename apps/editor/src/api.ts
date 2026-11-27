@@ -1013,6 +1013,8 @@ export interface DeployConfig {
   certFingerprint?: string;
   /** Minify each page's HTML at build — a serve option available for EVERY target type. */
   minifyHtml?: boolean;
+  /** A demo copy: forms, checkout and booking work in the browser and send nothing (remote targets only). */
+  demo?: boolean;
   /** SFTP-only: transfer with rsync-over-SSH (delta + compression) instead of per-file SFTP. */
   useRsync?: boolean;
   /** rsync `--delete` — prune remote files absent from the build. Default true. */
@@ -1023,7 +1025,7 @@ export interface DeployConfig {
 
 /** Config for saving a `git` deploy target (commit the built site to a branch). HTTPS remote → a
  *  token; SSH remote → a private key (+ optional passphrase and pinned `known_hosts` host key). */
-export type GitTargetConfig = { protocol: 'git'; repoUrl: string; branch: string; minifyHtml?: boolean } & (
+export type GitTargetConfig = { protocol: 'git'; repoUrl: string; branch: string; minifyHtml?: boolean; demo?: boolean } & (
   | { token: string }
   | { privateKey: string; passphrase?: string; hostFingerprint?: string }
 );
@@ -1056,6 +1058,10 @@ export interface UpdateDeployTargetConfig {
   previewToken?: string;
   clearPreviewToken?: boolean;
   minifyHtml?: boolean;
+  /** A demo copy (remote targets only); an omitted value keeps the current one. */
+  demo?: boolean;
+  /** Confirms turning a target that has already been deployed into a demo copy (the API refuses otherwise). */
+  demoAck?: boolean;
   useRsync?: boolean;
   /** rsync `--delete` — prune remote files absent from the build. Default true. */
   rsyncDelete?: boolean;

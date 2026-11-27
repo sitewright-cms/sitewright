@@ -9612,7 +9612,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // `stats: false`: a throwaway build nobody visits (the audit) ships no statistics tracker.
     // `unqueued`: skip the site-build queue. ONLY the audit: it already runs one at a time
     // (lighthouseGate) and holds a render slot and a memory reservation, which must not sit in a queue.
-    buildOpts: { minify?: boolean; signal?: AbortSignal; stats?: boolean; unqueued?: boolean } = {},
+    // `demo`: a demo copy for a remote target, with no endpoint or receiver in it (see BuildSiteOptions.demo).
+    buildOpts: { minify?: boolean; signal?: AbortSignal; stats?: boolean; unqueued?: boolean; demo?: boolean } = {},
   ): Promise<ReleaseManifest> {
     if (buildOpts.unqueued) return buildToDirNow(ctx, project, outDir, buildOpts);
     return siteBuildGate.run('publish', project.id, () => withSiteBuildMemory(() => buildToDirNow(ctx, project, outDir, buildOpts)));
@@ -9622,7 +9623,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     ctx: ProjectContext,
     project: Awaited<ReturnType<ProjectRepository['get']>>,
     outDir: string,
-    buildOpts: { minify?: boolean; signal?: AbortSignal; stats?: boolean },
+    buildOpts: { minify?: boolean; signal?: AbortSignal; stats?: boolean; demo?: boolean },
   ): Promise<ReleaseManifest> {
     const { bundle, media, captcha, snippets, globalTemplates } = await assembleBuildInputs(ctx, project);
     // The switched-on search engines' tags: on every build, since a search engine that finds its tag gone (the next
@@ -9648,8 +9649,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       ...(siteVerification.google || siteVerification.bing ? { siteVerification } : {}),
       ...(buildOpts.signal ? { signal: buildOpts.signal } : {}),
       // The route-signing key for the statistics tracker; the build adds the tracker only when the site's
-      // `website.statistics` is on.
-      ...(buildOpts.stats !== false ? { stats: { key: statsEngine.projectKey(project.id) } } : {}),
+      // `website.statistics` is on. A demo copy counts nothing.
+      ...(buildOpts.stats !== false && !buildOpts.demo ? { stats: { key: statsEngine.projectKey(project.id) } } : {}),
+      ...(buildOpts.demo ? { demo: true } : {}),
       // readStored accepts image variant / raw file / font face names (superset) — all copied in.
       readMedia: mediaStorage ? (assetId, file) => mediaStorage.readStored(project.slug, assetId, file) : undefined,
       // Generated thumbnails go back into the asset dir — the same cache `ensureThumb` fills — so a
@@ -9730,7 +9732,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   async function buildForDeploy(
     ctx: ProjectContext,
     projectId: string,
-    deployOpts: { minify?: boolean; protocol?: string } = {},
+    deployOpts: { minify?: boolean; protocol?: string; demo?: boolean } = {},
   ): Promise<{ dir: string; release: ReleaseManifest }> {
     const project = await projects.get(projectId);
     const dir = await mkdtemp(join(tmpdir(), 'sw-deploy-'));
@@ -9741,7 +9743,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // No statistics tracker without a public URL: the collector address would be root-relative, i.e. on the
       // owner's own host, where nothing answers — the counter would ship dead and the tab would show zeros
       // with no reason given. The Statistics tab says why instead (`notice: 'no-public-url'`).
-      const release = await buildToDir(ctx, project, dir, { minify: !!deployOpts.minify, stats: Boolean(opts.publicUrl) });
+      const release = await buildToDir(ctx, project, dir, {
+        minify: !!deployOpts.minify,
+        stats: Boolean(opts.publicUrl) && !deployOpts.demo,
+        ...(deployOpts.demo ? { demo: true } : {}),
+      });
+      // ★ A DEMO COPY carries no endpoint and no receiver, so neither check below applies: its forms post to
+      // nothing (no reachable endpoint to assert), and it must never carry `contact.php` SMTP credentials.
+      if (deployOpts.demo) return { dir, release };
       // A remote deploy ships this build to the OWNER's host. Without a configured public URL, a
       // platform-routed (Email/SMTP) form's endpoint is baked root-relative (`/f/…`) and would resolve
       // to the deployed host (no such route → 404). Refuse rather than ship a form that silently fails

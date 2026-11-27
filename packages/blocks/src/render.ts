@@ -5,6 +5,7 @@
 // output is served only inside a sandboxed preview iframe or written to the exported artifact.
 import type { BrandTokens, MediaAsset, Page } from '@sitewright/schema';
 import { escapeAttr, escapeHtml, neutralizeInlineScript } from './escape.js';
+import { demoScriptTag } from './demo-runtime.js';
 import { metaTags, schemaOrgJsonLd, type SeoMeta, type SchemaOrgInfo } from './head.js';
 import { brandToCss } from './brand-css.js';
 import { baseStyles } from './base-css.js';
@@ -129,9 +130,10 @@ export interface RenderDocumentOptions extends RenderContext {
   /**
    * Coordinates for the platform's own submission endpoint. Emitted as a single ENCODED blob at body end
    * which defines `window.__swf(formId)`; the URL itself never appears in the markup — see formApiScript.
-   * `base` is empty for a same-origin surface (the draft preview), which still gets the blob.
+   * `base` is empty for a same-origin surface (the draft preview), which still gets the blob. A DEMO COPY sets
+   * `demoSrc` instead: the address of its demo runtime (demo-runtime.ts), loaded in the blob's place.
    */
-  formApi?: { base: string; project: string; preview?: boolean };
+  formApi?: { base: string; project: string; preview?: boolean; demoSrc?: string };
   /**
    * The site's content policy, emitted as an INERT `<meta name="sw-csp">` — browsers ignore it; a
    * platform-HOSTED origin promotes it to a real response header. Omit = none.
@@ -275,7 +277,10 @@ function slotLandmark(tag: 'nav' | 'aside' | 'footer' | 'div', id: string, html:
  * real defences are unchanged and all server-side — honeypot, time-trap, rate limit, captcha, and
  * definition-aware validation.
  */
-function formApiScript(api: { base: string; project: string; preview?: boolean } | undefined): string {
+function formApiScript(api: { base: string; project: string; preview?: boolean; demoSrc?: string } | undefined): string {
+  // A DEMO COPY has no endpoint to encode: its runtime defines the same builders and answers them in the page.
+  // A plain (not deferred) script, so it runs here, before the deferred runtimes that call the builders.
+  if (api?.demoSrc) return demoScriptTag(api.demoSrc);
   // An EMPTY base is normal and must still emit: the draft preview (and a same-origin deployment) use a
   // root-relative `/f/…`, which needs hiding from the markup exactly as much as an absolute one. Only the
   // project id is required — without it there is no URL to build.

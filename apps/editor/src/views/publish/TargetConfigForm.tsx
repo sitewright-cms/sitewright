@@ -85,6 +85,13 @@ export function TargetConfigForm({
 
   const [name, setName] = useState(editing?.name ?? defaultNameFor(protocol));
   const [minify, setMinify] = useState(!!editing?.minifyHtml);
+  const [demo, setDemo] = useState(!!editing?.demo);
+  const [demoAck, setDemoAck] = useState(false);
+  // A target that already serves a site turns into a demo copy only when that is confirmed (the API refuses otherwise).
+  // Set when the server asks for the confirmation the form did not know it needed: the target was deployed after
+  // this form was opened.
+  const [deployedSinceOpened, setDeployedSinceOpened] = useState(false);
+  const demoNeedsAck = demo && !editing?.demo && (!!editing?.lastDeployedAt || deployedSinceOpened);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -209,13 +216,20 @@ export function TargetConfigForm({
       await save();
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save the target.');
+      const message = err instanceof Error ? err.message : 'Could not save the target.';
+      if (demo && !demoNeedsAck && message.includes('demoAck')) {
+        setDeployedSinceOpened(true);
+        setError('This target has been deployed since you opened it. Confirm below that it becomes a demo copy.');
+      } else {
+        setError(message);
+      }
     } finally {
       setBusy(false);
     }
   }
 
   async function save() {
+    if (demoNeedsAck && !demoAck) throw new Error('Confirm below that this site becomes a demo copy.');
     const portNum = port.trim() ? Number(port) : undefined;
     if (portNum !== undefined && (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535)) {
       throw new Error('Port must be a whole number between 1 and 65535.');
@@ -251,6 +265,8 @@ export function TargetConfigForm({
           repoUrl: repoUrl.trim(),
           branch: branch.trim(),
           minifyHtml: minify,
+          demo,
+          ...(demoNeedsAck ? { demoAck: true } : {}),
           ...(gitAuth === 'token' && gitToken.trim() ? { token: gitToken.trim() } : {}),
           ...(gitAuth === 'key' && privateKey.trim() ? { privateKey: privateKey.trim(), ...(passphrase ? { passphrase } : {}) } : {}),
           ...(gitAuth === 'key' && fingerprint.trim() ? { hostFingerprint: fingerprint.trim() } : {}),
@@ -260,7 +276,14 @@ export function TargetConfigForm({
       }
       if (gitAuth === 'token' && !gitToken.trim()) throw new Error('An access token is required for an HTTPS remote.');
       if (gitAuth === 'key' && !privateKey.trim()) throw new Error('Paste your SSH private key (an SSH remote uses key auth).');
-      const base = { name: name.trim(), protocol: 'git' as const, repoUrl: repoUrl.trim(), branch: branch.trim(), ...(minify ? { minifyHtml: true } : {}) };
+      const base = {
+        name: name.trim(),
+        protocol: 'git' as const,
+        repoUrl: repoUrl.trim(),
+        branch: branch.trim(),
+        ...(minify ? { minifyHtml: true } : {}),
+        ...(demo ? { demo: true } : {}),
+      };
       const cfg: GitTargetConfig & { name: string } =
         gitAuth === 'token'
           ? { ...base, token: gitToken.trim() }
@@ -279,6 +302,8 @@ export function TargetConfigForm({
         user: user.trim(),
         remoteDir: remoteDir || '/',
         minifyHtml: minify,
+        demo,
+        ...(demoNeedsAck ? { demoAck: true } : {}),
         ...(portNum !== undefined ? { port: portNum } : {}),
         ...(protocol === 'sftp' && fingerprint.trim() ? { hostFingerprint: fingerprint.trim() } : {}),
         ...(protocol === 'sftp' ? { useRsync, rsyncDelete, rsyncRootDeleteAck } : {}),
@@ -307,6 +332,7 @@ export function TargetConfigForm({
       ...(isFtps ? { ftpsMode } : {}),
       ...(isFtps && certFingerprint ? { certFingerprint } : {}),
       ...(minify ? { minifyHtml: true } : {}),
+      ...(demo ? { demo: true } : {}),
     };
     await api.createDeployTarget(project.id, cfg);
   }
@@ -497,6 +523,25 @@ export function TargetConfigForm({
       )}
 
       <Toggle label="Minify HTML" checked={minify} hint="collapse whitespace + drop comments at build" onChange={setMinify} />
+      {/* Local Hosting IS the platform, so a demo copy of it would only switch the site's own features off. */}
+      {protocol !== 'local' && (
+        <Toggle
+          label="Demo copy"
+          checked={demo}
+          hint="forms, checkout and booking work but send nothing; no statistics. Checkout needs an https:// site"
+          onChange={setDemo}
+        />
+      )}
+      {demoNeedsAck && (
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200"
+        >
+          <p className="font-bold">This target already serves a site.</p>
+          <p className="mt-1">The next deploy replaces this site’s working forms, orders and bookings with a demo that sends nothing.</p>
+          <Toggle label="I understand — make it a demo copy" checked={demoAck} onChange={setDemoAck} />
+        </div>
+      )}
 
       {keepHint && <p className="text-[11px] text-slate-500 dark:text-slate-400">Credential fields are blank — {keepHint} (the stored secret is never shown).</p>}
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}

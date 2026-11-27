@@ -162,6 +162,80 @@ describe('DeployTargetWizard', () => {
     expect(cfg).not.toHaveProperty('protocol');
   });
 
+  // ── a demo copy ───────────────────────────────────────────────────────────────────────────────────
+  const pages = (extra: Record<string, unknown> = {}) => ({
+    id: 'g1', name: 'Pages', protocol: 'git', repoUrl: 'https://github.com/me/site.git', branch: 'gh-pages', ...extra,
+  });
+
+  it('offers a demo copy on a remote target, never on Local Hosting, and badges it in the list', async () => {
+    listDeployTargets.mockResolvedValue({ items: [pages({ demo: true })] });
+    render(<DeployTargetWizard project={project} />);
+    await waitFor(() => expect(screen.getByText('demo copy')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Pages' }));
+    expect(screen.getByLabelText('Demo copy')).toBeChecked();
+    // The hint says what a demo copy cannot do on plain http.
+    expect(screen.getByText(/Checkout needs an https:\/\/ site/)).toBeInTheDocument();
+  });
+
+  it('★ asks before a target that already serves a site becomes a demo copy, and sends the confirmation', async () => {
+    listDeployTargets.mockResolvedValue({ items: [pages({ lastDeployedAt: '2026-11-20T10:00:00.000Z' })] });
+    render(<DeployTargetWizard project={project} />);
+    await waitFor(() => expect(screen.getByText('Pages')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Pages' }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Demo copy'));
+    expect(screen.getByRole('alert')).toHaveTextContent(/replaces this site’s working forms, orders and bookings/);
+
+    // Not confirmed: nothing is sent, and the form says what is missing.
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(screen.getByText(/Confirm below that this site becomes a demo copy/)).toBeInTheDocument());
+    expect(updateDeployTarget).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByLabelText('I understand — make it a demo copy'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(updateDeployTarget).toHaveBeenCalled());
+    expect(updateDeployTarget.mock.calls[0]![2]).toMatchObject({ demo: true, demoAck: true });
+  });
+
+  it('asks in the form when the target was deployed after the form was opened', async () => {
+    listDeployTargets.mockResolvedValue({ items: [pages()] });
+    updateDeployTarget.mockRejectedValueOnce(
+      new Error('this target already serves a site: its next deploy would replace the working forms, orders and bookings with a demo that sends nothing — send demoAck: true to confirm'),
+    );
+    render(<DeployTargetWizard project={project} />);
+    await waitFor(() => expect(screen.getByText('Pages')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Pages' }));
+    fireEvent.click(screen.getByLabelText('Demo copy'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(screen.getByText(/deployed since you opened it/)).toBeInTheDocument());
+    expect(screen.queryByText(/demoAck/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('I understand — make it a demo copy'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(updateDeployTarget).toHaveBeenCalledTimes(2));
+    expect(updateDeployTarget.mock.calls[1]![2]).toMatchObject({ demo: true, demoAck: true });
+  });
+
+  it('needs no confirmation for a target never deployed, nor to switch a demo copy back to live', async () => {
+    listDeployTargets.mockResolvedValue({ items: [pages(), { ...pages({ demo: true, lastDeployedAt: '2026-11-20T10:00:00.000Z' }), id: 'g2', name: 'Demo' }] });
+    render(<DeployTargetWizard project={project} />);
+    await waitFor(() => expect(screen.getByText('Demo')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Pages' }));
+    fireEvent.click(screen.getByLabelText('Demo copy'));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(updateDeployTarget).toHaveBeenCalledTimes(1));
+    expect(updateDeployTarget.mock.calls[0]![2]).toMatchObject({ demo: true });
+    expect(updateDeployTarget.mock.calls[0]![2]).not.toHaveProperty('demoAck');
+  });
+
+  it('never offers a demo copy for Local Hosting', async () => {
+    render(<DeployTargetWizard project={project} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: /Local Hosting/ })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Local Hosting/ }));
+    expect(screen.queryByLabelText('Demo copy')).not.toBeInTheDocument();
+  });
+
   // ── custom-domain discoverability ─────────────────────────────────────────────────────────────────
   // The panel itself lives inside the target's EDIT form. Nothing on the list hinted the feature
   // existed, which is how a shipped feature went unnoticed — so the Local Hosting row speaks for it.

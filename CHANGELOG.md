@@ -9,6 +9,28 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Demo copies.** A remote deploy target (FTP, FTPS, SFTP or Git) can be marked **Demo copy**. Its deploys
+  show the site's forms, cart, checkout, thank-you page and booking working in the browser while nothing is sent
+  anywhere, for a public showcase on GitHub Pages, say, or a preview for a client.
+  - **A small script answers them in the page,** only on the pages that use them:
+    - forms show their success message;
+    - a checkout is priced as the live checkout would charge it (the site's own prices, shipping and tax, per
+      market), and its thank-you page reads it as paid;
+    - the booking widget offers sample times and can book and cancel.
+  - **The build leaves out every receiver:** the platform's addresses, the statistics counter, email,
+    `contact.php`, third-party and WhatsApp delivery, the cart's WhatsApp, mailto and payment-link channels,
+    captchas, the consent manager's managed analytics integrations, and search engine verification tags.
+  - **A demo deploy never changes what checkout charges.**
+  - **Turning a target that has already been deployed into a demo copy needs a confirmation**
+    (`demoAck: true` over the API).
+  - **Everything else stays live:** the same project deployed to Local Hosting or any other target.
+  - **Editing a deploy target keeps when it was last deployed,** unless the edit points it somewhere else (another
+    repository, branch, host, account or folder). Every edit used to clear it.
+
+  See [docs/deployment.md](docs/deployment.md#demo-copies-of-a-site).
+
 ### Fixed
 
 - **A site deployed to GitHub Pages through a Git target now keeps its styles and files.** Pages runs a branch

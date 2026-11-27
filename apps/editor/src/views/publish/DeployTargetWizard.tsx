@@ -183,6 +183,7 @@ export function DeployTargetWizard({ project, sitesDomain, isStaff }: { project:
                 </span>
                 {t.protocol === 'local' && <CustomDomainLine domains={domains} />}
                 {t.minifyHtml && <span className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">minified</span>}
+                {t.demo && <span className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">demo copy</span>}
                 <div className="ml-auto flex items-center gap-1">
                   {/* A `local` target is served via the header's Publish action, not the deploy transport. */}
                   {t.protocol !== 'local' && (

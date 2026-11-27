@@ -183,6 +183,61 @@ elsewhere over FTP/SFTP/Git. It is off by default.
 
 The setting does the same as adding `X-Robots-Tag: noindex` for `*.<SW_SITES_DOMAIN>` in your proxy, but it also covers the path form and needs no proxy change.
 
+### Demo copies of a site
+
+A remote deploy target (FTP, FTPS, SFTP or Git) can be marked **Demo copy**. Its deploys show the site's live
+features working while nothing is sent anywhere: a showcase on GitHub Pages, say, or a template preview for a
+client. The same project deployed to Local Hosting, or to any other target, stays fully live, because every
+deploy builds the site for its own target.
+
+What a demo copy does:
+
+- **Forms, the cart, checkout, the thank-you page and booking still work in the browser.** A small script,
+  `_assets/_sw/sw-demo.js`, answers them in the page. Only the pages that have one of these load it.
+  - A form shows its success message.
+  - An order from the cart's order form is "sent".
+  - A checkout shows its review, priced as the live checkout would charge it: the site's own published prices,
+    its shipping and its tax, per market. It then goes to the thank-you page, which reads the order as paid.
+  - The booking widget offers sample times in the offering's time zone (weekdays 9:00 to 17:00, or set
+    times). It takes a booking and shows it on the booking's own page, where it can be cancelled.
+- **Demo orders and bookings last for the browser tab's session.** They are kept in the tab (`sessionStorage`)
+  and are gone when it closes.
+- **Every receiver is left out of the build:**
+  - the platform's addresses, and the statistics counter;
+  - the forms' email, `contact.php`, third-party and WhatsApp delivery;
+  - the cart's WhatsApp, mailto and payment-link channels, which are dropped (checkout and the order form
+    stay);
+  - captcha providers and proof of work;
+  - the consent manager's **managed analytics integrations** (Google Analytics, Tag Manager, Plausible, Matomo,
+    Umami, pixels…), so a demo's visits never reach the live site's accounts. The consent banner and its
+    categories stay;
+  - the search engines' verification tags.
+  
+  The page's content policy names no platform origin either.
+- **A demo deploy never changes what checkout charges.** Only a live deploy sets the project's price list.
+- **Turning a target that has already been deployed into a demo copy asks for confirmation,** because its next
+  deploy replaces working forms, orders and bookings with ones that send nothing. Over the API, send
+  `demoAck: true` with `demo: true`. Switching back to live asks nothing. This guards against switching a live
+  target by mistake; it is not a lock. A new target, or one pointed at another destination, can be a demo copy
+  straight away.
+- **Switching a target between demo and live (or turning minified HTML on or off) shows changes to deploy,**
+  because its destination still holds the other version until the next deploy.
+- **`<html data-sw-demo>` marks every page,** so you can tell visitors nothing is sent, e.g.
+  `[data-sw-demo] .demo-note{display:block}`.
+
+Limits, and what is not changed:
+
+- **The thank-you hand-off needs HTTPS.** As on a live site, the cart only goes to an `https://` thank-you page,
+  so a demo checkout served over plain `http://` stops at its review.
+- **Author-added receivers stay.** An analytics script, an embed or a link you wrote into a page yourself is
+  yours, so it is not removed.
+- **Markup added by your own script after the page loads is not seen.** The build decides which pages load the
+  demo script from their published markup. A form, cart or booking widget that a script of yours inserts later,
+  on a page that has none of them, gets no demo answers.
+- **A demo copy is indexed like any other site.** That is deliberate: a public showcase is meant to be found.
+  To keep one out of search results, add `<meta name="robots" content="noindex">` to its pages' head, or
+  disallow it in the host's `robots.txt`.
+
 ## First run
 
 - A first admin is seeded on boot: `admin@sitewright.example` / `123456` unless you set `SW_ADMIN_EMAIL` /

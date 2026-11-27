@@ -71,3 +71,19 @@ describe('DeployTargetSchema — SFTP host hardening + rsync guards', () => {
     expect(DeployTargetSchema.safeParse({ ...base, hostFingerprint: 'h ssh-ed25519 AAAAC3Nza' }).success).toBe(true);
   });
 });
+
+describe('DeployTargetSchema — a demo copy', () => {
+  const secret = { iv: 'a'.repeat(24), ct: 'b'.repeat(24), tag: 'c'.repeat(24) };
+
+  it('is a remote target’s option, and Local Hosting cannot be one', () => {
+    const git = { id: 'tgt_cccccccccccc', name: 'Pages', protocol: 'git' as const, repoUrl: 'https://github.com/a/a.github.io.git', branch: 'main', secret };
+    const sftp = { id: 'tgt_dddddddddddd', name: 'Web', protocol: 'sftp' as const, host: 'web.example', user: 'deploy', secret, remoteDir: '/var/www' };
+    expect(DeployTargetSchema.safeParse({ ...git, demo: true }).success).toBe(true);
+    expect(DeployTargetSchema.safeParse({ ...sftp, demo: true }).success).toBe(true);
+    // Local Hosting is served by the platform itself: a demo there would only switch the site's features off.
+    const local = DeployTargetSchema.safeParse({ id: 'tgt_eeeeeeeeeeee', name: 'Local', protocol: 'local', demo: true });
+    expect(local.success).toBe(false);
+    expect(local.error?.issues[0]?.path).toEqual(['demo']);
+    expect(DeployTargetSchema.safeParse({ id: 'tgt_eeeeeeeeeeee', name: 'Local', protocol: 'local', demo: false }).success).toBe(true);
+  });
+});

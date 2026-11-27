@@ -121,7 +121,8 @@ import {
   type ShopCatalog,
 } from '@sitewright/blocks';
 import { buildDataFiles } from './data-files.js';
-import { STATS_JS, STATS_SCRIPT, statsScriptTag } from '@sitewright/blocks';
+import { STATS_JS, STATS_SCRIPT, statsScriptTag, DEMO_SCRIPT, demoRuntimeJs, demoScriptTag, usesDemoRuntime } from '@sitewright/blocks';
+import { demoBuildOptions, demoRuntimeData } from './demo-build.js';
 import { statsRouteToken } from '../analytics/token.js';
 import { MANIFEST_FILENAME } from './deploy/manifest.js';
 import {
@@ -445,6 +446,12 @@ export interface BuildSiteOptions {
   /** Minify each rendered page's HTML before writing (the `website.minifyHtml` publish option). */
   minifyHtml?: boolean;
   /**
+   * A DEMO COPY, for a deploy target with `demo` on: the live features work in the browser and nothing is sent.
+   * Every receiver is left out (see demo-build.ts), and each page loads the demo runtime in place of the
+   * encoded endpoint blob. Never the draft preview, a publish to Local Hosting, or the page-speed audit.
+   */
+  demo?: boolean;
+  /**
    * The platform's search engine verification tags (`content` values), put in every page's `<head>` so Google and
    * Bing can confirm the platform account owns the site. Publish and deploy builds only; see `SiteRegistrar`.
    */
@@ -731,7 +738,9 @@ export function replacePreviewPdfEmbeds(html: string): string {
   });
 }
 
-export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest> {
+export async function buildSite(input: BuildSiteOptions): Promise<ReleaseManifest> {
+  // A demo copy is the same build over rewritten inputs: no receiver ever reaches the renderer.
+  const opts = input.demo ? demoBuildOptions(input) : input;
   const { outDir, bundle, publishedAt } = opts;
   const media = opts.media ?? [];
   const maxOutputBytes = opts.maxOutputBytes ?? configuredMaxOutputBytes();
@@ -1214,6 +1223,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // Each route (incl. every locale variant, which is its own Page) renders ONCE
     // at its own path. Guard against two routes resolving to the same output file.
     const writtenPaths = new Set<string>();
+    // A DEMO COPY's runtime address. Its `?v=` starts as the asset token and is re-pointed at a digest of the script
+    // once that is written, after the price lists it carries are sealed (see below).
+    const demoSrcFor = (siteRoot: string): string => `${siteRoot}${SCRIPT_DIR}/${DEMO_SCRIPT}?v=${assetVer}`;
+    let demoUsed = false;
     // Pages a DRAFT build rendered an error document for instead of aborting on — see the catch below.
     const pageFailures: PageBuildFailure[] = [];
     // Thumbnails are materialized WHILE pages render: copies and encodes run off the main thread,
@@ -1644,7 +1657,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // cart's channel config carry only a form ID; the URL is assembled at runtime so it is never a
           // ready-to-POST address sitting in the HTML. Only meaningful with an absolute base — a
           // same-origin deployment keeps its relative endpoints.
-          formApi: { base: formBase, project: bundle.project.id, preview: previewMode },
+          // A DEMO COPY loads its demo runtime in the blob's place, which answers the same builders in the page.
+          formApi: opts.demo
+            ? { base: '', project: bundle.project.id, demoSrc: demoSrcFor(siteRoot) }
+            : { base: formBase, project: bundle.project.id, preview: previewMode },
           // BUILT-IN STATISTICS: the tracker, with this page's route signed so the collector counts only real
           // pages. The route is the URL path the page is served at, relative to the site root.
           statsTag:
@@ -1720,7 +1736,14 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           website?.consent?.enabled === true
             ? gateAuthorIframes(portableHtml, { defaultCategory: website?.consent?.defaultEmbedCategory ?? DEFAULT_EMBED_CATEGORY })
             : portableHtml;
-        const finalHtml = opts.minifyHtml ? await minifyPageHtml(gatedHtml) : gatedHtml;
+        // A DEMO COPY loads its runtime only where something calls the platform: a page with no form, cart, order
+        // status or booking would fetch a script it never uses.
+        let demoReady = gatedHtml;
+        if (opts.demo) {
+          if (usesDemoRuntime(gatedHtml)) demoUsed = true;
+          else demoReady = gatedHtml.split(demoScriptTag(demoSrcFor(siteRoot))).join('');
+        }
+        const finalHtml = opts.minifyHtml ? await minifyPageHtml(demoReady) : demoReady;
         // Confined to tmp (checked by the caller); written while the next page renders.
         await pageWrites.write(full, finalHtml);
         bytes += Buffer.byteLength(finalHtml);
@@ -1902,11 +1925,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     report({ phase: 'scripts' });
     // A site with no media has no `_assets/` yet, and the runtimes may be the first thing in it.
     await mkdir(join(tmp, SCRIPT_DIR), { recursive: true });
-    const writeJs = async (name: string, code: string): Promise<void> => {
+    const writeJs = async (name: string, code: string): Promise<string> => {
       const min = await minifyJs(code);
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant/registry filename under the validated tmp dir
       await writeFile(join(tmp, SCRIPT_DIR, name), min, 'utf8');
       bytes += Buffer.byteLength(min);
+      return min;
     };
 
     // One first-party runtime CHUNK per component type used anywhere on the site (only-used-ships).
@@ -1970,6 +1994,14 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         if (shopTakesPayments && !previewMode) throw new PublishError(message);
         shopCatalogWarnings.push(message);
       }
+    }
+    // A DEMO COPY's runtime, written once the price lists are sealed: a demo checkout prices from them, as the
+    // platform's checkout does. Then every page that loads it is re-pointed at a digest of its bytes, so a changed
+    // price (or anything else in it) is a new URL that no cache can serve stale.
+    if (opts.demo && demoUsed) {
+      const js = await writeJs(DEMO_SCRIPT, demoRuntimeJs(demoRuntimeData(bundle, shopCatalog, shopCatalogs)));
+      const version = createHash('sha256').update(js).digest('hex').slice(0, assetVer.length);
+      await relinkStylesheet(writtenPaths, `${DEMO_SCRIPT}?v=${assetVer}`, `${DEMO_SCRIPT}?v=${version}`);
     }
 
     // Site-search index — ONE PAIR PER LOCALE, beside the sitemap. Emitted from the corpus collected

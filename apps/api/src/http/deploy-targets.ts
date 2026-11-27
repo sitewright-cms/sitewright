@@ -41,6 +41,8 @@ const CreateDeployTargetBody = z
     // ── Local Hosting serve options ──
     previewToken: z.string().min(16).max(64).regex(/^[A-Za-z0-9_-]+$/, 'previewToken must be url-safe').optional(),
     minifyHtml: z.boolean().optional(),
+    // A demo copy (remote targets only): the live features work in the browser, nothing is sent.
+    demo: z.boolean().optional(),
     // ── git fields ──
     repoUrl: z.string().min(1).max(2048).optional(),
     branch: z.string().min(1).max(255).optional(),
@@ -55,6 +57,11 @@ const CreateDeployTargetBody = z
   .refine((b) => (b.protocol !== 'ftp' && b.protocol !== 'ftps' && b.protocol !== 'sftp') || b.password !== undefined || b.privateKey !== undefined, {
     message: 'a password or a private key is required',
     path: ['password'],
+  })
+  // A demo copy leaves the platform's endpoints out, and Local Hosting is served by the platform.
+  .refine((b) => !b.demo || b.protocol !== 'local', {
+    message: 'a demo copy is only available for a remote target (FTP, FTPS, SFTP or git)',
+    path: ['demo'],
   })
   // A private key is only meaningful for SFTP or git (over SSH).
   .refine((b) => b.privateKey === undefined || b.protocol === 'sftp' || b.protocol === 'git', {
@@ -94,6 +101,9 @@ const UpdateDeployTargetBody = z.object({
   previewToken: z.string().min(16).max(64).regex(/^[A-Za-z0-9_-]+$/, 'previewToken must be url-safe').optional(),
   clearPreviewToken: z.boolean().optional(),
   minifyHtml: z.boolean().optional(),
+  demo: z.boolean().optional(),
+  /** Confirms switching a target that already serves a site to a demo copy (see the PUT route). */
+  demoAck: z.boolean().optional(),
   useRsync: z.boolean().optional(),
   rsyncDelete: z.boolean().optional(),
   rsyncRootDeleteAck: z.boolean().optional(),
@@ -245,11 +255,12 @@ export interface DeployTargetDeps {
   assertDeployHostAllowed: (host: string) => void;
   isWriter: (ctx: ProjectContext) => boolean;
   /** Build the site fresh into a temp dir at deploy time, returning its path (caller removes it) and
-   *  the build's manifest. `minify` mirrors the target's `minifyHtml` serve option (all target types). */
+   *  the build's manifest. `minify` mirrors the target's `minifyHtml` serve option (all target types), and `demo`
+   *  its demo-copy flag (remote targets): the build then carries no endpoint or receiver at all. */
   buildForDeploy: (
     ctx: ProjectContext,
     projectId: string,
-    opts?: { minify?: boolean; protocol?: string },
+    opts?: { minify?: boolean; protocol?: string; demo?: boolean },
   ) => Promise<{ dir: string; release: ReleaseManifest }>;
   /**
    * A deploy SUCCEEDED, so its build is now the live site. ★ Saves that build's shop price lists —
@@ -314,9 +325,31 @@ export function startSseKeepAlive(
 }
 
 /**
- * Stamps a target as freshly deployed. Read-modify-write of the STORED record, so the encrypted
- * `secret` and every other field are carried through untouched — this runs on the success path of a
- * deploy, and losing a credential here would break the next one.
+ * Whether two versions of a target receive the SAME site: the same destination, and the same build options that
+ * change what is shipped (a demo copy, minified HTML). While they do, when the target was last deployed still says
+ * what its destination holds; once either changes, it no longer does, and the editor shows changes to deploy.
+ */
+export function sameDeployedSite(a: DeployTarget, b: DeployTarget): boolean {
+  return (
+    a.protocol === b.protocol &&
+    a.repoUrl === b.repoUrl &&
+    a.branch === b.branch &&
+    a.host === b.host &&
+    a.port === b.port &&
+    a.user === b.user &&
+    (a.remoteDir ?? '/') === (b.remoteDir ?? '/') &&
+    !!a.demo === !!b.demo &&
+    !!a.minifyHtml === !!b.minifyHtml
+  );
+}
+
+/**
+ * Stamps a target as freshly deployed. Read-modify-write of the record STORED NOW, so the encrypted `secret` and
+ * every other field are carried through untouched — this runs on the success path of a deploy, and losing a
+ * credential here would break the next one. ★ It re-reads rather than writing back `target` (the copy the deploy
+ * started from): an edit saved while the deploy ran (a demo copy switched on or off, say) would otherwise be
+ * silently undone. When that edit changed which site the target gets, this deploy did not ship it, so nothing is
+ * stamped and the editor keeps showing changes to deploy. A target deleted meanwhile is left deleted.
  */
 export async function recordDeployed(
   contentRepo: DeployTargetDeps['contentRepo'],
@@ -324,7 +357,14 @@ export async function recordDeployed(
   target: DeployTarget,
   now: () => string = () => new Date().toISOString(),
 ): Promise<void> {
-  await contentRepo.put(ctx, 'deploy_target', target.id, { ...target, lastDeployedAt: now() });
+  let stored: DeployTarget | undefined;
+  try {
+    stored = (await contentRepo.get(ctx, 'deploy_target', target.id)) as DeployTarget | undefined;
+  } catch {
+    return;
+  }
+  if (!stored || !sameDeployedSite(stored, target)) return;
+  await contentRepo.put(ctx, 'deploy_target', target.id, { ...stored, lastDeployedAt: now() });
 }
 
 /**
@@ -439,6 +479,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
                 repoUrl: body.repoUrl,
                 branch: body.branch,
                 ...(body.minifyHtml ? { minifyHtml: true } : {}),
+                ...(body.demo ? { demo: true } : {}),
                 // SSH remote → encrypt the private key (+ passphrase) and keep the optional pinned host
                 // key; HTTPS remote → encrypt the token.
                 ...(isSshRepoUrl(body.repoUrl!) && body.hostFingerprint ? { hostFingerprint: body.hostFingerprint } : {}),
@@ -458,6 +499,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
               user: body.user,
               remoteDir: body.remoteDir ?? '/',
               ...(body.minifyHtml ? { minifyHtml: true } : {}),
+              ...(body.demo ? { demo: true } : {}),
               ...(body.useRsync ? { useRsync: true } : {}),
               // `false` must SURVIVE — it is the whole point of the toggle, so it cannot be spread
               // conditionally the way a default-off flag can.
@@ -510,6 +552,21 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
       // Keep-or-set: an OMITTED minifyHtml keeps the current value; an explicit true/false overrides it.
       // Stored only when truthy (below), so a stored target is ever present-true or absent — never false.
       const minifyHtml = body.minifyHtml ?? existing.minifyHtml;
+      // Same keep-or-set for a demo copy. Local Hosting cannot be one (the schema refuses), so it is never carried there.
+      const demo = body.demo ?? existing.demo;
+      if (protocol === 'local' && body.demo) {
+        return reply.code(400).send({ error: 'a demo copy is only available for a remote target (FTP, FTPS, SFTP or git)' });
+      }
+      // ★ A target that already serves a site is a LIVE site: its next deploy as a demo copy replaces working forms,
+      // orders and bookings with ones that send nothing. Asked for explicitly, like rsync's root prune, by every
+      // caller (the editor, the API, an agent). Switching a demo copy back to live needs nothing.
+      if (demo && !existing.demo && existing.lastDeployedAt && body.demoAck !== true) {
+        return reply.code(400).send({
+          error:
+            'this target already serves a site: its next deploy would replace the working forms, orders and bookings with a demo ' +
+            'that sends nothing — send demoAck: true to confirm',
+        });
+      }
 
       let target: unknown;
       if (protocol === 'local') {
@@ -564,6 +621,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
           repoUrl,
           branch,
           ...(minifyHtml ? { minifyHtml: true } : {}),
+          ...(demo ? { demo: true } : {}),
           ...(isSshRepoUrl(repoUrl) && hostFingerprint ? { hostFingerprint } : {}),
           secret: encodeCreds(merged, encryptionKey),
         };
@@ -597,6 +655,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
           user: body.user ?? existing.user,
           remoteDir,
           ...(minifyHtml ? { minifyHtml: true } : {}),
+          ...(demo ? { demo: true } : {}),
           ...(useRsync ? { useRsync: true } : {}),
           ...((body.rsyncDelete ?? existing.rsyncDelete) === undefined ? {} : { rsyncDelete: body.rsyncDelete ?? existing.rsyncDelete }),
           ...((body.rsyncRootDeleteAck ?? existing.rsyncRootDeleteAck) ? { rsyncRootDeleteAck: true } : {}),
@@ -611,7 +670,16 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         };
       }
       const parsed = DeployTargetSchema.parse(target);
-      const saved = (await contentRepo.put(ctx, 'deploy_target', existing.id, parsed)) as DeployTarget;
+      // When the target was last deployed survives an edit that leaves it receiving the same site (a rename, a new
+      // password): dropping it made a renamed target read as never deployed, which would let the demo check above be
+      // skipped. An edit that changes the destination or what is shipped drops it, so the editor shows changes to
+      // deploy until the target has the site it is now set up for.
+      const next = existing.lastDeployedAt && sameDeployedSite(existing, parsed) ? { ...parsed, lastDeployedAt: existing.lastDeployedAt } : parsed;
+      const saved = (await contentRepo.put(ctx, 'deploy_target', existing.id, next)) as DeployTarget;
+      // Which site a target's deploys show changed: worth a line naming who did it.
+      if (!!saved.demo !== !!existing.demo) {
+        req.log.info({ userId: ctx.userId, project: ctx.projectId, target: existing.id, demo: !!saved.demo }, saved.demo ? 'deploy target switched to a demo copy' : 'deploy target switched back to live');
+      }
       return reply.send({ target: sanitize(saved) });
     },
   );
@@ -815,7 +883,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         // (bad route graph / json_data URL) is author-correctable → 409.
         let built: { dir: string; release: ReleaseManifest };
         try {
-          built = await deps.buildForDeploy(ctx, project.id, { minify: !!target.minifyHtml, protocol: target.protocol });
+          built = await deps.buildForDeploy(ctx, project.id, { minify: !!target.minifyHtml, protocol: target.protocol, demo: !!target.demo });
         } catch (err) {
           if (err instanceof PublishError || err instanceof JsonDataError) {
             return reply.code(409).send({ error: err.message });
@@ -839,9 +907,12 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
           // Same bookkeeping as the streaming route — an agent deploying through this path must leave
           // the project in the same state a UI deploy does.
           // Bookkeeping after the files are up: a failure here must not report the upload as failed.
-          await deps.onDeployed(project.id, built.release).catch((err: unknown) => {
-            app.log.error({ errMsg: err instanceof Error ? err.message : String(err) }, 'saving the deployed price lists failed');
-          });
+          // A demo copy takes no orders, so it never sets what checkout charges.
+          if (!target.demo) {
+            await deps.onDeployed(project.id, built.release).catch((err: unknown) => {
+              app.log.error({ errMsg: err instanceof Error ? err.message : String(err) }, 'saving the deployed price lists failed');
+            });
+          }
           await recordDeployed(contentRepo, ctx, target).catch((err: unknown) => {
             app.log.error({ errMsg: err instanceof Error ? err.message : String(err) }, 'recording the deploy failed');
           });
@@ -890,7 +961,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         // Build the site FRESH before hijacking, so a build error is a normal JSON 409 (not an SSE frame).
         let built: { dir: string; release: ReleaseManifest };
         try {
-          built = await deps.buildForDeploy(ctx, project.id, { minify: !!target.minifyHtml, protocol: target.protocol });
+          built = await deps.buildForDeploy(ctx, project.id, { minify: !!target.minifyHtml, protocol: target.protocol, demo: !!target.demo });
         } catch (err) {
           if (err instanceof PublishError || err instanceof JsonDataError) {
             return reply.code(409).send({ error: err.message });
@@ -918,10 +989,13 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
             // Only on success — a failed upload must not mark the target current, nor change what
             // checkout charges.
             async () => {
-              // Each on its own: a failed price-list save must not leave the target marked undeployed.
-              await deps.onDeployed(project.id, built.release).catch((err: unknown) => {
-                app.log.error({ errMsg: err instanceof Error ? err.message : String(err) }, 'saving the deployed price lists failed');
-              });
+              // Each on its own: a failed price-list save must not leave the target marked undeployed. A demo copy
+              // takes no orders, so it never sets what checkout charges.
+              if (!target.demo) {
+                await deps.onDeployed(project.id, built.release).catch((err: unknown) => {
+                  app.log.error({ errMsg: err instanceof Error ? err.message : String(err) }, 'saving the deployed price lists failed');
+                });
+              }
               await recordDeployed(contentRepo, ctx, target);
             },
           );

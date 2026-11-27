@@ -331,6 +331,45 @@ describe('saved deploy targets', () => {
     });
     expect((git.json() as { target: { minifyHtml?: boolean } }).target.minifyHtml).toBe(true);
   });
+
+  // ── a demo copy: remote targets only, kept or changed on edit like minifyHtml ──────────────────────
+  it('stores a demo copy on a remote and a git target, keeps it on an unrelated edit, and turns it off', async () => {
+    const { t, projectId } = await setup('demo@acme.test');
+    const cookies = { sw_session: t };
+    const base = `/projects/${projectId}/deploy-targets`;
+    const sftp = await app.inject({ method: 'POST', url: base, cookies, payload: { ...target, name: 'Demo SFTP', demo: true } });
+    expect(sftp.statusCode).toBe(201);
+    const sftpTarget = (sftp.json() as { target: { id: string; demo?: boolean } }).target;
+    expect(sftpTarget.demo).toBe(true);
+    const git = await app.inject({
+      method: 'POST', url: base, cookies,
+      payload: { name: 'Pages', protocol: 'git', repoUrl: 'https://allowed.example.com/a/a.github.io.git', branch: 'main', token: 'ghp_x', demo: true },
+    });
+    const gitTarget = (git.json() as { target: { id: string; demo?: boolean } }).target;
+    expect(gitTarget.demo).toBe(true);
+
+    // An edit that does not mention it keeps it; an explicit false turns it off (stored absent, never false).
+    const renamed = await app.inject({ method: 'PUT', url: `${base}/${gitTarget.id}`, cookies, payload: { name: 'GitHub Pages' } });
+    expect((renamed.json() as { target: { demo?: boolean } }).target.demo).toBe(true);
+    const off = await app.inject({ method: 'PUT', url: `${base}/${sftpTarget.id}`, cookies, payload: { demo: false } });
+    expect(off.statusCode).toBe(200);
+    expect(off.json() as { target: Record<string, unknown> }).not.toHaveProperty('target.demo');
+    const on = await app.inject({ method: 'PUT', url: `${base}/${sftpTarget.id}`, cookies, payload: { demo: true } });
+    expect((on.json() as { target: { demo?: boolean } }).target.demo).toBe(true);
+  });
+
+  it('refuses a demo copy on Local Hosting, at create and on edit', async () => {
+    const { t, projectId } = await setup('demo-local@acme.test');
+    const cookies = { sw_session: t };
+    const base = `/projects/${projectId}/deploy-targets`;
+    const refused = await app.inject({ method: 'POST', url: base, cookies, payload: { name: 'Local', protocol: 'local', demo: true } });
+    expect(refused.statusCode).toBe(400);
+    const local = await app.inject({ method: 'POST', url: base, cookies, payload: { name: 'Local', protocol: 'local' } });
+    const id = (local.json() as { target: { id: string } }).target.id;
+    const edit = await app.inject({ method: 'PUT', url: `${base}/${id}`, cookies, payload: { demo: true } });
+    expect(edit.statusCode).toBe(400);
+    expect(edit.body).toContain('remote target');
+  });
 });
 
 // ── editing a target in place (PUT) — credentials preserved unless re-supplied ──────────────────

@@ -146,6 +146,7 @@ export class WorkerBuildRunner implements BuildRunner {
       ...(job.captcha ? { captcha: job.captcha } : {}),
       ...(job.stats ? { stats: job.stats } : {}),
       ...(job.siteVerification ? { siteVerification: job.siteVerification } : {}),
+      ...(job.demo ? { demo: true } : {}),
     };
   }
 

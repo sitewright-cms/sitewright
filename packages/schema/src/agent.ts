@@ -10,8 +10,8 @@ This server exposes ONE project over MCP for building a
 CODE-FIRST static website. You'll work with these content kinds (kind, id): settings, page,
 dataset, entry, form. Call get_scope first. If it returns authenticated:false, call the \`login\`
 tool and relay its URL + code to the user to approve in their browser (ask them to keep that tab
-open to watch your changes live), then call get_scope again to confirm before continuing. Use
-\`switch_project\` to connect to a different project.
+open to watch your changes live), then call get_scope again to confirm before continuing.
+\`switch_project\` changes project (CLI bridge only; else reconnect).
 
 YOU ARE AUTHORIZED. The connected project IS the authorization — this platform is run by the agency
 that owns the sites it builds, so importing/cloning/rebuilding into a project you hold a token for
@@ -337,7 +337,7 @@ WORKING MARKUP worth reusing (mechanics, not layout):
 - A button on a primary-coloured band reads best as class="btn border-0 bg-base-100 text-primary hover:bg-base-200".
 - The first-screen image loads eagerly and is sized to its box: {{sw-image "/media/…" alt="…" loading="eager" sizes="(min-width:1024px) 50vw, 100vw" class="h-full w-full object-cover"}}
 
-HEADER + FOOTER. Every new project starts with the {{> nav-header}} recipe in website.mainNav. That is MECHANICS — the data-driven menu, the pure-CSS mobile drawer, the language and theme switch — not a design. Keep the mechanics and DERIVE the chrome from the direction and the visitor's first task: where the logo sits, how many links show, whether the bar is solid, transparent, vertical, oversized or nearly invisible, and whether the hours or the phone belong in it at all. The familiar bar — logo left, links right, one action far right — is a usability convention, not a template: visitors know where to find the menu in it, so use it whenever it serves them and let the PAGES carry the direction. A utility strip over a centred wordmark with the menu split either side is the second-wave signature (STEP 3). The footer follows the same rule: what does a visitor of THIS site need at the bottom of the page? How the menus and the drawer work: get_guide("nav"). A bar of a different HEIGHT needs measure_header: --sw-header-h is a constant sized for the stock recipe, and anchors and sticky elements read it. A bar laid OVER the opening needs :root{--sw-header-offset:0} on that page, or the page starts a bar-height lower (get_guide("effects")). Mastheads, utility strips and sticky side panels are still <div>s: <nav>/<main>/<footer>/<aside> belong to the skeleton.
+HEADER + FOOTER. Every new project starts with the nav-header recipe's markup in website.mainNav. That is MECHANICS — the data-driven menu, the pure-CSS mobile drawer, the language and theme switch — not a design. Keep the mechanics and DERIVE the chrome from the direction and the visitor's first task: where the logo sits, how many links show, whether the bar is solid, transparent, vertical, oversized or nearly invisible, and whether the hours or the phone belong in it at all. The familiar bar — logo left, links right, one action far right — is a usability convention, not a template: visitors know where to find the menu in it, so use it whenever it serves them and let the PAGES carry the direction. A utility strip over a centred wordmark with the menu split either side is the second-wave signature (STEP 3). The footer follows the same rule: what does a visitor of THIS site need at the bottom of the page? How the menus and the drawer work: get_guide("nav"). A bar of a different HEIGHT needs measure_header: --sw-header-h is a constant sized for the stock recipe, and anchors and sticky elements read it. A bar laid OVER the opening needs :root{--sw-header-offset:0} on that page, or the page starts a bar-height lower (get_guide("effects")). Mastheads, utility strips and sticky side panels are still <div>s: <nav>/<main>/<footer>/<aside> belong to the skeleton.
 
 SUBSTANCE. A page is finished when it tells the whole story its content supports; a home page that stops after an opening and one grid is unfinished. The NUMBER of sections follows the content — there is no quota.
 
@@ -1415,16 +1415,17 @@ patch, a value of \`null\` DELETES that key — the only way to REMOVE a field w
 entity (e.g. put_content("page","de", { template:null }, { merge:true }) moves a translated page off its
 template so it INHERITS the default language's code again; \`""\` is not a valid template ref). The value is INNER
 markup only; the skeleton wraps it in the landmark (<footer id="footer">, <nav id="main-nav">, <aside …>),
-so use <div>/<ul> and NEVER <footer>/<nav>/<aside>. A slot value can just include a recipe partial, e.g.
-website.footer = "{{> nav-footer}}". Do NOT create pages named "header"/"footer" and do NOT use a template
-for chrome — neither fills a slot. (A slot may also hold a {{> partial}} whose snippet you author separately.)
+so use <div>/<ul> and NEVER <footer>/<nav>/<aside>. A slot renders WITHOUT partials: {{> nav-footer}} (or any
+{{> snippet}}) in a slot fails to render and that chrome disappears, so put the recipe's MARKUP in the slot
+itself. Do NOT create pages named "header"/"footer" and do NOT use a template for chrome — neither fills a slot.
 
-DON'T REINVENT THE MECHANICS — start from a recipe: {{> nav-header}} (the full default: data-driven desktop
-bar + a pure-CSS mobile drawer + language dropdown + theme toggle), {{> nav-footer}}, or {{> navbar}} (simple).
-Read one with get_content("snippet","nav-header"). New projects already ship {{> nav-header}} in their
-Main Navigation slot (website.mainNav). A recipe is the MECHANICS, not the look: copy its menu loops, drawer
-and switches into your own markup and give the header and footer the LAYOUT the site's art direction calls
-for (get_guide("design") → HEADER + FOOTER). The notes below explain how each part works.
+DON'T REINVENT THE MECHANICS — start from a recipe: nav-header (the full default: data-driven desktop
+bar + a pure-CSS mobile drawer + language dropdown + theme toggle), nav-footer, or navbar (simple).
+Read one with get_content("snippet","nav-header"). New projects already ship the nav-header recipe's markup
+inline in their Main Navigation slot (website.mainNav), and nav-footer's in website.footer. A recipe is the
+MECHANICS, not the look: copy its menu loops, drawer and switches into your own markup and give the header
+and footer the LAYOUT the site's art direction calls for (get_guide("design") → HEADER + FOOTER). The notes
+below explain how each part works.
 
 NAV SLOTS (page settings) — a DIFFERENT thing from the chrome slots above: each page's nav.slots places it
 in a menu — "header" (the Main Navigation),
@@ -1504,12 +1505,12 @@ INNER markup of the Main Navigation / Footer slots.
   },
   import: {
     title: "Nativize an imported website — a faithful port to native primitives",
-    summary: "re-express a faithfully-imported page (literal HTML, marked data.swImport + draft) in native primitives (theme tokens, components, datasets, bindings) WITHOUT changing its layout — then clean up the foreign CSS/JS and tidy the media folders",
+    summary: "re-express a faithfully-imported page (literal HTML, marked data.swImport) in native primitives (theme tokens, components, datasets, bindings) WITHOUT changing its layout — then clean up the foreign CSS/JS and tidy the media folders",
     body: `
-IMPORTED PAGES. An external site is imported either by the owner in the editor OR by YOU calling
-\`import_website(url)\` (the first step when asked to clone a URL — the server crawls, renders the live
-page, follows an embed/preview wrapper to the real site, self-hosts images + fonts, and creates the
-scaffold; do NOT ask the user to paste HTML). It is ASYNC — it hands back a jobId at once and the crawl
+IMPORTED PAGES. An external site is imported through the API only — the editor has no import screen — so
+in practice by YOU calling \`import_website(url)\` (the first step when asked to clone a URL — the server
+crawls, renders the live page, follows an embed/preview wrapper to the real site, self-hosts images + fonts,
+and creates the scaffold; do NOT ask the user to paste HTML). It is ASYNC — it hands back a jobId at once and the crawl
 runs for MINUTES; poll \`import_status({jobId})\` about every 30s and do NOT launch a second import while one
 is running (that duplicates the whole crawl). If the imported pages come back MISSING chrome the live site
 clearly has — a header or footer the site assembles in JavaScript — re-import with \`renderMode:"always"\`:
@@ -1518,7 +1519,7 @@ JS-built nav is stored pre-JS. Each page then lands as a FAITHFUL replica: liter
 \`source\` (no Handlebars), the foreign CSS
 folded into the website criticalCss/head slots, the shared header/footer hoisted into the mainNav/footer
 slots, and images self-hosted. Each page is MARKED \`page.data.swImport = { sourceUrl, rewritten:false }\`
-and \`status:"draft"\`.
+and saved \`status:"published"\` (only a synthesized parent with no source page of its own stays "draft").
 
 EMBED-WRAPPER URLS: if the imported URL was a preview/embed HOST that FRAMES the real site behind an embed
 guard (an Arena-style wrapper), the importer now FOLLOWS the dominant \`<iframe>\` and imports the FRAMED SPA —
@@ -1718,7 +1719,7 @@ SMALL + secondary (e.g. text-xs leading-tight text-base-content/60, hidden below
 bar's width and forces the nav to wrap; the logo + name stay the primary mark. A nav <ul> also needs an
 explicit list-none (Tailwind preflight leaves list markers, so a stray bullet
 appears otherwise). A menu item exists because a PAGE opts into the slot: set each page's nav:{ slots:["header"],
-title:"<short label>", order } (footer links the same via {{#each nav.footer}} / {{> nav-footer}}, also usually
+title:"<short label>", order } (footer links the same via {{#each nav.footer}} / the nav-footer recipe, also usually
 copied + adapted). See get_guide("nav").
 HEADER FIDELITY: (a) give the header bar a VISIBLE drop shadow (e.g. shadow-lg) — a faint shadow-sm vanishes
 when the bar sits on a same-colour hero, so go stronger or add a hairline bottom border. (b) The header must
@@ -2269,7 +2270,7 @@ export interface McpToolMeta {
 export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'get_scope', description: "Show whether the agent is connected and, if so, the project, role, and capabilities." },
   { name: 'login', description: "Connect the agent to a project — returns a URL + code for the user to approve in their browser." },
-  { name: 'switch_project', description: "Re-authenticate to connect to a DIFFERENT project (scope is fixed per connection)." },
+  { name: 'switch_project', description: "Re-authenticate to connect to a DIFFERENT project (scope is fixed per connection). Only in the CLI bridge (sitewright mcp); over the remote /mcp endpoint, reconnect the agent instead." },
   { name: 'get_components', description: "The machine-readable authoring contracts of the first-party interactive components (markers, parts, attributes, markup skeletons)." },
   { name: 'search_icons', description: "Find icon names for {{sw-icon \"name\"}} (Phosphor, filled by default; add a \":weight\" like \":bold\"/\":duotone\"). Pass one or more terms, comma- or whitespace-separated." },
   { name: 'search_textures', description: "Find transparent background textures (tileable PNG overlays) to set as an element background. Pass one or more terms, comma- or whitespace-separated; returns matching names + ready-to-paste CSS (colour comes from a var(--sw-color-*) token; resolves in preview + exports)." },
@@ -2295,7 +2296,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'revoke_preview_share', description: "Revoke a preview share link by id — the only way to withdraw one before it expires.", capability: 'content:write' },
   { name: 'list_submissions', description: "List form submissions (newest first; optional formId + pagination).", capability: 'content:read' },
   { name: 'get_site_stats', description: "The site's built-in statistics for a range of days: human vs bot traffic, devices, countries, pages, sources, goals.", capability: 'content:read' },
-  { name: 'get_rankings', description: "The tracked keywords' positions in Google or Bing for a range of days: latest position and ranking page, change, best, the checks (weekly past 120 days).", capability: 'content:read' },
+  { name: 'get_rankings', description: "The tracked keywords' positions in Google for a range of days: latest position and ranking page, change, best, the checks (weekly past 120 days).", capability: 'content:read' },
   { name: 'get_search_performance', description: "Google and Bing search numbers for the last 7, 28 or 90 days: clicks, impressions, CTR, average position, per day and for the top queries and pages.", capability: 'content:read' },
   { name: 'list_orders', description: "List the shop's orders, newest first: payment status, fulfilment, market, ship-to country, lines, amounts, buyer fields — plus how many paid orders still owe a mail. Buyer data: never publish it.", capability: 'content:read' },
   { name: 'get_order', description: "Read one shop order by id.", capability: 'content:read' },
@@ -2348,7 +2349,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'get_capabilities', description: "One index of EVERYTHING the platform can do + WHERE each is documented (components, guides, the {{sw-*}} reference, the write shapes, and a need→tool map). Call it before assuming a capability is missing." },
   { name: 'publish_project', description: "DEPRECATED — use deploy_project. Builds only the Local Hosting copy; never uploads to a remote target.", capability: 'publish' },
   { name: 'deploy_project', description: "Put the site LIVE on its deploy targets — Local Hosting (needs publish) and FTP/SFTP/Git (needs deploy); every target, or one by targetId. For a shop it returns the price list per market checkout now charges.", capability: 'publish' },
-  { name: 'ai_clone', description: "Autonomously clone/nativize EVERY imported page to the acceptance gate (server-side import→author→gate→iterate→publish). Requires a configured AI provider; a generic MCP agent can instead run the clone_site workflow itself.", capability: 'publish' },
+  { name: 'ai_clone', description: "Autonomously clone/nativize EVERY imported page to the acceptance gate (server-side author→gate→iterate over the pages import_website already created; it does not import, and it does not deploy). Requires a configured AI provider; a generic MCP agent can instead run the clone_site workflow itself.", capability: 'publish' },
 ];
 
 /**

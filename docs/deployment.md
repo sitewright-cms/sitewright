@@ -85,8 +85,22 @@ sites.example.com {
 server {
     server_name sites.example.com;
     # ... your listen/ssl_certificate directives ...
-    client_max_body_size 210m;   # allow large project-import uploads
+    client_max_body_size 210m;   # media uploads (the app's own cap is 200 MiB)
     location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    # Project import / restore: the archive can be far bigger than a media file — the app accepts up to
+    # 32 GiB, streamed to disk. Raise the cap for this one path and pass the body straight through. The restore
+    # streams its progress back while it runs, so do not buffer the answer, and allow a long upload.
+    location = /projects/import/zip {
+        client_max_body_size 32g;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -94,6 +108,10 @@ server {
     }
 }
 ```
+
+The app enforces its own size limit on every route (200 MiB for a media upload, 50 MiB for a website-import
+archive, 32 GiB for a project import), so the proxy only has to allow at least that much on each path.
+Without the second `location`, nginx refuses any project archive over 210 MB before it reaches the app.
 
 **Behind a web application firewall:** not recommended. A WAF running the OWASP Core Rule Set with its
 defaults refuses the editor's saves, agents' writes and uploads, the statistics beacon and local apps'
@@ -406,7 +424,7 @@ docker run -d --name sitewright ... ghcr.io/sitewright-cms/sitewright:0.2.0   # 
 
 Migrations run automatically on start. **Before applying a pending migration the app writes a WAL-safe
 snapshot of the database** to `<SW_DATA_DIR>/backups/*.pre-migration.bak`, so a bad upgrade can be rolled
-back. Retention + a manual purge live in **System Settings → Storage & backups**.
+back. Retention + a manual purge live in **System Settings → Ops → Storage & backups**.
 
 ## Backups & restore
 

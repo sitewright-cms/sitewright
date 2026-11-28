@@ -111,7 +111,7 @@ stay the atoms; Widgets are managed molecules built from them.
 ## Roadmap: Widgets + nested datasets
 
 > **Status: DELIVERED.** Nested `list`/`object` datasets and the Widget mechanism below have shipped —
-> this section is kept as design context. The **current** field-type set is the 15 types in
+> this section is kept as design context. The **current** field-type set is the 18 types in
 > `packages/schema/src/dataset.ts` `FieldTypeSchema` (see below); the MCP `get_guide("datasets")` is the
 > authoritative agent-facing reference.
 
@@ -119,9 +119,9 @@ Widgets depend on two pieces of new capability, built in this order:
 
 ### 1. Nested datasets (`list` / `object` field types)
 
-A Dataset field's `type` is one of the **15** supported types —
-`text`, `richtext`, `number`, `boolean`, `date`, `time`, `datetime`, `image`, `file`, `folder`,
-`reference`, `select`, `json`, and the two NESTED types `list` (an ordered, repeatable group of
+A Dataset field's `type` is one of the **18** supported types —
+`text`, `richtext`, `number`, `boolean`, `date`, `time`, `datetime`, `image`, `icon`, `file`, `folder`,
+`reference`, `page`, `prices`, `select`, `json`, and the two NESTED types `list` (an ordered, repeatable group of
 sub-fields) and `object` (a named sub-group). The nested types carry their own child `fields`, so a
 single entry can model a Widget config with **top-level settings AND a nested array** — e.g. a hero is
 `{ show_navigation, show_indicators, autoplay, interval, slides: [{ image, caption, link }, …] }`.

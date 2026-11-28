@@ -6032,7 +6032,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   registerOAuthRoutes(app, { db, oauth: oauthRepo, clients: oauthClients, projects, currentUserId, instanceSettings: instanceSettingsRepo, origins: platformOrigins, rl });
   // Remote MCP transport (Streamable HTTP) for hosted clients (ChatGPT/claude.ai), authenticated by
   // the same OAuth bearer tokens; reuses the REST routes in-process. See mcp-routes.ts.
-  registerMcpRoutes(app, { rl, rlAgent, origins: platformOrigins });
+  registerMcpRoutes(app, { rl, rlAgent, origins: platformOrigins, contentBodyLimit: CONTENT_BODY_LIMIT });
 
   // ---- Custom domains for locally-hosted sites ----
   registerProjectDomainRoutes(app, {

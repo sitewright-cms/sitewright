@@ -628,7 +628,7 @@ export interface CloneRunPage {
   rounds: number;
 }
 /** The autonomous clone orchestrator's final verdict (POST /projects/:id/agent/clone) — it runs the whole
- *  import→author→gate→iterate→publish loop server-side and returns once every page has been driven to (or
+ *  author→gate→iterate loop server-side over the already-imported pages (no import, no deploy) and returns once every page has been driven to (or
  *  past its round budget short of) the acceptance gate. */
 export interface CloneRunResult {
   ok: boolean;

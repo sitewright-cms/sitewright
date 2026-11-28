@@ -102,7 +102,7 @@ Rarely needed — sensible defaults ship for a single-container instance.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `SW_RENDER_WORKERS` | `2` | Template render-pool worker count. |
+| `SW_RENDER_WORKERS` | from the memory limit: 1 below 1 GiB, 2 below 4 GiB, else 3 | Most template render-pool workers at once. Workers start on demand; from 4 GiB one is kept warm. |
 | `SW_RENDER_MEMORY_MB` | `128` | Per-worker V8 heap ceiling. |
 | `SW_RENDER_TIMEOUT_MS` | `5000` | Per-render timeout. |
 | `SW_RENDER_MAX_RENDERS` | `500` | Recycle a worker after this many renders. |

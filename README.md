@@ -71,7 +71,7 @@ Put a TLS reverse proxy in front and you're live. Full guide → **[docs/deploym
   preloader, click ripples, back-to-top, and opt-in light/dark themes.
 
 ### 🗂️ Built-in CMS
-- **Typed datasets** — collections with 17 field types (incl. nested list/object, references, media, icons,
+- **Typed datasets** — collections with 18 field types (incl. nested list/object, references, media, icons,
   page refs), edited in a data panel and **click-to-edit in the preview**.
 - **Detail pages** — one real page per item, sharing a single `template:` ref, so every URL is a first-class
   page you can override individually.

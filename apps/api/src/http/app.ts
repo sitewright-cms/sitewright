@@ -170,6 +170,7 @@ import {
   parentPageView,
   pagesContext,
   pageUrlsContext,
+  reachablePartials,
   referencesChildren,
   referencesParentPage,
   widgetDatasetsForSources,
@@ -6451,6 +6452,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
         ...WIDGET_PARTIALS,
       };
+      // What renders with this page's context — the source, the chrome slots that share it, and every
+      // snippet the page composes (transitively) — which the REFERENCED-ONLY bindings below are gated on,
+      // exactly as publish gates them (build.ts). A binding named only inside a `{{> snippet}}` used to be
+      // skipped here, so the editor showed an empty back link / grid the author could not explain.
+      const previewSlotSources = [website?.mainNav, website?.sidebarLeft, website?.sidebarRight, website?.footer, website?.bottom]
+        .filter((s): s is string => Boolean(s));
+      const previewPartials = Object.values(reachablePartials([pageSource, ...previewSlotSources], partials));
+      // `item` reaches the body render only (slotCtx has none), so it reads the body's reach alone.
+      const bodyScan = [pageSource, ...previewPartials].join('\n');
+      const contextScan = [bodyScan, ...previewSlotSources].join('\n');
       const sourceData = Object.fromEntries(byDataset);
       // The pages the live site ships — drafts excluded, as publish does. Everything below that
       // resolves ANOTHER page (dataset page refs, nav, children, parent, pages.*, sw-page-url) reads
@@ -6470,8 +6481,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         localeOf(page, defaultLocale),
       );
       // Keyed entry access ({{item.<dataset>.<id>.<field>}}) — built only for datasets this source
-      // addresses by key, so a looping-only page pays nothing.
-      const item = keyedDatasets(pageSource, localeData);
+      // addresses by key (in its source or a snippet it composes), so a looping-only page pays nothing.
+      const item = keyedDatasets(bodyScan, localeData);
       // Public form definitions + same-origin `/f/<projectId>/<formId>` endpoints for the form
       // embed ({{sw-form}} / data-sw-form) — parity with publish, which precomputes
       // publicBaseUrl-absolute endpoints. The hCaptcha sitekey upgrades opted-in forms' widgets.
@@ -6553,7 +6564,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // `savedPages` (already published-only → drafts excluded, mirroring publish/nav for WYSIWYG
         // parity); childrenOf filters parent + locale and caps the count. Each child carries its own
         // `data`, so bound the serialized array against the same IPC ceiling as the data above.
-        const previewChildListing = referencesChildren(pageSource)
+        const previewChildListing = referencesChildren(contextScan)
           ? childrenView(savedPages, page, defaultLocale)
           : { children: [], total: 0, truncated: false };
         const previewChildren = previewChildListing.children;
@@ -6585,7 +6596,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // `page.template` — the template ref id ('' = own code); `page.code` — the EFFECTIVE source
           // rendering this page (template-resolved). Source is gated to {{page.code}} uses (it's large).
           template: page.template ?? '',
-          code: pageSource && /\bpage\.code\b/.test(pageSource) ? pageSource : '',
+          code: pageSource && /\bpage\.code\b/.test(contextScan) ? pageSource : '',
         };
         // `page.code` duplicates the (already body-limited) source into the IPC payload — bound it against
         // the same 4 MiB ceiling as the other heavy preview fields, for a consistent defensive guard.
@@ -6593,10 +6604,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           return reply.code(413).send({ error: 'project data is too large to render' });
         }
         // The page's PARENT as a lean view (`{{page.parent.path}}`, `{{page.parent.data.x}}`) — absent
-        // at the tree root. Built only when the source references it (the parent carries its own
+        // at the tree root. Built only when referenced (the parent carries its own
         // `data`, so the gate keeps it off the IPC otherwise) and from the SAVED pages for the
         // parent (not the unsaved preview overlay).
-        const previewParent = referencesParentPage(pageSource)
+        const previewParent = referencesParentPage(contextScan)
           ? (parentPageView(savedPages, page, defaultLocale) as unknown as Record<string, unknown> | undefined)
           : undefined;
         // Bound the parent view against the same IPC ceiling as the data/children above — its `data`
@@ -6606,12 +6617,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
         // Cross-page slug-path access (`{{pages.services.seo._attributes.data.x}}`) — referenced-only +
         // same-locale, shared by the page render AND the slots (a footer/nav may reference another page too).
-        const crossPageScan = [pageSource, website?.mainNav, website?.sidebarLeft, website?.sidebarRight, website?.footer, website?.bottom]
-          .filter(Boolean)
-          .join('\n');
-        const previewPages = pagesContext(savedPages, page, defaultLocale, crossPageScan);
+        const previewPages = pagesContext(savedPages, page, defaultLocale, contextScan);
         // `{{sw-page-url "<id>"}}` — publish parity: same scan, same published subset, the page's locale.
-        const previewPageUrls = pageUrlsContext(savedPages, previewLocale, defaultLocale, crossPageScan);
+        const previewPageUrls = pageUrlsContext(savedPages, previewLocale, defaultLocale, contextScan);
         // Bound the cross-page tree against the same IPC ceiling — it carries other pages' `data`
         // (referenced-only + node-capped, but a source naming many data-heavy pages could still be large).
         if (previewPages && JSON.stringify(previewPages).length > 4 * 1024 * 1024) {
@@ -12887,13 +12895,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
         ...WIDGET_PARTIALS,
       };
+      // The template plus every snippet it composes (transitively) — what the referenced-only gates below
+      // read, as in /preview and publish, so a binding named only inside a `{{> snippet}}` still resolves.
+      const templateScan = [templateSource, ...Object.values(reachablePartials([templateSource], partials))].join('\n');
       // Keyed entry access for this template (only the datasets it addresses by key) — over the same
       // locale-resolved entries as the loops, as in /preview and publish.
-      const item = keyedDatasets(templateSource, data);
+      const item = keyedDatasets(templateScan, data);
       // `{{sw-page-url "<id>"}}` resolves here too (the stored page's locale; an ad-hoc body is the
       // default locale), so a link checked in the code editor matches the preview and the live site.
-      const renderPageUrls = templateSource.includes('sw-page-url')
-        ? pageUrlsContext(renderPages, renderLocale, projectDefaultLocale, templateSource)
+      const renderPageUrls = templateScan.includes('sw-page-url')
+        ? pageUrlsContext(renderPages, renderLocale, projectDefaultLocale, templateScan)
         : undefined;
       // Public form definitions + same-origin endpoints so the code editor's live render shows
       // {{sw-form}} / data-sw-form embeds (parity with the member /preview path).

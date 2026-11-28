@@ -41,6 +41,7 @@ import {
   parentPageView,
   pagesContext,
   pageUrlsContext,
+  reachablePartials,
   referencesChildren,
   referencesParentPage,
   resolveTranslations,
@@ -160,33 +161,6 @@ const THEME_SCRIPT = 'theme.js';
 // The CHROME runtimes (nav-link, preloader, nav-effects, nav-active, button-effects, back-to-top,
 // sticky-header, scrollspy) own their own filenames in the shared registry — chrome-runtimes.ts — which
 // also decides which of them are site-wide (concatenated into core.js) and which stay standalone.
-
-/** A static `{{> name}}` / `{{#> name}}` partial include (snippet names are identifier-safe). */
-const PARTIAL_REF = /\{\{~?\s*#?>\s*([a-zA-Z][a-zA-Z0-9_-]*)/g;
-
-/**
- * The subset of `snippets` actually reachable from the published surfaces — every `{{> name}}`
- * a page/template/slot source includes, expanded transitively (a snippet may compose another).
- * Only these contribute to the shared utility sheet / runtime markers, so a defined-but-unused
- * snippet (notably a built-in global the site never composes) adds no weight to the output.
- */
-function referencedSnippets(rootSources: readonly (string | undefined)[], snippets: Record<string, string>): Record<string, string> {
-  const used = new Set<string>();
-  const queue: string[] = [];
-  const scan = (src: string | null | undefined): void => {
-    if (!src) return;
-    for (const m of src.matchAll(PARTIAL_REF)) {
-      const name = m[1]!;
-      if (name in snippets && !used.has(name)) {
-        used.add(name);
-        queue.push(name); // a referenced snippet may itself compose others
-      }
-    }
-  };
-  for (const s of rootSources) scan(s);
-  while (queue.length) scan(snippets[queue.shift()!]);
-  return Object.fromEntries(Object.entries(snippets).filter(([n]) => used.has(n)));
-}
 
 /** A client-correctable publish failure (bad route graph) → maps to HTTP 409. */
 export class PublishError extends Error {}
@@ -815,7 +789,7 @@ export async function buildSite(input: BuildSiteOptions): Promise<ReleaseManifes
     // page render — so every build caller (preview-build, worker, scheduled publish) resolves widgets
     // identically without each having to remember to merge them. Widgets are spread LAST so a widget
     // name can't be shadowed by a snippet of the same name. only-used-ships still applies
-    // (referencedSnippets keeps the reachable subset).
+    // (reachablePartials keeps the reachable subset).
     const snippets = { ...(opts.snippets ?? {}), ...WIDGET_PARTIALS };
     // The unified Corporate Identity drives BOTH the brand tokens (CSS vars/theme)
     // and the schema.org/favicon/OG fields; it's project-level, computed once.
@@ -916,7 +890,7 @@ export async function buildSite(input: BuildSiteOptions): Promise<ReleaseManifes
     // Only the snippets a page/template/slot actually composes (transitively) contribute — an
     // un-composed snippet (including a built-in global) ships nothing, so a utility-free site
     // stays utility-free.
-    const usedSnippets = referencedSnippets([...effectiveSources, ...slotSources], snippets);
+    const usedSnippets = reachablePartials([...effectiveSources, ...slotSources], snippets);
     // {{> snippet}} partials a source page composes contribute their classes too.
     const snippetClassNames = Object.values(usedSnippets).flatMap(scanClasses);
     // ★ Rich MENU LABELS (a page's `nav.title`, a link placeholder's name) render their own markup —
@@ -1366,13 +1340,24 @@ export async function buildSite(input: BuildSiteOptions): Promise<ReleaseManifes
         // Locale-resolved translation catalog for this page — shared by the render context AND the
         // SYSTEM i18n dict injected for the component runtimes (window.__SW_T__).
         const pageT = resolveTranslations(website?.translations, pageLocale, defaultLocale);
+        // Everything that renders with this page's context: its effective source, the site-wide slots (they
+        // share renderCtx), and every snippet the page composes — transitively, each once. The REFERENCED-ONLY
+        // bindings below (pages.*, sw-page-url, page.children/code/parent, item.*) are gated on THIS, and so is
+        // the per-page runtime scan further down. ★ The gates used to read the page's OWN text alone, so a
+        // binding named only inside a `{{> snippet}}` — a hero's page.parent back link, a grid looping
+        // pages.x._attributes.children — was never built and rendered as nothing, with no error. Reachable
+        // only: a defined-but-unincluded snippet builds nothing, so a page naming none still pays nothing.
+        const pageScanSources = [pageSource, ...slotSources].filter((s): s is string => Boolean(s));
+        const pagePartials = Object.values(reachablePartials(pageScanSources, snippets));
+        const pageScanAll = [...pageScanSources, ...pagePartials];
+        const contextScan = pageScanAll.join('\n');
+        // `item` reaches the BODY render only (slots never get it), so it reads the body's reach alone.
+        const bodyScan = [pageSource ?? '', ...pagePartials].join('\n');
         // Cross-page slug-path access (`{{pages.services.seo._attributes.data.x}}`) — referenced-only +
-        // same-locale, scanning the page source AND the site-wide slot sources (the renderCtx is shared with the
-        // slots, so a footer/nav can reference another page too); no-ops when nothing names `pages`.
-        const crossPageScan = [pageSource, ...slotSources].filter(Boolean).join('\n');
-        const pagesForRender = pagesContext(pubBundle.pages, page, defaultLocale, crossPageScan);
+        // same-locale (a footer/nav can reference another page too); no-ops when nothing names `pages`.
+        const pagesForRender = pagesContext(pubBundle.pages, page, defaultLocale, contextScan);
         // `{{sw-page-url "<id>"}}` — each named page's route in THIS page's locale; same scan + subset.
-        const pageUrls = pageUrlsContext(pubBundle.pages, pageLocale, defaultLocale, crossPageScan);
+        const pageUrls = pageUrlsContext(pubBundle.pages, pageLocale, defaultLocale, contextScan);
         // Fail fast (clear error) if a pathological source named many data-heavy pages — bound it like
         // the render-IPC ceiling rather than letting an oversized payload OOM the render worker mid-build.
         if (pagesForRender && JSON.stringify(pagesForRender).length > 4 * 1024 * 1024) {
@@ -1382,7 +1367,7 @@ export async function buildSite(input: BuildSiteOptions): Promise<ReleaseManifes
         // child's `data` off the render unless used). Published subset → no drafts. When the cap cut the
         // listing short, record it: the page renders fine and looks complete, so nothing else would say.
         const childListing =
-          pageSource && referencesChildren(pageSource)
+          referencesChildren(contextScan)
             ? childrenView(pubBundle.pages, page, defaultLocale)
             : { children: [], total: 0, truncated: false };
         if (childListing.truncated) {
@@ -1420,11 +1405,11 @@ export async function buildSite(input: BuildSiteOptions): Promise<ReleaseManifes
             // the EFFECTIVE source rendering this page (resolved through its template, if any). Gated:
             // the (large) source ships only when `{{page.code}}` is referenced.
             template: page.template ?? '',
-            code: pageSource && /\bpage\.code\b/.test(pageSource) ? pageSource : '',
+            code: pageSource && /\bpage\.code\b/.test(contextScan) ? pageSource : '',
           },
           // The page's PARENT as a lean view (`{{page.parent.path}}`, `{{page.parent.data.x}}`); absent at the
-          // tree root. Built only when the source references it (gates the parent's own `data` like children).
-          parentPage: pageSource && referencesParentPage(pageSource)
+          // tree root. Built only when referenced (gates the parent's own `data` like children).
+          parentPage: referencesParentPage(contextScan)
             ? (parentPageView(pubBundle.pages, page, defaultLocale) as unknown as Record<string, unknown> | undefined)
             : undefined,
           pages: pagesForRender,
@@ -1456,7 +1441,7 @@ export async function buildSite(input: BuildSiteOptions): Promise<ReleaseManifes
             // HTML; the html sink sanitizes rich values at render (page.data is the single store).
             bodyHtml = renderTemplate(pageSource, {
               ...renderCtx,
-              item: keyedDatasets(pageSource, localeData),
+              item: keyedDatasets(bodyScan, localeData),
               partials: snippets,
             });
           } catch (err) {
@@ -1500,9 +1485,8 @@ export async function buildSite(input: BuildSiteOptions): Promise<ReleaseManifes
         // A runtime ships on THIS page when the page's own source, a shared chrome slot (rendered on
         // every page), or a snippet the page composes trips its marker — so content-driven runtimes
         // ship per-page while slot/settings-driven ones ship everywhere. Every set here is a SUBSET of
-        // the site-wide union used to WRITE the files below, so no link can 404.
-        const pageScanSources = [pageSource, ...slotSources].filter((s): s is string => Boolean(s));
-        const pageScanAll = [...pageScanSources, ...Object.values(referencedSnippets(pageScanSources, snippets))];
+        // the site-wide union used to WRITE the files below, so no link can 404. (`pageScanAll` is the same
+        // reach the binding gates above read.)
         const pageUsesMarker = (fn: (s: string | null | undefined) => boolean): boolean => pageScanAll.some(fn);
         const pageComponentTypes = [...new Set(pageScanAll.flatMap(scanComponents))];
         const pageComponents = componentAssets(pageComponentTypes);

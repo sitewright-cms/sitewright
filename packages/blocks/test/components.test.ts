@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { COMPONENT_TYPES, componentTypesInSource, componentAssets, addComponentBlockMarkers } from '../src/components.js';
+import { DATETIMEPICKER_VENDOR_CSS } from '../src/vendor/datetimepicker-runtime.js';
 
 describe('addComponentBlockMarkers (pair data-sw-block with data-sw-component)', () => {
   it('adds the block marker for a BLOCK-KEYED component missing it (Form — the only one left)', () => {
@@ -857,9 +858,9 @@ describe('component registry', () => {
     expect(css).toContain('[data-vc-date-selected="middle"]'); // range middle band
     expect(css).toContain('color-mix(in srgb,var(--sw-color-primary'); // brand range tint
     // The vendor's red weekends are neutralised in BOTH themes: headers per theme (light #64748b /
-    // dark #fff), weekend day numbers via `inherit` so they take the calendar's theme text colour.
+    // dark the site's text token), weekend day numbers via `inherit` so they take the theme text colour.
     expect(css).toContain('[data-vc-theme=light] .vc-week__day[data-vc-week-day-off]{color:#64748b');
-    expect(css).toContain('[data-vc-theme=dark] .vc-week__day[data-vc-week-day-off]{color:#fff');
+    expect(css).toContain('[data-vc-theme=dark] .vc-week__day[data-vc-week-day-off]{color:var(--sw-color-base-content,#fff)');
     expect(css).toMatch(/data-vc-date-weekend\][^{]*\.vc-date__btn\{color:inherit!important/);
     // TIME-ONLY mode: the time block (popup's first child) drops the calendar-separator border + spacing.
     expect(css).toContain('[data-vc=time]:first-child{margin-top:0;padding-top:0;border-width:0}');
@@ -871,6 +872,32 @@ describe('component registry', () => {
     expect(css).toContain('.vc[data-vc-input]{transition:opacity');
     expect(css).toMatch(/data-vc-calendar-hidden\]\{transform:translateY/);
     expect(css).toContain('prefers-reduced-motion:reduce');
+  });
+
+  it("DateTimePicker's DARK theme is painted from the site's tokens; the light theme is left alone", () => {
+    const css = componentAssets(['DateTimePicker']).css;
+    const rule = /\.vc\[data-vc-theme=dark\]\{([^}]*)\}/.exec(css)?.[1] ?? '';
+    const props = new Map(rule.split(';').map((d) => [d.slice(0, d.indexOf(':')), d.slice(d.indexOf(':') + 1)] as const));
+    /** What a vendor `--vc-*` property resolves to through its `--sw-vc-<n>` indirection. */
+    const resolved = (name: string): string | undefined => {
+      const v = props.get(name);
+      const ref = v && /^var\((--sw-vc-\d+)\)$/.exec(v);
+      return ref ? props.get(ref[1]!) : v;
+    };
+    // The surface and the text ARE the site's dark tokens (not the vendor's #0f172a slate / white).
+    expect(resolved('--vc-bg')).toBe('var(--sw-color-base-100,#0f172a)');
+    expect(resolved('--vc-color')).toBe('var(--sw-color-base-content,#fff)');
+    expect(resolved('--vc-date-color')).toBe('var(--sw-color-base-content,#fff)');
+    expect(resolved('--vc-date-bg-hover')).toContain('color-mix(in srgb,var(--sw-color-base-content');
+    // EVERY colour property the vendor's dark theme reads, except its accents (selected / today / range
+    // middle / weekend reds — recoloured to the CI primary above) and its focus ring, is fed from a token.
+    const ACCENT = /selected|today-color$|weekend-today-color$|range-middle-(?:weekend-)?(?:bg|color)$|weekend-color$|weekend-selected|off-color|focus-outline/;
+    const darkVendor = DATETIMEPICKER_VENDOR_CSS.split('}').filter((r) => r.includes('[data-vc-theme=dark]')).join('}');
+    const read = new Set([...darkVendor.matchAll(/var\((--vc-[a-z-]+),/g)].map((m) => m[1]!));
+    const untouched = [...read].filter((n) => !ACCENT.test(n) && !resolved(n)?.includes('--sw-color-base-'));
+    expect(untouched).toEqual([]);
+    // The light theme reads the same property names — nothing here may set them outside the dark scope.
+    expect(css.replace(rule, '')).not.toMatch(/[{;]--vc-[a-z-]+:/);
   });
 
   it('ignores unknown component types', () => {

@@ -60,6 +60,13 @@ The running version of an instance is reported at `GET /version` (baked into the
   changes into its target in view. Adding `class="sw-svg-shown"` to work around this is no longer needed (it does
   no harm). Every other SVG animation is unchanged.
 
+- **The date picker follows the site into dark mode.** The picker chose light or dark once, when the page loaded,
+  so a visitor who switched the site to dark with the theme toggle (or whose system switched while the page was
+  open) still got a white calendar on a dark page. It now changes along with the site, whether it is open or
+  closed. Its dark look is also the site's own now (the page's dark background and text colours) instead of a
+  navy panel of the calendar library's. A site that sets its background in `oklch()` or another modern colour
+  format no longer gets a dark calendar on a light page. The light calendar is unchanged.
+
 ## [0.86.0] — 2026-11-28
 
 ### Added

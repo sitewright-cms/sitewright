@@ -46,25 +46,135 @@ function pickLocale(el) {
 var Y_POS = { top: 1, bottom: 1 };
 var X_POS = { left: 1, right: 1, center: 1 };
 
-// Pick the vendor's light or dark theme to match the SITE. Sitewright sites have no separate dark
-// mode toggle — the active palette is whatever --sw-color-base-100 resolves to — so we probe that
-// surface colour's luminance (the browser resolves any format, incl. oklch, to rgb) and choose dark
-// for a dark site. Falls back to light on any failure.
+// Is a COMPUTED colour darker than mid-grey (#808080)? Browsers serialise a legacy colour (hex, rgb,
+// hsl, named) as rgb()/rgba(), but keep a CSS Color 4 one in its own space — Chromium reports the
+// platform's dark token as `oklch(0.2533 0.016 252.42)` and a color-mix() as `color(srgb …)`. Reading
+// the first three numbers of those as r,g,b made EVERY such colour "dark" (a light oklch surface
+// included), so each form is read on its own scale: gamma-encoded RGB channels by luma (0–255 for
+// rgb(), 0–1 inside color()), the L of oklab/oklch (0–1) and lab/lch (0–100) against mid-grey's, and
+// the LIGHT-LINEAR spaces against mid-grey's linear luminance (0.214): srgb-linear by its luminance,
+// xyz / xyz-d50 / xyz-d65 by Y, which IS luminance. A (near-)transparent or unknown colour tells us
+// nothing → false (light).
+var RGB_SPACES = { rgb: 255, rgba: 255, srgb: 1, 'display-p3': 1, 'a98-rgb': 1, rec2020: 1, 'prophoto-rgb': 1 };
+var MID_GREY_LINEAR = 0.214;
+function isDarkColor(css) {
+  var m = /^([a-z]+)\((.*)\)$/.exec(String(css || '').trim().toLowerCase());
+  if (!m) return false;
+  var fn = m[1];
+  var halves = m[2].split('/');
+  var v = halves[0].replace(/,/g, ' ').trim().split(/\s+/);
+  if (fn === 'color') fn = v.shift();
+  var alpha = halves.length > 1 ? halves[1] : fn === 'rgba' ? v[3] : '1';
+  if (parseFloat(alpha) * (/%/.test(alpha) ? 0.01 : 1) < 0.05) return false;
+  var L = parseFloat(v[0]);
+  if (fn === 'oklch' || fn === 'oklab') return (/%/.test(v[0]) ? L / 100 : L) < 0.6;
+  if (fn === 'lch' || fn === 'lab') return L < 53.6;
+  if (fn === 'srgb-linear') return 0.2126 * +v[0] + 0.7152 * +v[1] + 0.0722 * +v[2] < MID_GREY_LINEAR;
+  if (fn === 'xyz' || fn === 'xyz-d50' || fn === 'xyz-d65') return +v[1] < MID_GREY_LINEAR;
+  var max = RGB_SPACES[fn];
+  if (!max) return false;
+  return (0.2126 * +v[0] + 0.7152 * +v[1] + 0.0722 * +v[2]) / max < 0.5;
+}
+
+// Pick the vendor's light or dark theme to match the SITE as it is painted right now. The active
+// palette is whatever --sw-color-base-100 resolves to — opt-in themes flip it with <html
+// data-sw-theme> (the server default + the visitor toggle) or prefers-color-scheme ('auto'), and a
+// themes-off site can still be dark by its own palette — so we probe that surface colour and choose
+// dark for a dark surface. Falls back to light on any failure.
 function siteTheme() {
   try {
     var probe = document.createElement('span');
     probe.style.cssText = 'position:absolute;visibility:hidden;background:var(--sw-color-base-100,#fff)';
     document.body.appendChild(probe);
-    var rgb = getComputedStyle(probe).backgroundColor;
+    var bg = getComputedStyle(probe).backgroundColor;
     probe.parentNode.removeChild(probe);
-    var m = rgb.match(/[\d.]+/g);
-    if (!m || m.length < 3) return 'light';
-    // A transparent surface (rgba alpha ~0) tells us nothing — don't read it as black/dark.
-    if (m.length >= 4 && +m[3] < 0.05) return 'light';
-    // Relative luminance (sRGB coefficients); <0.5 → treat as a dark surface.
-    return (0.2126 * +m[0] + 0.7152 * +m[1] + 0.0722 * +m[2]) / 255 < 0.5 ? 'dark' : 'light';
+    return isDarkColor(bg) ? 'dark' : 'light';
   } catch {
     return 'light';
+  }
+}
+
+// Every enhanced calendar on the page ({ cal, el }: the instance + its marker element), so a site
+// theme flip re-themes them all at once. `lastTheme` is the theme they were last put on.
+var calendars = [];
+var lastTheme = null;
+
+// Put one calendar on `theme`. `selectedTheme` is what the library applies whenever it (re)builds the
+// calendar — an input's popup is only built on its FIRST open — so keep it current, and flip the
+// attribute on a calendar that is already built. Only the calendar root carries data-vc-theme: before
+// that first open an input picker's mainElement is the <input> itself, which must not get one.
+function applyTheme(cal, theme) {
+  cal.selectedTheme = theme;
+  var root = cal.context && cal.context.mainElement;
+  if (root && root.hasAttribute('data-vc-theme') && root.getAttribute('data-vc-theme') !== theme) {
+    root.setAttribute('data-vc-theme', theme);
+  }
+}
+// Re-read the site theme and move every picker onto it. One probe, and a no-op when the theme did not
+// change. A picker whose element has left the page is dropped here, so the list never pins removed
+// calendars in memory or keeps re-theming them.
+function syncThemes() {
+  for (var i = calendars.length - 1; i >= 0; i--) {
+    if (!calendars[i].el.isConnected) calendars.splice(i, 1);
+  }
+  var theme = siteTheme();
+  if (theme === lastTheme) return;
+  lastTheme = theme;
+  for (var j = 0; j < calendars.length; j++) applyTheme(calendars[j].cal, theme);
+}
+
+// <html> classes outside the platform's own `sw-*` namespace, normalised for comparison. The sticky
+// header toggles sw-scrolled / sw-nav-hidden / sw-header-offtop / sw-measure on <html> at every
+// scroll-direction change, and the other runtimes add their own sw-* state classes — none of them
+// changes the palette. A class outside it (an author's own `dark` switch) might.
+function foreignClasses(value) {
+  return String(value || '')
+    .split(/\s+/)
+    .filter(function (c) {
+      return c !== '' && c.indexOf('sw-') !== 0;
+    })
+    .sort()
+    .join(' ');
+}
+
+// Does this batch of <html> attribute changes possibly change the palette? data-sw-theme to a NEW
+// value, or a non-sw-* class appearing / disappearing. Compared against the CURRENT value, so a
+// change that was undone within the batch counts as no change.
+function themeMayHaveChanged(records) {
+  var root = document.documentElement;
+  for (var i = 0; i < records.length; i++) {
+    var r = records[i];
+    if (r.attributeName === 'class') {
+      if (foreignClasses(r.oldValue) !== foreignClasses(root.getAttribute('class'))) return true;
+    } else if (r.oldValue !== root.getAttribute(r.attributeName)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Follow the site LIVE, not just at load: the theme toggle flips <html data-sw-theme> after the
+// pickers are built, an 'auto' site changes with the OS preference, and an author's own switch may
+// toggle a class on <html>. Without this a picker kept the theme it was built in — a light calendar
+// on a page the visitor had just switched to dark. Wired once, by the first picker. Only a change
+// that can move the palette costs a probe (see themeMayHaveChanged).
+var watching = false;
+function watchSiteTheme() {
+  if (watching) return;
+  watching = true;
+  if (typeof MutationObserver === 'function') {
+    new MutationObserver(function (records) {
+      if (themeMayHaveChanged(records)) syncThemes();
+    }).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-sw-theme', 'class'],
+      attributeOldValue: true,
+    });
+  }
+  if (window.matchMedia) {
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq.addEventListener) mq.addEventListener('change', syncThemes);
+    else if (mq.addListener) mq.addListener(syncThemes);
   }
 }
 
@@ -158,16 +268,19 @@ function enhance(el) {
   var mode = attr(el, 'data-mode', 'date');
   var withTime = mode === 'datetime' || mode === 'time';
   var tf = attr(el, 'data-time-format', '');
+  // Bring lastTheme (and every picker already built) up to date before this one is built on it.
+  syncThemes();
 
   var opts = {
     // An <input> gets a popup; any other element renders the calendar inline, in place.
     inputMode: isInput,
     locale: pickLocale(el),
     selectionTimeMode: withTime ? (/a/i.test(tf) ? 12 : 24) : false,
-    // Match the site: light or dark theme by the page surface luminance (the accent is recoloured to
-    // the CI primary in BOTH themes in components.ts). VCP would otherwise follow prefers-color-scheme,
-    // which can mismatch a site whose palette ignores the OS setting.
-    selectedTheme: siteTheme(),
+    // Match the site: light or dark theme by the page surface luminance (components.ts paints the dark
+    // theme from the site's own tokens and recolours the accent to the CI primary in BOTH). VCP would
+    // otherwise follow prefers-color-scheme, which can mismatch a site whose palette ignores the OS
+    // setting. Kept in step afterwards by watchSiteTheme.
+    selectedTheme: lastTheme,
   };
 
   if (mode === 'range') {
@@ -221,6 +334,9 @@ function enhance(el) {
     // whose scroller is not the window strands the popup mid-page.
     var unpin = null;
     opts.onShow = function (self) {
+      // Re-read the theme on every open too: one probe, and it catches a palette change no observer
+      // saw (re-theming every picker, not just this one, when it did change).
+      syncThemes();
       if (unpin) unpin();
       unpin = pinToInput(el, self && self.context && self.context.mainElement);
     };
@@ -236,7 +352,10 @@ function enhance(el) {
   // options — none of which carry tenant data here. Do NOT add any of them without also wiring a
   // real sanitizer (the published-site CSP blocks inline scripts, but stored HTML could still XSS).
   opts.extensions = extensionsFor(opts);
-  new Calendar(el, opts).init();
+  var cal = new Calendar(el, opts);
+  cal.init();
+  calendars.push({ cal: cal, el: el });
+  watchSiteTheme();
 }
 
 function init() {

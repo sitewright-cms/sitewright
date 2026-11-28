@@ -5,7 +5,7 @@
 // Every scene starts from a fresh, signed-in browser context and saves nothing it changes in the editor, so the
 // scenes are independent and can be re-run in any order. Editor scenes run at 1600×1000 CSS px (the main tab bar
 // wraps at 1440); screenshots at 1.5× (2400×1500), videos at 1600×1000.
-import { launch, signedIn, withCursor, glide, tap, typeSlowly, shot, record } from './lib.mjs';
+import { launch, signedIn, withCursor, glide, tap, typeSlowly, shot, record, api, ok, BASE, SITES_DOMAIN } from './lib.mjs';
 import { ADMIN } from './admin.mjs';
 
 const EDITOR = { width: 1600, height: 1000 };
@@ -245,6 +245,175 @@ Object.assign(scenes, {
     await park(page);
     await shot(page, 'doc_dataset_schema');
     await page.context().close();
+  },
+
+  // The System Library rail over the page editor: references, assets, builders & studios.
+  async feat_editor_library() {
+    const page = await editor();
+    await openCode(page);
+    await page.getByRole('button', { name: /System Library/i }).first().click();
+    await page.getByText('Builders & Studios', { exact: false }).first().waitFor();
+    await page.waitForTimeout(900);
+    await park(page);
+    await shot(page, 'feat_editor_library');
+    await page.context().close();
+  },
+
+  // A first site: the Home page's code, the strip opened by hovering it, the page under it.
+  async doc_first_site_code() {
+    const page = await editor();
+    await openCode(page);
+    await page.locator('.cm-scroller').hover();
+    await page.waitForTimeout(1200);
+    await page.evaluate(() => { const c = document.getElementById('__cap_cursor'); if (c) c.style.display = 'none'; });
+    await shot(page, 'doc_first_site_code');
+    await page.context().close();
+  },
+
+  // File Manager → Projects, as a grid, one picture selected with its details.
+  async feat_media_library() {
+    const page = await editor();
+    await page.getByRole('button', { name: 'Open File Manager' }).click();
+    await page.getByRole('button', { name: 'grid view' }).click();
+    await page.getByRole('button', { name: /^Projects \d/ }).click();
+    await page.waitForTimeout(1200);
+    await page.locator('figure button:visible').nth(1).click({ timeout: 8000 }).catch(async () => { await page.locator('figure button:visible').nth(1).click({ force: true }); });
+    await page.waitForTimeout(1200);
+    await park(page);
+    await shot(page, 'feat_media_library');
+    await page.context().close();
+  },
+
+  // Website Settings → Languages: the main language and its translations.
+  async doc_languages() {
+    const page = await editor();
+    await page.getByRole('tab', { name: 'Website Settings' }).click();
+    await page.getByRole('button', { name: 'Open Languages' }).click();
+    const dialog = page.getByRole('dialog').last();
+    await dialog.waitFor();
+    await page.waitForTimeout(900);
+    await park(page);
+    await shot(page, 'doc_languages');
+    await page.context().close();
+  },
+
+  // Website Settings → Translations: every key, every language, what is missing.
+  async feat_languages_coverage() {
+    const page = await editor();
+    await page.getByRole('tab', { name: 'Website Settings' }).click();
+    await page.getByRole('button', { name: 'Open Translations' }).click();
+    const dialog = page.getByRole('dialog').last();
+    await dialog.waitFor();
+    await page.waitForTimeout(1200);
+    await park(page);
+    await shot(page, 'feat_languages_coverage');
+    await page.context().close();
+  },
+
+  // Account Settings → Access keys: project tokens and a member token. Made for this shot and revoked after it (every
+  // token counts as a connected agent, and that pill's pulse slows every other capture).
+  async doc_access_keys() {
+    const a = await api(ADMIN.email, ADMIN.password);
+    const { projects } = await ok(a.get('/projects'), 'projects');
+    const pid = projects.find((p) => p.slug === 'example').id;
+    for (const key of [
+      { name: 'CI deploys', role: 'owner', capabilities: ['content:read', 'deploy'], expiresInDays: 90 },
+      { name: 'Staging agent', role: 'member', capabilities: ['content:read', 'content:write'], expiresInDays: 30 },
+    ]) await ok(a.post(`/projects/${pid}/api-keys`, { data: key }), `key ${key.name}`);
+    await ok(a.post('/account/member-tokens', { data: { currentPassword: ADMIN.password, name: 'Claude Code (laptop)', capabilities: ['content:read', 'content:write', 'publish'], expiresInDays: 60 } }), 'member token');
+    try {
+      const page = await editor();
+      await page.getByRole('button', { name: 'Account', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'Account Settings' }).or(page.getByRole('button', { name: 'Account Settings' })).first().click();
+      const dialog = page.getByRole('dialog').last();
+      await dialog.waitFor();
+      await dialog.getByRole('tab', { name: /Access keys/ }).or(dialog.getByRole('button', { name: /Access keys/ })).first().click();
+      await page.waitForTimeout(1200);
+      await park(page);
+      await shot(page, 'doc_access_keys', { around: [dialog], pad: 16 });
+      await page.context().close();
+    } finally {
+      for (const k of (await ok(a.get(`/projects/${pid}/api-keys`), 'keys')).items ?? []) await ok(a.delete(`/projects/${pid}/api-keys/${k.id}`), 'revoke');
+      for (const t of (await ok(a.get('/account/member-tokens'), 'tokens')).items ?? []) if (!t.revokedAt) await ok(a.delete(`/account/member-tokens/${t.id}`), 'revoke');
+    }
+  },
+
+  // What an agent's preview_page returns: the live Pricing page at phone, tablet and desktop size.
+  async agent_sizes() {
+    const url = `http://example.${SITES_DOMAIN}:${new URL(BASE).port}/services/pricing/`;
+    // The phone shot starts below the demo's header, which squashes its logo at phone width (the demo is replaced).
+    for (const [slot, width, height, scale, top] of [['agent_mobile', 430, 836, 2, 72], ['agent_tablet', 768, 1024, 1.5, 0], ['agent_desktop', 1600, 1000, 1.5, 0]]) {
+      const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: scale, reducedMotion: 'reduce' });
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: 'networkidle' });
+      // A first visit gets the demo's consent bar; answer it, as a visitor would.
+      await page.getByRole('button', { name: 'Accept all' }).click({ timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(1500);
+      await shot(page, slot, top ? { clip: { x: 0, y: top, width, height: height - top } } : {});
+      await context.close();
+    }
+  },
+
+  // The OAuth consent screen an agent's sign-in opens: which project, which permissions.
+  async agent_consent() {
+    const a = await api(ADMIN.email, ADMIN.password);
+    const { projects } = await ok(a.get('/projects'), 'projects');
+    if (!projects.some((p) => p.slug === 'alpine-outfitters')) await ok(a.post('/projects', { data: { name: 'Alpine Outfitters', slug: 'alpine-outfitters' } }), 'second project');
+    const client = await ok(a.post('/oauth/register', { data: { client_name: 'Claude Code', redirect_uris: ['http://127.0.0.1:33418/callback'] } }), 'register client');
+    const page = await editor();
+    const q = new URLSearchParams({
+      client_id: client.client_id,
+      redirect_uri: 'http://127.0.0.1:33418/callback',
+      response_type: 'code',
+      code_challenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
+      code_challenge_method: 'S256',
+      scope: 'content:read content:write content:delete deploy',
+      state: 'capture',
+    });
+    await page.goto(`/oauth/authorize?${q}`);
+    await page.getByRole('heading', { name: /Authorize/ }).waitFor();
+    await page.waitForTimeout(1000);
+    await park(page);
+    // The innermost element holding both the heading and the Approve button: the consent card.
+    const card = page.locator('div').filter({ has: page.getByRole('heading', { name: /Authorize/ }) }).filter({ has: page.getByRole('button', { name: 'Approve' }) }).last();
+    await shot(page, 'doc_agent_consent', { around: [card], pad: 48 });
+    await shot(page, 'feat_agents_consent', { around: [card], pad: 24 });
+    await page.context().close();
+  },
+
+  // White-label: an agency's name, colours, logo and animated background on the admin chrome and the sign-in screen.
+  async branding() {
+    const a = await api(ADMIN.email, ADMIN.password);
+    const logo = await a.get('/media/example/l5o6Jm-brand-icon.png');
+    const data = Buffer.from(await logo.body()).toString('base64');
+    await ok(a.put('/admin/settings', { data: {
+      platformName: 'Northwind Studio', brandPrimary: '#0f766e', brandSecondary: '#f59e0b',
+      platformLogo: { mime: 'image/png', data },
+      platformBackground: { preset: 'mesh-gradient', angle: 35, colors: ['#0f766e', '#f59e0b', 'auto'] },
+    } }), 'branding');
+    try {
+      const page = await editor();
+      await page.getByRole('button', { name: 'Settings', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'System Settings' }).or(page.getByRole('button', { name: 'System Settings' })).first().click();
+      const dialog = page.getByRole('dialog').last();
+      await dialog.waitFor();
+      await page.waitForTimeout(1200);
+      await park(page);
+      await shot(page, 'doc_whitelabel_settings', { around: [dialog], pad: 16 });
+      await page.context().close();
+      // Signed out: the sign-in screen in the agency's colours, its background animating (motion allowed here).
+      const context = await browser.newContext({ baseURL: BASE, viewport: { width: 1600, height: 1000 }, deviceScaleFactor: 1.5 });
+      const signin = await context.newPage();
+      await signin.goto('/');
+      await signin.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
+      await signin.waitForTimeout(2500);
+      await shot(signin, 'doc_whitelabel_signin');
+      const card = signin.locator('form').filter({ has: signin.getByRole('button', { name: 'Sign in', exact: true }) }).first();
+      await shot(signin, 'feat_security_branding', { around: [card], pad: 220 });
+      await context.close();
+    } finally {
+      await ok(a.put('/admin/settings', { data: { platformName: 'Sitewright', brandPrimary: null, brandSecondary: null, platformLogo: null, platformBackground: null } }), 'branding back');
+    }
   },
 });
 

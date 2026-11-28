@@ -16,6 +16,13 @@ const open = async () => {
   await page.waitForTimeout(800);
 };
 const screens = {
+  'team-open': async () => { await page.getByRole('button', { name: 'Open File Manager' }).click(); await page.getByRole('button', { name: 'grid view' }).click(); await page.getByRole('button', { name: /^Team \d/ }).click(); await page.waitForTimeout(1500); },
+
+  'files-team': async () => { await page.getByRole('button', { name: 'Open File Manager' }).click(); await page.getByRole('button', { name: 'Grid' }).click(); await page.getByText('Team', { exact: true }).last().dblclick(); await page.waitForTimeout(1000); },
+  'library-builders': async () => { await page.getByRole('button', { name: /^Home/ }).first().click(); await page.getByRole('button', { name: 'Code Editor', exact: true }).click(); await page.waitForTimeout(1500); await page.getByRole('button', { name: /System Library/i }).first().click(); },
+  'website-lang': async () => { await page.getByRole('tab', { name: 'Website Settings' }).click(); await page.mouse.wheel(0, 2400); await page.waitForTimeout(500); },
+  'access-keys': async () => { await page.getByRole('button', { name: 'Account', exact: true }).click(); await page.waitForTimeout(600); },
+
   'forms-edit': async () => { await page.getByRole('tab', { name: 'Forms' }).click(); await page.getByRole('button', { name: 'Project enquiry' }).click(); },
   shop: async () => { await page.getByRole('tab', { name: 'Website Settings' }).click(); await page.getByRole('button', { name: 'Edit shop settings' }).click(); },
   system: async () => { await page.getByRole('button', { name: 'Settings', exact: true }).click(); await page.waitForTimeout(600); },

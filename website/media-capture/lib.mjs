@@ -27,7 +27,9 @@ export async function launch() {
   return chromium.launch({
     ...(existsSync(CHROME) ? { executablePath: CHROME } : {}),
     // Sites are served at `<slug>.<sites domain>`; the DinD host has no wildcard DNS.
-    args: [`--host-resolver-rules=MAP *.${SITES_DOMAIN} ${SITES_DOMAIN}`, '--hide-scrollbars', '--font-render-hinting=none'],
+    // Site isolation off: the editor's sandboxed preview is otherwise an out-of-process iframe, and deviceScaleFactor
+    // emulation does not reach it (it lays out at the wrong width, half-painted).
+    args: [`--host-resolver-rules=MAP *.${SITES_DOMAIN} ${SITES_DOMAIN}`, '--hide-scrollbars', '--font-render-hinting=none', '--disable-site-isolation-trials', '--disable-features=IsolateOrigins,site-per-process'],
   });
 }
 

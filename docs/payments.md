@@ -69,6 +69,20 @@ misconfigured endpoint would otherwise leave a *paid* order permanently invisibl
 `created`/`pending` transaction older than ten minutes is asked about directly, in the maintenance
 pass (`runPaymentSweeps` in `app.ts`).
 
+**Where the buyer comes back to.** `returnPath` and `cancelPath` are paths of the SITE, joined under its own
+address: its **Production URL** (`website.siteUrl`) when it has one, else where the platform hosts it
+(`<slug>.<SW_SITES_DOMAIN>`, or `<SW_PUBLIC_URL>/sites/<slug>/` with that prefix kept). A provider never sends a
+buyer to the platform. With neither, the checkout is refused before any stock is held, and
+`list_payment_providers` lists it among its `problems`. Bookings use the same address (`siteAddress` in `app.ts`).
+
+**On the site's own host.** A site built without a public URL calls `/pay/…` on its own origin. On a site host (a
+custom domain or `<slug>.<SW_SITES_DOMAIN>`), `rewriteUrl` passes the exact shapes the page runtimes call through
+to the platform, as it does for forms (`/f/`), bookings (`/b/`) and statistics (`/a/`):
+- the checkout (`POST`), its challenge and the order status (`GET`), and their preflights;
+- a booking's `/_booking/<ref>/pay`.
+
+Any other `GET` under `/pay/` is still the site's page.
+
 Card data never touches the published site or the platform. Hosted redirect only ⇒ SAQ-A.
 
 ---

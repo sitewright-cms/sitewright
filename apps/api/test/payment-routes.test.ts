@@ -5,7 +5,7 @@ import { makeHarness, type Harness, type TestClient } from './harness.js';
 import { MIN_SUBMIT_ELAPSED_MS, PaymentGatewayStoredSchema } from '@sitewright/schema';
 import { shopCatalog, shopStock, shopTransactions, shopFiltered, instanceSettings, INSTANCE_SETTINGS_ID, content } from '../src/db/schema.js';
 import { GLOBAL_SCOPE_ID } from '../src/repo/global-library.js';
-import { usableEmail } from '../src/http/payment-routes.js';
+import { absolute, usableEmail } from '../src/http/payment-routes.js';
 import { encryptSecret } from '../src/crypto/secret.js';
 import { ensureGlobalProject } from '../src/repo/global-library.js';
 
@@ -69,9 +69,12 @@ async function setInstanceSettings(paymentsEnabled: boolean): Promise<void> {
     .onConflictDoUpdate({ target: instanceSettings.id, set: { data, updatedAt: new Date() } });
 }
 
-beforeEach(async () => {
+beforeEach(() => setUpShop());
+
+/** The instance, a shop project with a checkout channel, its provider and its live catalog. */
+async function setUpShop(options: Partial<Parameters<typeof makeHarness>[0]> = {}): Promise<void> {
   scripted = { responses: [], calls: [] };
-  h = await makeHarness({ encryptionKey: KEY, publicUrl: 'https://sw.test', paymentFetch: makeFetch() });
+  h = await makeHarness({ encryptionKey: KEY, publicUrl: 'https://sw.test', paymentFetch: makeFetch(), ...options });
   owner = await h.signup({ admin: true });
   projectId = await owner.createProject('Shop', 'shop');
 
@@ -126,7 +129,7 @@ beforeEach(async () => {
     publishedAt: new Date(),
   });
   await h.db.insert(shopStock).values({ projectId, sku: 'tee', onStock: 2, sold: 0, reserved: 0, authoredAtPublish: 2, updatedAt: new Date() });
-});
+}
 
 afterEach(async () => {
   // Guarded: a failing beforeEach leaves `h` unset, and an unguarded close masks the real error.
@@ -514,6 +517,116 @@ describe('GET /pay/:projectId/txn/:token', () => {
   });
 });
 
+/** The shop settings again, with the site's Production URL set. */
+const withSiteUrl = async (siteUrl: string): Promise<void> => {
+  const put = await owner.project(projectId).putContent('settings', 'settings', {
+    identity: { name: 'Shop', colors: { primary: '#0a7' } },
+    website: { shop: SHOP, siteUrl },
+    settings: {},
+  });
+  expect(put.statusCode, put.body).toBe(200);
+};
+
+/** The return address the provider was handed for the last checkout. */
+const lastReturn = (): string => JSON.parse(scripted.calls[scripted.calls.length - 1]!.body!).ret as string;
+
+describe('★ the buyer comes back to the site’s OWN address', () => {
+  it('★ its Production URL when it has one: the provider never sends a buyer to the platform', async () => {
+    await withSiteUrl('https://acme.example');
+    scripted.responses.push({ body: { id: 'sess_1', url: 'https://mock-pay.invalid/s/1' } });
+    expect((await checkout(body())).statusCode).toBe(200);
+    expect(lastReturn()).toMatch(/^https:\/\/acme\.example\/thank-you\/\?t=/);
+  });
+
+  it('★ else where the platform hosts it, its `/sites/<slug>/` prefix kept', async () => {
+    scripted.responses.push({ body: { id: 'sess_1', url: 'https://mock-pay.invalid/s/1' } });
+    expect((await checkout(body())).statusCode).toBe(200);
+    // Joined to the origin instead, the buyer who had just paid landed on the platform's own front page.
+    expect(lastReturn()).toMatch(/^https:\/\/sw\.test\/sites\/shop\/thank-you\/\?t=/);
+  });
+
+  it('★★ with no address at all, the checkout is refused BEFORE anything is held', async () => {
+    // No public URL, so the platform hosts the site at no address it knows, and no Production URL.
+    await h.close();
+    await setUpShop({ publicUrl: undefined });
+    const res = await checkout(body({ items: [{ sku: 'tee', qty: 1 }] }));
+    expect(res.statusCode, res.body).toBe(503);
+    expect(res.json()).toEqual({ error: 'checkout is temporarily unavailable' });
+    // It used to crash here AFTER the stock was held and the order opened: both stayed until a sweep.
+    expect(scripted.calls).toEqual([]);
+    expect(await h.db.select().from(shopTransactions)).toEqual([]);
+    const [tee] = await h.db.select().from(shopStock).where(eq(shopStock.projectId, projectId));
+    expect(tee?.reserved).toBe(0);
+    // …and the Production URL alone is enough.
+    await withSiteUrl('https://acme.example');
+    expect((await checkout(body())).statusCode).toBe(200);
+  });
+});
+
+describe('absolute — a same-site path, joined under the site’s root', () => {
+  it('keeps the root’s path, and never leaves the root', () => {
+    expect(absolute('https://sw.test/sites/shop/', '/thank-you/', '/')).toBe('https://sw.test/sites/shop/thank-you/');
+    expect(absolute('https://sw.test/sites/shop', '/thank-you/?ref=mail#done', '/')).toBe('https://sw.test/sites/shop/thank-you/?ref=mail#done');
+    expect(absolute('https://acme.example', '/thank-you/', '/')).toBe('https://acme.example/thank-you/');
+    expect(absolute('https://sw.test/sites/shop', undefined, '/')).toBe('https://sw.test/sites/shop/');
+    // A colon in the first segment is still a path, not a scheme.
+    expect(absolute('https://acme.example', '/a-b:c/', '/')).toBe('https://acme.example/a-b:c/');
+    // Out of the root: the root.
+    for (const escape of ['/../../admin/', '/x/../../../', '/%2e%2e/admin/', '/%2E%2E/%2e%2e/admin/']) {
+      expect(absolute('https://sw.test/sites/shop/', escape, '/'), escape).toBe('https://sw.test/sites/shop/');
+    }
+    // What the schema already refuses (`//`, a backslash, a scheme) can at most name a path UNDER the root, never
+    // another host or another part of the platform.
+    for (const odd of ['//evil.test/x', '/\\evil.test/x', '/\\\\evil.test/x', '/javascript:alert(1)', '/https://evil.test/', '/%5c%5cevil.test/']) {
+      for (const root of ['https://sw.test/sites/shop/', 'https://acme.example/']) {
+        const at = new URL(absolute(root, odd, '/'));
+        expect(at.origin, `${root} ${odd}`).toBe(new URL(root).origin);
+        expect(at.pathname.startsWith(new URL(root).pathname), `${root} ${odd}`).toBe(true);
+      }
+    }
+  });
+});
+
+describe('★ on a site host, built with no public URL', () => {
+  it('★ the page’s checkout, its challenge and its order status reach the platform, not the site’s pages', async () => {
+    // A site built without a public URL calls the root-relative `/pay/…`, which on its own host (a custom
+    // domain, or `<slug>.<sitesDomain>`) is that host. Each of these was served as a site page: a 404.
+    await h.close();
+    await setUpShop({ sitesDomain: 'agency.site', publicUrl: undefined });
+    await withSiteUrl('https://shop.agency.site');
+    const host = { host: 'shop.agency.site' };
+
+    const challenge = await h.app.inject({ method: 'GET', url: `/pay/${projectId}/pay/challenge`, headers: host });
+    expect(challenge.statusCode, challenge.body).toBe(200);
+    expect(challenge.json()).toHaveProperty('challenge');
+    scripted.responses.push({ body: { id: 'sess_1', url: 'https://mock-pay.invalid/s/1' } });
+    const started = await h.app.inject({ method: 'POST', url: `/pay/${projectId}/pay`, headers: host, payload: body() as never });
+    expect(started.statusCode, started.body).toBe(200);
+    expect(JSON.parse(scripted.calls[0]!.body!).ret).toMatch(/^https:\/\/shop\.agency\.site\/thank-you\/\?t=/);
+    const token = started.json().token as string;
+    const status = await h.app.inject({ method: 'GET', url: `/pay/${projectId}/txn/${token}`, headers: host });
+    expect(status.statusCode, status.body).toBe(200);
+    expect(status.json().transaction).toMatchObject({ status: 'created', currency: 'EUR' });
+    for (const url of [`/pay/${projectId}/pay`, `/pay/${projectId}/pay/challenge`, `/pay/${projectId}/txn/${token}`]) {
+      const preflight = await h.app.inject({ method: 'OPTIONS', url, headers: host });
+      expect(preflight.statusCode, url).toBe(204);
+      expect(preflight.headers['access-control-allow-origin'], url).toBe('*');
+    }
+
+    // ★ …while the site's own pages under /pay/ stay the site's: a GET of any other shape is never taken.
+    // (No site is published here, so the site's answer is a 404 naming the site path it was rewritten to.)
+    for (const page of ['/pay/2024/my-post', `/pay/${projectId}/pay`, `/pay/${projectId}/txn/${token}/`, '/pay/team/jane/challenge/']) {
+      const own = await h.app.inject({ method: 'GET', url: page, headers: host });
+      expect(own.headers['access-control-allow-origin'], page).toBeUndefined();
+      expect(own.body, page).toContain('/sites/shop/pay/');
+    }
+    for (const page of [`/pay/${projectId}/txn/${token}/`, `/pay/${projectId}/pay/challenge/`, '/pay/a/b/c/d']) {
+      const own = await h.app.inject({ method: 'OPTIONS', url: page, headers: host });
+      expect(own.headers['access-control-allow-origin'], page).toBeUndefined();
+    }
+  });
+});
+
 describe('★ the instance gate and the configuration gates', () => {
   it('refuses every checkout when payments are off instance-wide', async () => {
     await setInstanceSettings(false);
@@ -858,6 +971,26 @@ describe('★ proof-of-work on a checkout channel', () => {
     // The refusal is COUNTED, so "we blocked bots" and "we lost sales" stay distinguishable.
     const [row] = await h.db.select().from(shopFiltered).where(eq(shopFiltered.projectId, projectId));
     expect(row?.reason).toBe('pow-missing');
+  });
+
+  it('★ a checkout refused for having no address to come back to does not spend the solved challenge', async () => {
+    await h.close();
+    await setUpShop({ publicUrl: undefined });
+    const powShop = async (website: Record<string, unknown>) =>
+      expect(
+        (await owner.project(projectId).putContent('settings', 'settings', {
+          identity: { name: 'Shop', colors: { primary: '#0a7' } },
+          website: { shop: { ...SHOP, channels: [{ ...SHOP.channels[0], pow: true }] }, ...website },
+          settings: {},
+        })).statusCode,
+      ).toBeLessThan(400);
+    await powShop({});
+    const solution = await solve(await challenge());
+    expect((await checkout(body({ _pow: solution }))).statusCode).toBe(503);
+    // Once the site has an address, the very same solution still buys its one checkout.
+    await powShop({ siteUrl: 'https://acme.example' });
+    scripted.responses.push({ body: { id: 'sess_pow', url: 'https://mock-pay.invalid/s/pow' } });
+    expect((await checkout(body({ _pow: solution }))).statusCode).toBe(200);
   });
 
   it('accepts a solved challenge', async () => {

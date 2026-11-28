@@ -327,6 +327,14 @@ describe('on a site host', () => {
       expect(booked.statusCode, booked.body).toBe(200);
       const reference = booked.json().reference as string;
       expect((await site.app.inject({ method: 'GET', url: `/b/${id}/_booking/${reference}`, headers: host })).statusCode).toBe(200);
+      // The booking page's Pay button, too (a free booking has nothing to pay: the PLATFORM says so).
+      const pay = await site.app.inject({ method: 'POST', url: `/b/${id}/_booking/${reference}/pay`, headers: host, payload: {} });
+      expect(pay.headers['access-control-allow-origin'], pay.body).toBe('*');
+      expect(pay.body).not.toContain('/sites/');
+      for (const action of ['pay', 'cancel']) {
+        const preflight = await site.app.inject({ method: 'OPTIONS', url: `/b/${id}/_booking/${reference}/${action}`, headers: host });
+        expect(preflight.statusCode, action).toBe(204);
+      }
       expect((await site.app.inject({ method: 'POST', url: `/b/${id}/_booking/${reference}/cancel`, headers: host })).statusCode).toBe(200);
       // ★ …while the site's own pages under /b/ stay the site's: a GET of any other shape is never taken.
       // (No site is published here, so the site's answer is a 404 naming the site path it was rewritten to.)

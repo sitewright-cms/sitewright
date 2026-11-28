@@ -229,6 +229,12 @@ describe('referencesChildren', () => {
     expect(referencesChildren('nav-page.children')).toBe(false); // preceded by an identifier/-
     expect(referencesChildren('mypage.children')).toBe(false);
   });
+
+  it('matches the @root form — how a snippet included inside a loop reaches the page', () => {
+    expect(referencesChildren('{{#each @root.page.children}}x{{/each}}')).toBe(true);
+    expect(referencesChildren('{{#each ../page.children}}x{{/each}}')).toBe(true);
+    expect(referencesChildren('{{ item.page.children }}')).toBe(false); // some other object's `page`
+  });
 });
 
 describe('referencesParentPage', () => {
@@ -240,6 +246,11 @@ describe('referencesParentPage', () => {
     expect(referencesParentPage('{{ page.parental }}')).toBe(false); // longer word (parent + al)
     expect(referencesParentPage('{{ page.children }}')).toBe(false); // a different page field
     expect(referencesParentPage('mypage.parent')).toBe(false); // preceded by an identifier
+  });
+
+  it('matches the @root form — how a snippet included inside a loop reaches the page', () => {
+    expect(referencesParentPage('<a href="{{sw-url @root.page.parent.path}}">up</a>')).toBe(true);
+    expect(referencesParentPage('{{ item.page.parent.title }}')).toBe(false); // some other object's `page`
   });
 });
 

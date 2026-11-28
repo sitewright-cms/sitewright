@@ -9,6 +9,24 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **Snippets can read the page's parent, its child pages and other pages.** A page reads `page.parent`,
+  `page.children`, `page.code`, `pages.…`, `item.…` and `{{sw-page-url}}` only when it uses them. The platform
+  used to check the page's own code alone, so the same reference inside a `{{> snippet}}` the page includes came
+  out empty, with no error: a hero snippet's back link to the parent page was blank, and a snippet listing
+  `pages.features._attributes.children` showed an empty grid. The built-in `page-vars` recipe had the same
+  problem. The check now also reads every snippet the page or its template includes, snippets those include
+  in turn, and the header, footer and sidebars. It works the same in the editor preview and on the published site.
+  - **The `@root.` form counts too.** `@root.page.parent`, `@root.page.children` and `@root.pages.…` are how a
+    snippet reaches the page from inside a `{{#each}}` loop, and they were missed even in the page's own code.
+  - **You no longer need to pass these values in.** `{{> page-hero parent=page.parent}}` still works.
+  - **A dynamic include cannot be followed.** `{{> (lookup …)}}` names its snippet only while rendering, so pass
+    such a snippet the values it needs, as above. Quoted names (`{{> "page-hero"}}`) are followed like bare ones.
+  - **A page that uses none of these still costs nothing extra.** A snippet that exists but is not included
+    does not count, and the size limits are unchanged. A publish whose snippets read too much from other pages
+    now stops with the same clear error as a page that reads it directly.
+
 ## [0.86.0] — 2026-11-28
 
 ### Added

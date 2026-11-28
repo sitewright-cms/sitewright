@@ -51,8 +51,10 @@ export function extractRegions(source: string): EditableRegion[] {
 // `page.children` not preceded by an identifier/`.`/`-` (so `my-page.children` / `xpage.children`
 // don't match) — the cheap gate that keeps the (potentially large, child-`data`-carrying) children
 // array off the render-worker JSON-IPC channel unless the source actually references it. Mirrors
-// `ITEM_REF_RE` in bindings.ts.
-const CHILDREN_REF_RE = /(?<![\w.-])page\.children/;
+// `ITEM_REF_RE` in bindings.ts, INCLUDING its `@root.` exception: inside an `{{#each}}` (or a snippet
+// included there) the root is reached as `@root.page.children`, and that must build the array too.
+// Callers pass everything the render can reach — the page, its snippets, the slots (`reachablePartials`).
+const CHILDREN_REF_RE = /(?:@root\.|(?<![\w.-]))page\.children/;
 
 /** Whether a template source references `page.children` — build the children array only when it does. */
 export function referencesChildren(source: string): boolean {
@@ -60,9 +62,9 @@ export function referencesChildren(source: string): boolean {
 }
 
 // `page.parent` not preceded by an identifier/`.`/`-` and not part of a longer word (so `page.parental`
-// doesn't match) — the same cheap gate as `CHILDREN_REF_RE`, so the parent view (which carries the
-// parent's own `data`) is built and serialized over the render IPC only when used.
-const PARENT_PAGE_REF_RE = /(?<![\w.-])page\.parent(?![\w-])/;
+// doesn't match) — the same cheap gate as `CHILDREN_REF_RE` (`@root.page.parent` included), so the parent
+// view (which carries the parent's own `data`) is built and serialized over the render IPC only when used.
+const PARENT_PAGE_REF_RE = /(?:@root\.|(?<![\w.-]))page\.parent(?![\w-])/;
 
 /** Whether a template source references the `page.parent` binding — build the parent view only when it does. */
 export function referencesParentPage(source: string): boolean {

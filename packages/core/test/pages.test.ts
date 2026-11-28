@@ -39,6 +39,11 @@ describe('referencesPages (gate)', () => {
     expect(referencesPages('')).toBe(false);
     expect(referencesPages(undefined)).toBe(false);
   });
+
+  it('matches the @root form — how a snippet included inside a loop reaches the namespace', () => {
+    expect(referencesPages('{{#each @root.pages.features._attributes.children}}x{{/each}}')).toBe(true);
+    expect(referencesPages('{{ item.pages.x }}')).toBe(false); // some other object's `pages`
+  });
 });
 
 describe('referencedPagePaths', () => {
@@ -47,6 +52,12 @@ describe('referencedPagePaths', () => {
     expect(chains).toEqual([
       ['services', 'seo', '_attributes', 'data', 'header_title'],
       ['web-design', '_attributes', 'path'],
+    ]);
+  });
+
+  it('extracts an @root.pages chain, and no chain from another object’s `pages`', () => {
+    expect(referencedPagePaths('{{#each @root.pages.features._attributes.children}}{{/each}} {{x.pages.about._attributes.title}}')).toEqual([
+      ['features', '_attributes', 'children'],
     ]);
   });
 });

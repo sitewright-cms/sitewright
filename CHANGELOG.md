@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.86.0] — 2026-11-28
+
 ### Added
 
 - **Demo copies.** A remote deploy target (FTP, FTPS, SFTP or Git) can be marked **Demo copy**. Its deploys
@@ -6883,7 +6885,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.85.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.86.0...HEAD
+[0.86.0]: https://github.com/sitewright-cms/sitewright/compare/v0.85.0...v0.86.0
 [0.85.0]: https://github.com/sitewright-cms/sitewright/compare/v0.84.1...v0.85.0
 [0.84.1]: https://github.com/sitewright-cms/sitewright/compare/v0.84.0...v0.84.1
 [0.84.0]: https://github.com/sitewright-cms/sitewright/compare/v0.83.1...v0.84.0

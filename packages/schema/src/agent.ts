@@ -2225,7 +2225,8 @@ STEP 3 — LOOP IT in a page/template source:
   A list field → {{#each <field>}}…{{/each}}; an object field → {{<field>.<key>}}.
 
 RENAME safely with rename_dataset — it cascades the slug across every entry AND every {{#each dataset.<slug>}} /
-dataset="<slug>" reference in one transaction (don't hand-edit). The dataset KEEPS its entity id — keep using the
+{{item.<slug>.…}} / dataset="<slug>" reference, reference field and data file, and renames its <slug>_<locale>
+copies, in one transaction (don't hand-edit). The dataset KEEPS its entity id — keep using the
 ORIGINAL id in put_content/get_content after a rename (a put under a new id whose slug collides with an existing
 dataset is rejected with 409). To see a real shape before writing, get_content the
 dataset and one of its entries and MIRROR them.
@@ -2345,7 +2346,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'move_media_bulk', description: "Re-file MANY assets into one folder in a single call (partial success reported per id). Use instead of looping move_media.", capability: 'content:write' },
   { name: 'delete_media', description: "Bin a media asset (RECOVERABLE 90 days via the File Manager Recycle Bin) — prune orphaned files. It's excluded from the next publish; ensure nothing references it.", capability: 'content:delete' },
   { name: 'delete_media_bulk', description: "Bin MANY media assets in one call (up to 200; partial success reported per id) — RECOVERABLE 90 days. Use instead of looping delete_media to prune orphaned files.", capability: 'content:delete' },
-  { name: 'rename_dataset', description: "Rename a dataset's slug (underscore identifier) AND/OR its display name — CASCADES to entries + page/template sources (and reference targets) so loops keep working.", capability: 'content:write' },
+  { name: 'rename_dataset', description: "Rename a dataset's slug (underscore identifier) AND/OR its display name — CASCADES to entries, every source (page/template/snippet/chrome slot), reference fields, data files and its <slug>_<locale> copies so nothing keeps the old slug.", capability: 'content:write' },
   { name: 'get_capabilities', description: "One index of EVERYTHING the platform can do + WHERE each is documented (components, guides, the {{sw-*}} reference, the write shapes, and a need→tool map). Call it before assuming a capability is missing." },
   { name: 'publish_project', description: "DEPRECATED — use deploy_project. Builds only the Local Hosting copy; never uploads to a remote target.", capability: 'publish' },
   { name: 'deploy_project', description: "Put the site LIVE on its deploy targets — Local Hosting (needs publish) and FTP/SFTP/Git (needs deploy); every target, or one by targetId. For a shop it returns the price list per market checkout now charges.", capability: 'publish' },

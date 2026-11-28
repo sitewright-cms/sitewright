@@ -5708,8 +5708,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // Rename a dataset's SLUG. Its ENTRIES always move with it (they are owned, not referencing — an entry
   // left on the old slug is unreachable, not "dangling"). `cascade` (default ON) additionally rewrites
-  // EXTERNAL refs: page/template `dataset.<slug>` sources + other datasets' reference targets, so loops
-  // don't break. `cascade:false` is the editor's "leave page/template references" escape hatch, for an
+  // EXTERNAL refs — every source, reference field, data file, picked value and `<slug>_<locale>` copy (see
+  // ContentRepository.renameDataset) — so nothing keeps the old slug. 409 when a slug is taken or a widget
+  // reads the dataset by name. `cascade:false` is the editor's "leave page/template references" escape hatch, for an
   // author who wants to fix their own markup — it can no longer strand entries. content:write (edits pages).
   const RenameDatasetBody = z.object({ slug: DatasetSlugSchema, name: z.string().min(1).max(200).optional(), cascade: z.boolean().default(true) });
   app.post<{ Params: { projectId: string; id: string } }>(

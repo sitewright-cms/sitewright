@@ -2050,9 +2050,30 @@ export const api = {
     request<{ item: Dataset }>('PUT', `/projects/${projectId}/content/dataset/${encodeURIComponent(dataset.id)}`, dataset),
   deleteDataset: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/content/dataset/${encodeURIComponent(id)}`),
-  /** Rename a dataset's slug. `cascade` (default true) also rewrites entries + page/template references. */
+  /**
+   * Rename a dataset's slug. Its entries always move. `cascade` also rewrites every reference to it — page,
+   * template, snippet and header/footer sources, reference fields, data files, values picked in a dataset
+   * dropdown — and renames its language copies (`<slug>_<locale>`). 409 (nothing changed) when a resulting
+   * slug is taken, a language would switch to an existing `<new>_<locale>`, or a widget / shared library
+   * template the site uses reads the dataset by name.
+   */
   renameDataset: (projectId: string, id: string, slug: string, cascade: boolean) =>
-    request<{ oldSlug: string; newSlug: string; cascaded: boolean; entriesUpdated: number; pagesUpdated: number; templatesUpdated: number; referencesUpdated: number }>(
+    request<{
+      oldSlug: string;
+      newSlug: string;
+      cascaded: boolean;
+      entriesUpdated: number;
+      pagesUpdated: number;
+      templatesUpdated: number;
+      snippetsUpdated: number;
+      /** The website settings (a header/footer slot, a data file, a picked value) named the dataset. */
+      settingsUpdated: boolean;
+      /** Datasets OTHER than the renamed ones whose reference fields were repointed. */
+      referencesUpdated: number;
+      localeCopiesRenamed: Array<{ oldSlug: string; newSlug: string }>;
+      /** `<old>_<x>` datasets that kept their name (a language the site lacks, or every copy without cascade). */
+      localeCopiesNotRenamed: string[];
+    }>(
       'POST',
       `/projects/${projectId}/datasets/${encodeURIComponent(id)}/rename`,
       { slug, cascade },

@@ -80,7 +80,9 @@
         "kind": "video",
         "ratio": "16x10",
         "alt": "The Sitewright editor showing a page's code and its live preview",
-        "capture": "Editor, page home: type a heading change in CodeMirror, the preview updates; 12–15 s loop, 1440×900"
+        "capture": "Editor, page home: type a heading change in CodeMirror, the preview updates; 12–15 s loop, 1440×900",
+        "video": "/media/sitewright/dViyHC-hero_product.webm",
+        "poster": "/media/sitewright/P2LTD9-hero_product-poster.jpg"
       }
     },
     {
@@ -90,7 +92,9 @@
         "kind": "video",
         "ratio": "16x10",
         "alt": "A page being written in the code editor while its preview updates",
-        "capture": "Code tab: add a dataset loop, preview shows the cards; 10 s"
+        "capture": "Code tab: add a dataset loop, preview shows the cards; 10 s",
+        "video": "/media/sitewright/F9Q9in-way_developer.webm",
+        "poster": "/media/sitewright/D4Reb3-way_developer-poster.jpg"
       }
     },
     {
@@ -100,7 +104,9 @@
         "kind": "video",
         "ratio": "16x10",
         "alt": "A client clicking a heading on the live preview and retyping it",
-        "capture": "Content editor as a client: click heading, retype, save; 8–10 s"
+        "capture": "Content editor as a client: click heading, retype, save; 8–10 s",
+        "video": "/media/sitewright/a0v7nH-way_client.webm",
+        "poster": "/media/sitewright/RVlnIQ-way_client-poster.jpg"
       }
     },
     {
@@ -140,7 +146,8 @@
         "kind": "image",
         "ratio": "9x16",
         "alt": "A page preview at mobile width, as an agent receives it",
-        "capture": "preview_page mobile of the pricing demo page"
+        "capture": "preview_page mobile of the pricing demo page",
+        "image": "/media/sitewright/2I1uXb-agent_mobile.png"
       }
     },
     {
@@ -150,7 +157,8 @@
         "kind": "image",
         "ratio": "3x4",
         "alt": "A page preview at tablet width, as an agent receives it",
-        "capture": "preview_page tablet"
+        "capture": "preview_page tablet",
+        "image": "/media/sitewright/U5qBg0-agent_tablet.png"
       }
     },
     {
@@ -160,7 +168,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "A page preview at full HD width, as an agent receives it",
-        "capture": "preview_page fullhd"
+        "capture": "preview_page fullhd",
+        "image": "/media/sitewright/hjqAE8-agent_desktop.png"
       }
     },
     {

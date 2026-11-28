@@ -530,6 +530,79 @@ Object.assign(scenes, {
     await stop({ hold: 300 });
     await page.context().close();
   },
+
+  // A client in the content view: the heading's outline and name badge, retype it; then swap the photo from the media
+  // library. (Serves doc_client_editing and doc_inline_editing.)
+  async doc_client_editing() {
+    const page = await editor({ scale: 1 });
+    await page.waitForTimeout(1200);
+    await page.getByRole('button', { name: 'Case study: Alpine Outfitters /case-study/' }).click();
+    await page.getByRole('dialog', { name: /Case study/ }).waitFor();
+    await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
+    const preview = page.frameLocator('iframe[title="Preview"]');
+    const heading = preview.locator('[data-sw-text="cs_title"]');
+    const image = preview.locator('[data-sw-src="cs_image"]');
+    await heading.waitFor();
+    await page.waitForTimeout(2500);
+    await glide(page, { x: 1300, y: 900 }, 10);
+    const stop = await record(page, 'doc_client_editing', EDITOR);
+    await page.waitForTimeout(900);
+    await glide(page, heading, 900);
+    await page.waitForTimeout(900);
+    await tap(page, heading, { ms: 200 });
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.waitForTimeout(250);
+    await typeSlowly(page, 'Alpine Outfitters, live in six weeks', 55);
+    await page.waitForTimeout(600);
+    await tap(page, image, { ms: 800 });
+    const picker = page.getByRole('dialog', { name: 'Replace image' });
+    await picker.waitFor();
+    await page.waitForTimeout(700);
+    await tap(page, picker.getByRole('button', { name: /^Projects \d/ }), { ms: 700 });
+    await page.waitForTimeout(900);
+    await tap(page, picker.locator('figure button:visible, button:has(img):visible').nth(3), { ms: 700 });
+    await page.waitForTimeout(2600);
+    await stop({ hold: 300 });
+    await page.context().close();
+  },
+
+  // Templating: a card is a dataset entry. Click it, change the role, save, and the card shows it.
+  async feat_templating_click() {
+    const page = await editor({ scale: 1 });
+    await page.waitForTimeout(1200);
+    await page.getByRole('button', { name: 'Case study: Alpine Outfitters /case-study/' }).click();
+    await page.getByRole('dialog', { name: /Case study/ }).waitFor();
+    await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
+    const preview = page.frameLocator('iframe[title="Preview"]');
+    await preview.locator('[data-sw-text="cs_title"]').waitFor();
+    const card = preview.locator('[data-sw-entry]').nth(1);
+    await card.waitFor({ state: 'attached', timeout: 60_000 });
+    // Scroll the preview so the team row sits in the middle of it.
+    await card.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    await page.waitForTimeout(2000);
+    await glide(page, { x: 1300, y: 900 }, 10);
+    const stop = await record(page, 'feat_templating_click', EDITOR);
+    await page.waitForTimeout(900);
+    await glide(page, card, 900);
+    await page.waitForTimeout(700);
+    await tap(page, card, { ms: 200 });
+    const dialog = page.getByRole('dialog', { name: /^Edit / }).last();
+    await dialog.waitFor();
+    await page.waitForTimeout(700);
+    const role = dialog.locator('input:visible').nth(1);
+    await tap(page, role, { ms: 700 });
+    await page.keyboard.press('ControlOrMeta+a');
+    await typeSlowly(page, 'Head of UX', 70);
+    await page.waitForTimeout(500);
+    await tap(page, dialog.getByRole('button', { name: /^Save/ }).first(), { ms: 700 });
+    await page.waitForTimeout(600);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(400);
+    await glide(page, card, 700);
+    await page.waitForTimeout(2600);
+    await stop({ hold: 300 });
+    await page.context().close();
+  },
 });
 
 const wanted = process.argv.slice(2);

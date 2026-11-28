@@ -14,14 +14,20 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const BASE = 'http://dind.local:2003';
 const PROJECT = 'eEb21YIuV4qF';
-const cookie = readFileSync(join(here, '..', 'sw2003.cookie'), 'utf8').trim();
+const cookie = readFileSync(process.env.SW2003_COOKIE ?? '/tmp/claude-1000/-workspace-sitewright/ec7958e0-e951-4975-95e7-a51a6bdd4286/scratchpad/sw2003.cookie', 'utf8').trim();
 
 async function api(method, path, body) {
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers: { cookie, origin: BASE, ...(body ? { 'content-type': 'application/json' } : {}) },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
+  let res;
+  // The content routes are rate-limited; a burst of entry writes waits out a 429 rather than failing half-way.
+  for (let attempt = 0; ; attempt++) {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      headers: { cookie, origin: BASE, ...(body ? { 'content-type': 'application/json' } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    if (res.status !== 429 || attempt >= 6) break;
+    await new Promise((r) => setTimeout(r, Math.min(Number(res.headers.get('retry-after')) || 5, 65) * 1000));
+  }
   const text = await res.text();
   if (!res.ok) throw new Error(`${method} ${path} → ${res.status}: ${text.slice(0, 600)}`);
   return text ? JSON.parse(text) : {};

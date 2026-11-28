@@ -1,7 +1,7 @@
 // Fetches every page of the draft preview and checks that each internal link resolves to a page of the site.
 import { readFileSync } from 'node:fs';
 const BASE = 'http://dind.local:2003';
-const cookie = readFileSync(new URL('../sw2003.cookie', import.meta.url), 'utf8').trim();
+const cookie = readFileSync(process.env.SW2003_COOKIE ?? '/tmp/claude-1000/-workspace-sitewright/ec7958e0-e951-4975-95e7-a51a6bdd4286/scratchpad/sw2003.cookie', 'utf8').trim();
 const { items } = await (await fetch(`${BASE}/projects/eEb21YIuV4qF/content/page`, { headers: { cookie } })).json();
 const byId = new Map(items.map((p) => [p.id, p]));
 const route = (p) => { const segs = []; for (let q = p; q; q = q.parent ? byId.get(q.parent) : undefined) if (q.path) segs.unshift(q.path); return segs.join('/'); };

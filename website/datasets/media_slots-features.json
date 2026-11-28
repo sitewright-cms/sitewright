@@ -120,7 +120,9 @@
         "kind": "video",
         "ratio": "16x10",
         "alt": "The page editor with the CodeMirror strip open over the live preview, which updates after a heading is retyped",
-        "capture": "Pages → home → Code Editor: hover the strip so it opens, change a heading and a Tailwind class, wait for the preview to update; 10–12 s loop at 1440×900"
+        "capture": "Pages → home → Code Editor: hover the strip so it opens, change a heading and a Tailwind class, wait for the preview to update; 10–12 s loop at 1440×900",
+        "video": "/media/sitewright/5vA4lr-feat_editor_code.webm",
+        "poster": "/media/sitewright/DBCU7y-feat_editor_code-poster.jpg"
       }
     },
     {
@@ -130,7 +132,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "The editor with the System Library rail open, listing references, assets and builders",
-        "capture": "Code Editor with the Library rail open, Builders & Studios group expanded; 1440×900"
+        "capture": "Code Editor with the Library rail open, Builders & Studios group expanded; 1440×900",
+        "image": "/media/sitewright/v8umDp-feat_editor_library.png"
       }
     },
     {
@@ -140,7 +143,9 @@
         "kind": "video",
         "ratio": "16x10",
         "alt": "A card in a dataset loop clicked on the preview, opening its entry editor; the edited name appears on the page",
-        "capture": "Content Editor on a team page: click the second card, change the role in the entry editor, save, see the card update; 8–10 s"
+        "capture": "Content Editor on a team page: click the second card, change the role in the entry editor, save, see the card update; 8–10 s",
+        "video": "/media/sitewright/jAxv9t-feat_templating_click.webm",
+        "poster": "/media/sitewright/zgwZjf-feat_templating_click-poster.jpg"
       }
     },
     {
@@ -150,7 +155,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "The entry editor of an events dataset with date, rich text, image and page fields and language tabs",
-        "capture": "Datasets → events → open an entry with a German translation tab; 1440×900"
+        "capture": "Datasets → events → open an entry with a German translation tab; 1440×900",
+        "image": "/media/sitewright/uyeoWL-feat_templating_entry.png"
       }
     },
     {
@@ -170,7 +176,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "The File Manager showing image folders, a selected image with its alt text field and the Replace file action",
-        "capture": "File Manager → images/team with ~12 fixture photos, one selected with its details panel open; 1440×900"
+        "capture": "File Manager → images/team with ~12 fixture photos, one selected with its details panel open; 1440×900",
+        "image": "/media/sitewright/14pATe-feat_media_library.png"
       }
     },
     {
@@ -200,7 +207,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "The Translations and Labels grid showing keys in English, German and French with one language incomplete",
-        "capture": "Website Settings → Translations with en/de/fr and ~20 keys, a few French cells empty; 1440×900"
+        "capture": "Website Settings → Translations with en/de/fr and ~20 keys, a few French cells empty; 1440×900",
+        "image": "/media/sitewright/pDdmyZ-feat_languages_coverage.png"
       }
     },
     {
@@ -210,7 +218,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "The form editor with a contact form’s fields, its success message, the delivery mode and the proof-of-work and captcha switches",
-        "capture": "Forms → Edit form contact (name, email, topic radio, message, consent checkbox), scrolled so delivery and spam switches show; 1440×900"
+        "capture": "Forms → Edit form contact (name, email, topic radio, message, consent checkbox), scrolled so delivery and spam switches show; 1440×900",
+        "image": "/media/sitewright/B0JEMu-feat_forms_editor.png"
       }
     },
     {
@@ -280,7 +289,8 @@
         "kind": "image",
         "ratio": "16x9",
         "alt": "The share links list with labels, expiry dates and revoke buttons",
-        "capture": "Preview share links with three fixture links (one expiring soon); crop to the list"
+        "capture": "Preview share links with three fixture links (one expiring soon); crop to the list",
+        "image": "/media/sitewright/JIZMzD-feat_hosting_share.png"
       }
     },
     {
@@ -290,7 +300,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "The Page Audit tab with performance, accessibility, best practices and SEO scores for mobile and desktop and the list of findings",
-        "capture": "Page editor → Page Audit on the fixture services page, Both run finished, findings list visible; 1440×900"
+        "capture": "Page editor → Page Audit on the fixture services page, Both run finished, findings list visible; 1440×900",
+        "image": "/media/sitewright/ml932T-feat_seo_audit.png"
       }
     },
     {
@@ -300,7 +311,8 @@
         "kind": "image",
         "ratio": "16x9",
         "alt": "The Authorize page for an MCP client with project cards and permission checkboxes, two marked elevated",
-        "capture": "Run claude mcp add against :2003, follow the sign-in; screenshot the Authorize page with two projects and the permission list; crop to the card"
+        "capture": "Run claude mcp add against :2003, follow the sign-in; screenshot the Authorize page with two projects and the permission list; crop to the card",
+        "image": "/media/sitewright/udqppl-feat_agents_consent.png"
       }
     },
     {
@@ -330,7 +342,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "The sign-in screen branded with an agency name, logo and colors, offering a passkey sign-in",
-        "capture": "System Settings → Branding: set a fixture agency name, logo and gradient; sign out and capture the sign-in screen; 1440×900"
+        "capture": "System Settings → Branding: set a fixture agency name, logo and gradient; sign out and capture the sign-in screen; 1440×900",
+        "image": "/media/sitewright/xBe1Mj-feat_security_branding.png"
       }
     }
   ]

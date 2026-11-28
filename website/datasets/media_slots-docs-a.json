@@ -80,7 +80,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "The page editor in Code Editor mode, with the Home page source above its live preview",
-        "capture": "Page editor, Home page of a fresh demo project after steps 2 and 4: Code Editor tab, strip expanded (hovered), preview showing the hero and the three service cards; 1440x900, light editor theme"
+        "capture": "Page editor, Home page of a fresh demo project after steps 2 and 4: Code Editor tab, strip expanded (hovered), preview showing the hero and the three service cards; 1440x900, light editor theme",
+        "image": "/media/sitewright/1hbc7D-doc_first_site_code.png"
       }
     },
     {
@@ -90,7 +91,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "The Storage and backups card listing database, snapshot, media and data folder sizes with the snapshot retention setting",
-        "capture": "Editor as admin, gear menu → System Settings → Ops tab, scrolled so Logging, Storage & backups and Database integrity are visible; the instance should have 2 pre-migration snapshots; light theme, 1440×900"
+        "capture": "Editor as admin, gear menu → System Settings → Ops tab, scrolled so Logging, Storage & backups and Database integrity are visible; the instance should have 2 pre-migration snapshots; light theme, 1440×900",
+        "image": "/media/sitewright/K4ZSK9-doc_storage_backups.png"
       }
     },
     {
@@ -100,7 +102,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "The sign-in screen showing a custom platform name, logo and animated background",
-        "capture": "Signed out, /: sign-in screen after setting Platform name \"Northwind Studio\", a PNG logo, brand colors #0f766e/#f59e0b and an animated platform background; light theme, 1440×900"
+        "capture": "Signed out, /: sign-in screen after setting Platform name \"Northwind Studio\", a PNG logo, brand colors #0f766e/#f59e0b and an animated platform background; light theme, 1440×900",
+        "image": "/media/sitewright/FbxxiG-doc_whitelabel_signin.png"
       }
     },
     {
@@ -110,7 +113,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "The Branding card with the platform name, the two gradient colors and the logo upload",
-        "capture": "Editor as admin, System Settings → General: Branding card filled in (name, two colors with the gradient preview, logo uploaded); light theme, 1440×900, crop to the modal"
+        "capture": "Editor as admin, System Settings → General: Branding card filled in (name, two colors with the gradient preview, logo uploaded); light theme, 1440×900, crop to the modal",
+        "image": "/media/sitewright/rOvzIJ-doc_whitelabel_settings.png"
       }
     },
     {
@@ -120,7 +124,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "The Sitewright editor showing the Pages tab with the page tree and the edge rail tabs",
-        "capture": "Editor, demo project, Pages tab with 6–8 pages incl. one child page and one draft; no drawer open so the System Library (left), File Manager (right) and bottom rail tabs are visible; 1440x900"
+        "capture": "Editor, demo project, Pages tab with 6–8 pages incl. one child page and one draft; no drawer open so the System Library (left), File Manager (right) and bottom rail tabs are visible; 1440x900",
+        "image": "/media/sitewright/bdKdXy-doc_editor_tour_layout.png"
       }
     },
     {
@@ -130,7 +135,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "The page editor in Page Audit mode with four score gauges, metrics and a list of recommendations",
-        "capture": "Page editor on the demo home page, Page Audit tab after a completed run, Mobile selected, recommendations list visible; 1440x900"
+        "capture": "Page editor on the demo home page, Page Audit tab after a completed run, Mobile selected, recommendations list visible; 1440x900",
+        "image": "/media/sitewright/kUz8Pt-doc_editor_tour_audit.png"
       }
     },
     {
@@ -140,7 +146,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "The Datasets rail listing a team_members dataset's entries, with one entry open in its form",
-        "capture": "Editor, Datasets rail (bottom-left tab) open on a team_members dataset with 6 entries (name, role, photo, bio); open one entry so the form shows the image picker and the richtext toolbar; light theme, 1440×900"
+        "capture": "Editor, Datasets rail (bottom-left tab) open on a team_members dataset with 6 entries (name, role, photo, bio); open one entry so the form shows the image picker and the richtext toolbar; light theme, 1440×900",
+        "image": "/media/sitewright/YmiF9d-doc_datasets_editor.png"
       }
     },
     {
@@ -150,7 +157,9 @@
         "kind": "video",
         "ratio": "16x10",
         "alt": "The Content Editor: a heading is retyped in place, an image is replaced from the media library, and a dataset row opens its form",
-        "capture": "Page editor, Content Editor tab on a page with data-sw-text, data-sw-src and a dataset loop: hover a heading (outline and badge), click and retype it; click the image and pick another; click a dataset card to open its form; then open the Regions panel; 15 s loop, 1440×900"
+        "capture": "Page editor, Content Editor tab on a page with data-sw-text, data-sw-src and a dataset loop: hover a heading (outline and badge), click and retype it; click the image and pick another; click a dataset card to open its form; then open the Regions panel; 15 s loop, 1440×900",
+        "video": "/media/sitewright/RaR20z-doc_client_editing.webm",
+        "poster": "/media/sitewright/piHs8a-doc_client_editing-poster.jpg"
       }
     },
     {
@@ -160,7 +169,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "The Corporate Identity settings with the Brand colors tile and the Typography tile",
-        "capture": "Editor, Settings → Corporate Identity, scrolled to the Brand colors (six fixed rows plus one custom color) and Typography (heading and body fonts) tiles; light theme, 1440×900"
+        "capture": "Editor, Settings → Corporate Identity, scrolled to the Brand colors (six fixed rows plus one custom color) and Typography (heading and body fonts) tiles; light theme, 1440×900",
+        "image": "/media/sitewright/1xLnzn-doc_brand_identity.png"
       }
     },
     {
@@ -170,7 +180,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "Website Settings showing the document skeleton map with each slot, its size and an edit button",
-        "capture": "Website Settings tab, Document skeleton tile of the demo project (nav, footer and critical CSS filled, sidebars empty); crop to the tile, 1440x900"
+        "capture": "Website Settings tab, Document skeleton tile of the demo project (nav, footer and critical CSS filled, sidebars empty); crop to the tile, 1440x900",
+        "image": "/media/sitewright/1rAnoU-doc_chrome_skeleton.png"
       }
     }
   ]

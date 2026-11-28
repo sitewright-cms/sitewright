@@ -80,7 +80,9 @@
         "kind": "video",
         "ratio": "16x10",
         "alt": "A heading edited in place in the preview, then an image replaced from the file picker",
-        "capture": "Content editor on a page with data-sw-text, data-sw-src: click heading, type, click image, pick a file; 10 s, 1440x900"
+        "capture": "Content editor on a page with data-sw-text, data-sw-src: click heading, type, click image, pick a file; 10 s, 1440x900",
+        "video": "/media/sitewright/RaR20z-doc_client_editing.webm",
+        "poster": "/media/sitewright/piHs8a-doc_client_editing-poster.jpg"
       }
     },
     {
@@ -90,7 +92,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "The dataset schema editor listing fields of several types",
-        "capture": "Data panel, products dataset, schema view: text, prices, image, select with 3 options, a list field expanded with 3 child fields; 1440x900"
+        "capture": "Data panel, products dataset, schema view: text, prices, image, select with 3 options, a list field expanded with 3 child fields; 1440x900",
+        "image": "/media/sitewright/9fTZ9J-doc_dataset_schema.png"
       }
     },
     {
@@ -110,7 +113,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "Website settings, Languages: two languages listed beside a pages list filtered to German",
-        "capture": "Settings, Website, Languages sheet open with en (main) and de; behind it the pages list filtered to de showing /de/ and /de/leistungen/; 1440x900"
+        "capture": "Settings, Website, Languages sheet open with en (main) and de; behind it the pages list filtered to de showing /de/ and /de/leistungen/; 1440x900",
+        "image": "/media/sitewright/nbdQVo-doc_languages.png"
       }
     },
     {
@@ -120,7 +124,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "The form editor with four fields, the delivery mode menu and the spam protection switches",
-        "capture": "Forms tab, edit the Contact form: name, email, message, consent checkbox; delivery mode Platform email (global SMTP); captcha off, proof of work on; 1440x900"
+        "capture": "Forms tab, edit the Contact form: name, email, message, consent checkbox; delivery mode Platform email (global SMTP); captcha off, proof of work on; 1440x900",
+        "image": "/media/sitewright/DIqpAj-doc_form_editor.png"
       }
     },
     {
@@ -130,7 +135,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "Shop settings listing WhatsApp, email and checkout channels",
-        "capture": "Settings, Website, Shop sheet: enabled, EUR after with 2 decimals, channels whatsapp, mailto and checkout (stripe, test mode); 1440x900"
+        "capture": "Settings, Website, Shop sheet: enabled, EUR after with 2 decimals, channels whatsapp, mailto and checkout (stripe, test mode); 1440x900",
+        "image": "/media/sitewright/BKO07e-doc_shop_channels.png"
       }
     },
     {
@@ -180,7 +186,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "The authorize screen with a project chosen and capability checkboxes",
-        "capture": "OAuth consent for Claude Code: project selected, content read/write ticked, delete and deploy unticked with the elevated badge; 1440x900"
+        "capture": "OAuth consent for Claude Code: project selected, content read/write ticked, delete and deploy unticked with the elevated badge; 1440x900",
+        "image": "/media/sitewright/9yt8D6-doc_agent_consent.png"
       }
     },
     {
@@ -190,7 +197,8 @@
         "kind": "image",
         "ratio": "16x10",
         "alt": "Account settings, Access keys tab listing project tokens and member tokens",
-        "capture": "Account Settings, Access keys as an admin: two project tokens (CI, staging agent) and one member token, the create form open with capabilities; 1440x900"
+        "capture": "Account Settings, Access keys as an admin: two project tokens (CI, staging agent) and one member token, the create form open with capabilities; 1440x900",
+        "image": "/media/sitewright/5MOz42-doc_access_keys.png"
       }
     },
     {

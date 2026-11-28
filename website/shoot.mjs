@@ -12,11 +12,11 @@ const { chromium } = require('@playwright/test');
 const here = dirname(fileURLToPath(import.meta.url));
 const BASE = 'http://dind.local:2003';
 const PROJECT = 'eEb21YIuV4qF';
-const cookie = readFileSync(join(here, '..', 'sw2003.cookie'), 'utf8').trim();
+const cookie = readFileSync(process.env.SW2003_COOKIE ?? '/tmp/claude-1000/-workspace-sitewright/ec7958e0-e951-4975-95e7-a51a6bdd4286/scratchpad/sw2003.cookie', 'utf8').trim();
 
 const [route = '', prefix = join(here, 'shots', 'page'), flag] = process.argv.slice(2);
-const pages = await (await fetch(`${BASE}/projects/${PROJECT}/content/page`, { headers: { cookie } })).json();
-const previewBase = pages.items.find((p) => p.previewUrl)?.previewUrl;
+// The signed preview root (a page's own previewUrl now carries its path, which doubled the slash here).
+const previewBase = (await (await fetch(`${BASE}/projects/${PROJECT}/preview-url`, { headers: { cookie } })).json()).base;
 if (!previewBase) throw new Error('no preview URL');
 const url = `${BASE}${previewBase}${route ? `${route.replace(/^\/|\/$/g, '')}/` : ''}`;
 

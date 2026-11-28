@@ -14,7 +14,7 @@ interface ApiKeysManagerProps {
 }
 
 /**
- * Project settings → API keys: create / list / revoke the long-lived bearer
+ * Account Settings → Access keys → Project tokens: create / list / revoke the long-lived bearer
  * tokens (PATs) used by CI and headless tools. The raw token is shown exactly
  * once on creation; thereafter only its prefix is visible.
  */
@@ -110,7 +110,7 @@ export function ApiKeysManager({ project, isInstanceAdmin = false }: ApiKeysMana
             onChange={(e) => setRole(e.target.value as ProjectRole)}
           >
             <option value="owner">owner</option>
-            <option value="member">member (read-only)</option>
+            <option value="member">member (no website import)</option>
           </select>
         </div>
         <div className="flex flex-col">

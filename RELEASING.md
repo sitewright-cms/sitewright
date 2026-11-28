@@ -69,7 +69,7 @@ docker run -d --name sitewright \
 
 Migrations run automatically on start, and (when a migration is pending) a WAL-safe DB snapshot is written to
 `<SW_DATA_DIR>/backups/` first, so an upgrade can be rolled back — see the `apps/api/Dockerfile` header and the
-System Settings → **Storage & backups** panel.
+System Settings → Ops → **Storage & backups** panel.
 
 ## Verifying
 

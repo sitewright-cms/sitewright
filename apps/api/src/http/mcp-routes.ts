@@ -29,6 +29,11 @@ export const MCP_RL_MAX = 600;
 const MCP_RL_BASE = 120;
 /** The rate-limit window in seconds — the floor a 429 reports when the plugin set no `retry-after`. */
 const RATE_LIMIT_WINDOW_SECONDS = 60;
+/**
+ * Room for the JSON-RPC envelope around a tool call's arguments. A write tool sends the same arguments the
+ * content route receives as its body, so `/mcp` accepts that route's limit plus this.
+ */
+const MCP_ENVELOPE_BYTES = 64 * 1024;
 
 /**
  * Thrown by the pre-parse bearer check when the request carries no live token; the route's error handler
@@ -90,8 +95,15 @@ export function registerMcpRoutes(
     /** The instance's approved origins (canonical + admin-set additional); used to build the challenge's
      *  resource-metadata URL correctly behind a TLS-terminating proxy. See `issuerOf`. */
     origins: () => PlatformOriginSet;
+    /**
+     * The body limit of the content routes the write tools land on. ★ Without a limit of its own `/mcp` had
+     * Fastify's 1 MiB default while those routes take 4 MiB: MEASURED, a 1.1 MB page saved over REST and was
+     * refused here with a 413, so an agent could not save a page the editor could.
+     */
+    contentBodyLimit: number;
   },
 ): void {
+  const bodyLimit = opts.contentBodyLimit + MCP_ENVELOPE_BYTES;
   // A SitewrightClient whose every request is an in-process app.inject carrying the bearer token — and the
   // caller's address. Without it every inject came from 127.0.0.1, so wherever a bucket is keyed by address
   // (a bearer not yet proven live), every client shared ONE: a stranger sending made-up tokens used up the
@@ -302,9 +314,14 @@ export function registerMcpRoutes(
       );
       return;
     }
+    if (status === 413 && (error as { code?: string }).code === 'FST_ERR_CTP_BODY_TOO_LARGE') {
+      // Said plainly: "internal error" read as a server fault, so the agent retried the same oversized call.
+      void rpcError(reply, status, `request too large — a /mcp request may be at most ${bodyLimit} bytes`, rpcIdOf(req.body));
+      return;
+    }
     void rpcError(reply, status, 'internal error', rpcIdOf(req.body));
   };
-  app.post('/mcp', { config: opts.rlAgent(MCP_RL_BASE), errorHandler: mcpErrorHandler, preParsing: authenticateFirst }, handle);
+  app.post('/mcp', { bodyLimit, config: opts.rlAgent(MCP_RL_BASE), errorHandler: mcpErrorHandler, preParsing: authenticateFirst }, handle);
   // Stateless JSON mode uses neither the standalone SSE stream (GET) nor session termination
   // (DELETE) — 405 so a spec-compliant host doesn't open and wait on a stream that never arrives
   // (and we never buffer a streaming body via .text()).

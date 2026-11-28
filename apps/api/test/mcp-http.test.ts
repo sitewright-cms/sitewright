@@ -297,6 +297,33 @@ describe('remote MCP transport (/mcp)', () => {
     expect(got.statusCode).toBe(200);
   });
 
+  it('★ saves a page over 1 MiB through put_page, as the content route itself does', async () => {
+    // `/mcp` had no bodyLimit, so it got Fastify's 1 MiB default while the content route the tool lands on
+    // takes 4 MiB: MEASURED, a 1.1 MB page saved over REST (200) and was refused at /mcp (413, reported as
+    // "internal error"), so an agent could not save a page the editor could.
+    const { token, projectId } = await setup();
+    await mcp(token, init);
+    const big = 'b'.repeat(200 * 1024);
+    const page = { id: 'big', path: 'big', title: 'Big', source: `<section><p>${big}</p></section>`, data: { a: big, b: big, c: big, d: big, e: big } };
+    expect(JSON.stringify(page).length).toBeGreaterThan(1024 * 1024);
+    const res = await mcp(token, { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'put_page', arguments: { page } } });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { result: { isError?: boolean } }).result.isError).toBeFalsy();
+    const got = await app.inject({ method: 'GET', url: `/projects/${projectId}/content/page/big`, headers: { authorization: `Bearer ${token}` } });
+    expect(got.statusCode).toBe(200);
+  });
+
+  it('refuses a body over its limit with a JSON-RPC error that says so, not "internal error"', async () => {
+    const { token } = await setup();
+    const page = { id: 'huge', path: 'huge', title: 'Huge', source: 'x'.repeat(5 * 1024 * 1024) };
+    const res = await mcp(token, { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'put_page', arguments: { page } } });
+    expect(res.statusCode).toBe(413);
+    const body = res.json() as { jsonrpc: string; error: { message: string } };
+    expect(body.jsonrpc).toBe('2.0');
+    expect(body.error.message).toMatch(/too large/);
+    expect(body.error.message).not.toMatch(/internal error/);
+  });
+
   it('sustains a fleet-sized burst (introspect is cached, not re-billed per call)', async () => {
     const { token } = await setup();
     // Two ceilings have bitten here. (1) Before the scope cache, EVERY /mcp POST spent one

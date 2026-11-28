@@ -1896,12 +1896,12 @@ export function InstanceSettings({ initialTab = 'general', focusSection }: { ini
           <li>
             On the first call the endpoint answers <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">401</code> and the
             agent opens the browser to sign in (OAuth 2.1 + PKCE). Pick the project, approve — and keep that tab open to
-            watch the agent’s changes live. Use <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">switch_project</code> to
-            move it to another project.
+            watch the agent’s changes live. The project is fixed for that connection: to move the agent to another
+            project, disconnect and reconnect it in the agent, then pick the other project.
           </li>
           <li>
-            Headless, or no browser available? Mint a project API key under Settings → API Keys and send it as a bearer
-            token instead:{' '}
+            Headless, or no browser available? Create a project token under Account Settings → Access keys and send it
+            as a bearer token instead:{' '}
             <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">-H &quot;Authorization: Bearer swk_…&quot;</code>
           </li>
         </ol>

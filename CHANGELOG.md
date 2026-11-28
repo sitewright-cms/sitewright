@@ -27,6 +27,33 @@ The running version of an instance is reported at `GET /version` (baked into the
     does not count, and the size limits are unchanged. A publish whose snippets read too much from other pages
     now stops with the same clear error as a page that reads it directly.
 
+- **An agent can save a page over 1 MB through the remote MCP endpoint.** `/mcp` had no size limit of its own,
+  so it refused anything over 1 MB while the editor saves up to 4 MB: a 1.1 MB page saved in the editor and failed
+  from an agent, reported as "internal error". `/mcp` now accepts what the content routes accept, and a request
+  that is still too large says so.
+- **Help texts and agent guides now say what the product does.**
+  - The API key form called a `member` key "read-only". A member key can write; only importing a website needs an
+    owner key.
+  - The connect-an-agent steps (System Settings → Agents, the agent details dialog) pointed to "Settings → API
+    Keys". Project tokens are under **Account Settings → Access keys**. They also told you to use
+    `switch_project`, which only works in the `sitewright mcp` CLI bridge: over the remote endpoint you reconnect
+    the agent to pick another project. The agent instructions and the tool's description now say so.
+  - Keyword rankings (`get_rankings`) were described as Google or Bing. Rank tracking checks Google only.
+  - The template reference showed `{{sw-control}}` with a positional path and said it renders the value on the
+    published site. It takes `target="…"`, and the chip is removed on publish. It also left out
+    `{{sw-theme-toggle label="…"}}`, and said `page.children` stops at 500 children: the limit is 2,000, or about
+    2 MiB of child data.
+  - The import guide said owners import websites in the editor and that imported pages are drafts. Importing is
+    done by an agent or the API (the editor screen was removed), and imported pages are saved as published.
+    `ai_clone` reported that "the site was published"; it never deploys, and now says so.
+  - The navigation guide said a header or footer slot can hold `{{> nav-footer}}`. Slots render without
+    snippets, so that markup has to sit in the slot itself, which is how new projects start.
+  - Datasets have 18 field types, not 15 (docs) or 17 (README).
+  - `SW_RENDER_WORKERS` defaults to 1, 2 or 3 workers depending on the memory limit, not always 2. Storage &
+    backups is under System Settings → **Ops**.
+  - The nginx example capped every request at 210 MB "for project imports". A project import can be up to 32
+    GiB, so the example now raises the cap for `/projects/import/zip` only.
+
 ## [0.86.0] — 2026-11-28
 
 ### Added

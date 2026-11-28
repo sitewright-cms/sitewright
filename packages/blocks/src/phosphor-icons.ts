@@ -2,8 +2,8 @@
 // https://phosphoricons.com). DO NOT EDIT BY HAND — re-run the generator to refresh. Each value is the six
 // weight bodies [thin, light, regular, bold, fill, duotone] — the inner markup of a 256x256, currentColor <svg>. The Icon block
 // / {{sw-icon}} helper wraps them. Phosphor is inlined here so there is no runtime dependency; the publisher
-// only-used-ships referenced icons. Duotone keeps its secondary path's opacity="0.2" (single-colour duotone;
-// set --sw-icon-duo to give the secondary a distinct colour — see the .sw-icon CSS).
+// only-used-ships referenced icons. Duotone keeps its secondary path's opacity="0.2" (single-colour duotone:
+// both paths are currentColor, so a colour set on the .sw-icon applies to both; the secondary has no hook of its own).
 
 /** The Phosphor weights, in picker/row order. */
 export const PHOSPHOR_WEIGHTS = ['thin', 'light', 'regular', 'bold', 'fill', 'duotone'] as const;

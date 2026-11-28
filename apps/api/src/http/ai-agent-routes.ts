@@ -511,7 +511,7 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
       // it's excluded from coverage (like runCloneOrchestration itself). The auth/quota/pages gate above
       // IS unit-tested (session + swk_ token accepted, content:read rejected).
       /* v8 ignore start */
-      // Full (non-deploy) capability set — same as the SSE clone: it authors, prunes junk, and publishes.
+      // Full (non-deploy) capability set — same as the SSE clone: it authors and prunes junk; the orchestrator itself never deploys.
       const capabilities = [...AGENT_MAX_CAPS];
       const abort = new AbortController();
       let minted: { token: string; keyId: string } | undefined;

@@ -150,7 +150,7 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
                 watch the changes appear live.
               </li>
               <li>
-                Headless or no browser? Create a project API key under <strong>Settings → API Keys</strong> and send it
+                Headless or no browser? Create a project token under <strong>Account Settings → Access keys</strong> and send it
                 as a bearer token instead — no OAuth round trip:
                 <pre className={PRE}><code>claude mcp add --transport http sitewright {mcpUrl} -H &quot;Authorization: Bearer swk_…&quot;</code></pre>
               </li>

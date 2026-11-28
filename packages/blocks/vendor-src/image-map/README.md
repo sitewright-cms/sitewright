@@ -96,6 +96,20 @@ Bugs found while porting. Each is a real defect in upstream, not a platform adap
   (`escapeRegex`), and search results are HTML-escaped before the highlight span is inserted.
 - **Object titles reached the DOM as `innerHTML`** — in the object list, the artboard headings and
   text objects. All three are `textContent` now; a title is a string, not markup.
+- **An external trigger opened a sticky tooltip under the POINTER.** With `sticky_tooltips` the
+  tooltip's anchor is a zero-size rect at the pointer, which is right while the pointer is on the
+  hotspot and wrong for a trigger elsewhere on the page: the tooltip opened on top of the trigger,
+  the trigger lost the hover, its mouseout closed the tooltip, and it flickered. `trigger-object` and
+  `show-tooltip` now open the tooltip PINNED to its object (`TooltipController.pinnedTooltips`,
+  `pinTooltip` on the `highlightObject` / `showTooltip` actions). Upstream's `show-tooltip` suspended
+  stickiness around the show, which lasted only until the next mousemove re-anchored it. A pin ends
+  with its tooltip (hide, artboard switch) and when the map's own hover shows the same tooltip.
+- **`objectController.highlightObject` never settled for a group or an off-screen object.** It
+  returned from inside its Promise executor without resolving; the action queue awaits it, so one
+  trigger naming a (non-single) group left every later trigger on the page doing nothing.
+- **`getObjectByTitle` matched ARTBOARDS.** Its walk visits artboards too and keeps the last match,
+  so a hotspot named after a floor's artboard (the upstream demo's own "Ninth Floor") resolved to the
+  artboard: the trigger switched floors and showed nothing. Artboards are skipped now.
 
 ## CSS built from config
 

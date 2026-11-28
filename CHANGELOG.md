@@ -67,6 +67,18 @@ The running version of an instance is reported at `GET /version` (baked into the
   navy panel of the calendar library's. A site that sets its background in `oklch()` or another modern colour
   format no longer gets a dark calendar on a light page. The light calendar is unchanged.
 
+- **Image map triggers elsewhere on the page show the hotspot's tooltip where it belongs.** On a map whose
+  tooltips follow the cursor, an element with `data-sw-imap-trigger-object-…` or `data-sw-imap-show-tooltip-…`
+  opened the tooltip under the cursor, on top of the trigger itself, where it flickered or disappeared. It now
+  opens at its hotspot and stays there. Two more trigger fixes:
+  - A trigger names a HOTSPOT, never a floor. When a hotspot and a floor (artboard) share a name, the trigger
+    acts on the hotspot. A floor's name on its own no longer switches floors: it used to switch to that floor
+    and show nothing. To switch floors from the page, use `data-sw-imap-change-artboard`.
+  - A trigger naming a group opens the group's tooltip (when the group has one), and no longer stops every
+    other trigger on the page from working.
+
+  Hovering the map itself behaves as before.
+
 ## [0.86.0] — 2026-11-28
 
 ### Added

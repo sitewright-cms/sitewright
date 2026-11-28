@@ -25,7 +25,10 @@ export default {
   getObjectByTitle: function (state, { title }) {
     let result
     traverseObjects(state.artboards, (obj) => {
-      if (obj.title === title) {
+      // A HOTSPOT title: the walk visits the artboards too, and an artboard is not an object. A floor
+      // plan's overview hotspot is naturally named after its floor's artboard ("Ninth Floor"), and the
+      // match landed on the artboard — the trigger switched floors and showed nothing.
+      if (obj.type !== editorConsts.OBJECT_ARTBOARD && obj.title === title) {
         result = obj
         return true
       }

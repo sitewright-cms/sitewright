@@ -36,10 +36,12 @@ const BINDINGS = [
     run: (map, obj) => map.store.dispatch('unhighlightObject', { objectId: obj.id }),
   },
   {
-    // "Trigger" is highlight WITH the object's tooltip — the full hover effect.
+    // "Trigger" is highlight WITH the object's tooltip — the full hover effect. The tooltip is PINNED
+    // to the object: the trigger is outside the map, so a sticky (pointer-following) tooltip would
+    // open under the pointer — on the trigger itself — and the mouseout it causes would close it.
     attr: 'trigger-object',
     run: (map, obj) =>
-      map.store.dispatch('highlightObject', { objectId: obj.id, showTooltip: true, hideAllTooltips: false }),
+      map.store.dispatch('highlightObject', { objectId: obj.id, showTooltip: true, hideAllTooltips: false, pinTooltip: true }),
     out: 'unhighlightAllObjects',
   },
   {
@@ -47,12 +49,10 @@ const BINDINGS = [
     run: (map, obj) => map.store.dispatch('unhighlightObject', { objectId: obj.id }),
   },
   {
+    // Pinned to the object, like trigger-object. (Upstream suspended sticky tooltips around the
+    // show instead, which only held until the next mousemove re-anchored the tooltip to the pointer.)
     attr: 'show-tooltip',
-    run: async (map, obj) => {
-      map.store.getTooltipController().disableStickyTooltips()
-      await map.store.dispatch('showTooltip', { objectId: obj.id })
-      map.store.getTooltipController().resetStickyTooltips()
-    },
+    run: (map, obj) => map.store.dispatch('showTooltip', { objectId: obj.id, pinTooltip: true }),
     out: 'hideAllTooltips',
   },
   {

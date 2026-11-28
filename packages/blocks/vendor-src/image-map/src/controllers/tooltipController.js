@@ -28,6 +28,13 @@ export default class TooltipController {
   // Array containing indices of opened tooltips
   openedTooltips = new Set()
 
+  // Opened tooltips PINNED to their object: the ones a page element opened from outside the map
+  // (the data-sw-imap-* attribute API). A sticky tooltip follows the pointer, which only means
+  // something while the pointer is ON the hotspot — for a trigger elsewhere on the page it put the
+  // tooltip at a zero-size anchor under the pointer, i.e. on top of the trigger itself, which then
+  // lost the hover and closed it again. See getObjectVisibleRect.
+  pinnedTooltips = new Set()
+
   // Allows to temporarily disable sticky tooltips
   stickyTooltips = undefined
 
@@ -169,8 +176,9 @@ export default class TooltipController {
     return this.tooltipElements[id]
   }
 
-  // Show/hide tooltips
-  showTooltip(id) {
+  // Show/hide tooltips. `pinned` anchors the tooltip to its object even when tooltips are sticky —
+  // see pinnedTooltips.
+  showTooltip(id, pinned = false) {
     // if (window.startchanging) debugger
     id = this.store.getObject({ id }).parent || id
 
@@ -197,14 +205,19 @@ export default class TooltipController {
         return
       }
 
-      // If the tooltip is already visible, then return
+      // If the tooltip is already visible, then return — but an UNPINNED request (the pointer on the
+      // hotspot in the map) releases a pin, so the tooltip follows the pointer again rather than
+      // staying where a trigger opened it.
       if (this.openedTooltips.has(id)) {
+        if (!pinned) this.pinnedTooltips.delete(id)
         resolve()
         return
       }
 
       // Add tooltip to the list of opened tooltips
       this.openedTooltips.add(id)
+      if (pinned) this.pinnedTooltips.add(id)
+      else this.pinnedTooltips.delete(id)
 
       // Show fullscreen or normal tooltips
       if ((this.store.state.tooltips.fullscreen_tooltips === 'mobile-only' && isMobile()) || this.store.state.tooltips.fullscreen_tooltips === 'always') {
@@ -249,6 +262,7 @@ export default class TooltipController {
         return
       } else {
         this.openedTooltips.delete(id)
+        this.pinnedTooltips.delete(id)
       }
 
       // Hide mobile tooltip
@@ -598,7 +612,7 @@ export default class TooltipController {
     let windowWidth = window.innerWidth
     let windowHeight = window.innerHeight
 
-    if (this.stickyTooltips) {
+    if (this.stickyTooltips && !this.pinnedTooltips.has(id)) {
       // Sticky tooltips
       // Set width/height of the shape to 0
       // and X and Y to the mouse coordinates

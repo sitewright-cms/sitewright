@@ -268,11 +268,15 @@ export default class ObjectController {
         this.container.classList.remove('sw-imap-glowing-objects')
       }
 
+      // The two "nothing to highlight" exits SETTLE the promise. Upstream returned without resolving,
+      // leaving it pending for good — and the attribute API's action queue awaits it, so one page
+      // trigger naming a group (or an object not on screen) left every later trigger doing nothing.
+
       // If the object isn't in the currently active artboard, return
-      if (!this.objects[id]) return
+      if (!this.objects[id]) return resolve()
 
       // If the object is a group and NOT a single object, return
-      if (this.objects[id].options.type === editorConsts.OBJECT_GROUP && !this.objects[id].options.single_object) return
+      if (this.objects[id].options.type === editorConsts.OBJECT_GROUP && !this.objects[id].options.single_object) return resolve()
 
       // Apply mouseover styles
       // Get IDs of the objects to highlight

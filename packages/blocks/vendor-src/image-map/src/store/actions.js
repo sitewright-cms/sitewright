@@ -43,13 +43,15 @@ export default {
   startPinch: () => {}, // notification only
   pinch: () => {}, // notification only
   zoomAtRect: () => {}, // notification only
-  highlightObject: async ({ store }, { objectId, showTooltip = true, hideAllTooltips = true }) => {
+  // `pinTooltip`: the tooltip is anchored to the object even on a sticky-tooltip map — set by the
+  // attribute API, whose trigger is outside the map (see TooltipController.pinnedTooltips).
+  highlightObject: async ({ store }, { objectId, showTooltip = true, hideAllTooltips = true, pinTooltip = false }) => {
     // An object on another artboard isn't rendered — nothing to highlight. (Upstream returned here
     // from inside a Promise executor, leaving the promise pending forever.)
     if (store.getArtboardIdForObject({ id: objectId }) !== store.getArtboard().id) return
     await store.getObjectController().highlightObject(objectId)
     if (hideAllTooltips) await store.getTooltipController().hideAllTooltips()
-    if (showTooltip) await store.getTooltipController().showTooltip(objectId)
+    if (showTooltip) await store.getTooltipController().showTooltip(objectId, pinTooltip)
   },
   unhighlightObject: async ({ store }, { objectId }) => {
     await store.getObjectController().unhighlightObject(objectId)
@@ -126,8 +128,8 @@ export default {
   toggleArtboard: async ({ store }, { artboardId }) => {
     await store.getMenuController().menu.list.toggleArtboard(artboardId)
   },
-  showTooltip: async ({ store }, { objectId }) => {
-    await store.getTooltipController().showTooltip(objectId)
+  showTooltip: async ({ store }, { objectId, pinTooltip = false }) => {
+    await store.getTooltipController().showTooltip(objectId, pinTooltip)
   },
   hideTooltip: async ({ store }, { objectId }) => {
     await store.getTooltipController().hideTooltip(objectId)

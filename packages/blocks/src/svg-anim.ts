@@ -34,7 +34,8 @@
 //   it animates), and the runtime reveals it (`.sw-svg-shown`) when the page is ready. Content is never
 //   STRANDED hidden: a no-JS visitor is un-hidden by a `<noscript>` override (build-emitted), a visitor
 //   whose runtime failed to load is un-hidden by a CSS failsafe (~9s), and a reduced-motion visitor is
-//   never hidden at all (every rule sits inside `prefers-reduced-motion: no-preference`).
+//   never hidden at all (every rule sits inside `prefers-reduced-motion: no-preference`). A MORPH
+//   element is never hidden: it shows its start shape and changes it (see SVG_ANIM_CSS).
 // - Coordinated start: the reveal waits for the page-ready signal (`sw:ready`, dispatched by the preloader
 //   when it clears, or fired immediately when there is no preloader) — never behind a still-up overlay.
 // - Accessibility: ALL motion is JS-applied and the runtime BAILS entirely under
@@ -100,11 +101,17 @@ export const SVG_PATH_DATA = /^[MmLlHhVvCcSsQqTtAaZz0-9eE,.\s+-]{1,4000}$/;
 // or the runtime failed to load) reveals itself after a grace period, so content is never stranded
 // hidden. Everything is inside `prefers-reduced-motion: no-preference` → reduced-motion visitors see the
 // natural, fully-visible artwork with no hide and no failsafe. OUT (exit) elements start visible.
+//
+// MORPH is never hidden either: its authored `d` IS the start shape, which it shows and then changes —
+// and nothing would ever reveal it. This runtime skips morph elements (the separate svg-anim-morph chunk
+// owns them, and adds no .sw-svg-shown), so under the hide a morph tweened INVISIBLY and only appeared
+// when the ~9s failsafe fired. Both exclusions share one `:not(…, …)` so the rule keeps its (0,3,0)
+// specificity — the cascade against author CSS is unchanged for every other effect.
 export const SVG_ANIM_CSS = [
   '[data-sw-svg]{transform-box:fill-box;transform-origin:center}',
   '@media (prefers-reduced-motion: no-preference){' +
-    '[data-sw-svg]:not([data-sw-svg-dir="out"]):not(.sw-svg-shown){opacity:0}' +
-    '[data-sw-svg]:not(.sw-svg-armed):not(.sw-svg-shown):not([data-sw-svg-dir="out"]){animation:sw-svg-failsafe .01s linear 9s forwards}' +
+    '[data-sw-svg]:not([data-sw-svg="morph"],[data-sw-svg-dir="out"]):not(.sw-svg-shown){opacity:0}' +
+    '[data-sw-svg]:not(.sw-svg-armed):not(.sw-svg-shown):not([data-sw-svg="morph"],[data-sw-svg-dir="out"]){animation:sw-svg-failsafe .01s linear 9s forwards}' +
     '@keyframes sw-svg-failsafe{to{opacity:1}}' +
     '}',
   // --- Global (whole-SVG) settings, authored on the root <svg> ---

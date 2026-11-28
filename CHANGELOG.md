@@ -54,6 +54,12 @@ The running version of an instance is reported at `GET /version` (baked into the
   - The nginx example capped every request at 210 MB "for project imports". A project import can be up to 32
     GiB, so the example now raises the cap for `/projects/import/zip` only.
 
+- **SVG shapes with the morph animation (`data-sw-svg="morph"`) show up straight away.** Animated SVG parts are
+  hidden until their animation starts, but nothing ever un-hid a morph shape, so it changed shape out of sight and
+  only appeared after about nine seconds. A morph shape now shows its starting shape from the first moment and
+  changes into its target in view. Adding `class="sw-svg-shown"` to work around this is no longer needed (it does
+  no harm). Every other SVG animation is unchanged.
+
 ## [0.86.0] — 2026-11-28
 
 ### Added

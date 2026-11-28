@@ -14,13 +14,23 @@ describe('SVG animation stylesheet', () => {
     // Hidden until the runtime adds .sw-svg-shown; OUT (exit) elements start visible; reduced-motion never
     // hides (rule sits inside the no-preference media query).
     expect(SVG_ANIM_CSS).toContain('@media (prefers-reduced-motion: no-preference){');
-    expect(SVG_ANIM_CSS).toContain('[data-sw-svg]:not([data-sw-svg-dir="out"]):not(.sw-svg-shown){opacity:0}');
+    expect(SVG_ANIM_CSS).toContain('[data-sw-svg]:not([data-sw-svg="morph"],[data-sw-svg-dir="out"]):not(.sw-svg-shown){opacity:0}');
     // No UNGATED hide of the base selector (must live inside the no-preference media query).
     expect(SVG_ANIM_CSS).not.toMatch(/\[data-sw-svg\]\s*\{[^}]*opacity:0/);
   });
 
+  it('never hides a MORPH: nothing reveals it (the core runtime skips it), and its d is the start shape', () => {
+    // Both the hide and the failsafe exclude it. Every hide/failsafe rule must carry the exclusion, so a
+    // future rule cannot hide morph again by leaving it out.
+    const rules = SVG_ANIM_CSS.split('}').filter((r) => r.includes('[data-sw-svg]') && /\{opacity:0$|sw-svg-failsafe \.01s/.test(r));
+    expect(rules).toHaveLength(2);
+    for (const r of rules) expect(r).toContain(':not([data-sw-svg="morph"],[data-sw-svg-dir="out"])');
+    // …and the core runtime still leaves morph to the morph runtime (which never adds .sw-svg-shown).
+    expect(SVG_ANIM_JS).toContain("function isMorph(el){return el.getAttribute('data-sw-svg')==='morph';}");
+  });
+
   it('is PE-first: an un-armed element (JS off / runtime failed) self-reveals via a failsafe', () => {
-    expect(SVG_ANIM_CSS).toContain('[data-sw-svg]:not(.sw-svg-armed):not(.sw-svg-shown):not([data-sw-svg-dir="out"]){animation:sw-svg-failsafe');
+    expect(SVG_ANIM_CSS).toContain('[data-sw-svg]:not(.sw-svg-armed):not(.sw-svg-shown):not([data-sw-svg="morph"],[data-sw-svg-dir="out"]){animation:sw-svg-failsafe');
     expect(SVG_ANIM_CSS).toContain('@keyframes sw-svg-failsafe{to{opacity:1}}');
   });
 
@@ -233,7 +243,7 @@ describe('SVG animation detection + surface', () => {
     expect(SVG_ANIM_JS).toContain("data-sw-svg-dir')==='out'");
     expect(SVG_ANIM_JS).toContain('if(m.io===');
     // OUT elements are excluded from the first-paint hide in CSS (they start visible).
-    expect(SVG_ANIM_CSS).toContain(':not([data-sw-svg-dir="out"]):not(.sw-svg-shown){opacity:0}');
+    expect(SVG_ANIM_CSS).toContain(',[data-sw-svg-dir="out"]):not(.sw-svg-shown){opacity:0}');
   });
 
   it('drives reveals via clip-path and along-path via CSS offset-path, with validated path data', () => {

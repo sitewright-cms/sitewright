@@ -5,7 +5,7 @@
 // Chrome draws no pointer, so a cursor is painted into the page and moved by `glide()`, together with the real mouse.
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -162,8 +162,50 @@ export async function typeSlowly(page, text, delay = 55) {
 }
 
 // ── screenshots ──────────────────────────────────────────────────────────────────────────────────
+// The slots' aspect ratios, from the media_slots dataset files: a shot is framed at its slot's ratio, because the site
+// shows each one `object-cover` in a box of that ratio and would crop anything else.
+const RATIOS = {};
+for (const f of ['media_slots.json', 'media_slots-features.json', 'media_slots-docs-a.json', 'media_slots-docs-b.json']) {
+  const file = join(here, '..', 'datasets', f);
+  if (!existsSync(file)) continue;
+  for (const e of JSON.parse(readFileSync(file, 'utf8')).entries) {
+    const [w, h] = String(e.values.ratio ?? '16x10').split('x').map(Number);
+    RATIOS[e.id] = w / h;
+  }
+}
+export const ratioOf = (slot) => RATIOS[slot] ?? 16 / 10;
+
+/**
+ * A clip (CSS px) around the union of `boxes`, padded, then widened or heightened about its centre to `ratio`, and kept
+ * inside the viewport.
+ */
+export function frameAround(boxes, ratio, pad = 24, viewport = { width: 1600, height: 1000 }) {
+  const x0 = Math.min(...boxes.map((b) => b.x)) - pad;
+  const y0 = Math.min(...boxes.map((b) => b.y)) - pad;
+  const x1 = Math.max(...boxes.map((b) => b.x + b.width)) + pad;
+  const y1 = Math.max(...boxes.map((b) => b.y + b.height)) + pad;
+  let w = x1 - x0;
+  let h = y1 - y0;
+  if (w / h < ratio) w = h * ratio;
+  else h = w / ratio;
+  if (w > viewport.width) { w = viewport.width; h = w / ratio; }
+  if (h > viewport.height) { h = viewport.height; w = h * ratio; }
+  const cx = (x0 + x1) / 2;
+  const cy = (y0 + y1) / 2;
+  const x = Math.max(0, Math.min(viewport.width - w, cx - w / 2));
+  const y = Math.max(0, Math.min(viewport.height - h, cy - h / 2));
+  return { x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) };
+}
+
 /** A PNG of the viewport (or of `clip`, in CSS px) into OUT/<slot>.png. */
 export async function shot(page, slot, opts = {}) {
+  // `around`: locators to frame, at the slot's ratio (`pad` px of margin).
+  if (opts.around) {
+    const boxes = [];
+    for (const l of opts.around) { const b = await l.boundingBox(); if (b) boxes.push(b); }
+    if (!boxes.length) throw new Error(`${slot}: nothing to frame`);
+    opts = { ...opts, clip: frameAround(boxes, ratioOf(slot), opts.pad ?? 24, page.viewportSize()) };
+  }
   await page.evaluate(() => { const c = document.getElementById('__cap_cursor'); if (c) c.style.display = 'none'; }).catch(() => {});
   const path = join(OUT, `${slot}.png`);
   await page.screenshot({ path, type: 'png', ...(opts.clip ? { clip: opts.clip } : {}), ...(opts.fullPage ? { fullPage: true } : {}) });

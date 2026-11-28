@@ -32,7 +32,12 @@ function listOf<T>(value: unknown): T[] {
  * not cover everything a checkout needs (a published price list, the buyer's fields) — an empty list
  * means none of THESE, not a guarantee.
  */
-export function checkoutReadiness(shop: Shop | null, gateways: readonly GatewayReadiness[]): CheckoutReadiness {
+export function checkoutReadiness(
+  shop: Shop | null,
+  gateways: readonly GatewayReadiness[],
+  /** `siteAddress: false` — the site has no address a buyer can be sent back to after paying. */
+  site: { siteAddress?: boolean } = {},
+): CheckoutReadiness {
   const problems: string[] = [];
   const notes: string[] = [];
   if (!shop) return { problems, notes };
@@ -40,6 +45,11 @@ export function checkoutReadiness(shop: Shop | null, gateways: readonly GatewayR
   const checkout = listOf<ShopChannel | null>(shop.channels).filter(
     (c): c is CheckoutChannel => c?.kind === 'checkout' && typeof c.gatewayId === 'string',
   );
+  if (checkout.length > 0 && site.siteAddress === false) {
+    problems.push(
+      'the site has no address to send a buyer back to after paying — set its Production URL (Settings → Website), or give the instance its public URL (SW_PUBLIC_URL) so the site it hosts has one',
+    );
+  }
   /** Channels whose gateway can be asked for a payment at all, in the mode the project is in. */
   const usable = new Set<string>();
   for (const channel of checkout) {

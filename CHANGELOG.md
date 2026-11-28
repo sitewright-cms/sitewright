@@ -106,6 +106,22 @@ The running version of an instance is reported at `GET /version` (baked into the
   dataset before its language copy, so the pair stays together. A dataset it may not rename for one of the
   reasons above is left as it is, and the server log says which one and why.
 
+- **A shop or a paid booking works on the site's own domain.**
+  - **Calls are passed through to the platform now.** On a custom domain or `<slug>.<SW_SITES_DOMAIN>`, the cart's
+    checkout, its anti-bot challenge, the thank-you page's order status and a booking page's **Pay** button weren't
+    passed through. A site built without the platform's public URL calls them on its own address, so they reached
+    the site's pages and failed with "not found". They now reach the platform; the site's own pages under `/pay/`
+    stay the site's.
+  - **The buyer comes back to the site's own address.** After paying, the provider returns the buyer to the
+    site's Production URL (Settings → Website), as bookings already did, so set it only once the site is live
+    there. If there's no Production URL, the buyer returns to where the platform hosts the site.
+    - Before, a shop never used the Production URL. A site on the business's own server sent the buyer back to the
+      platform's copy of the shop.
+    - A site hosted at `/sites/<slug>/` lost that prefix, which sent the buyer to the platform's front page.
+  - **No address means a clear refusal.** With no Production URL and no `SW_PUBLIC_URL`, a checkout used to fail
+    with "internal error" after the stock was already held. It's now refused before anything is held, and an
+    agent's `list_payment_providers` names the problem in advance.
+
 ## [0.86.0] — 2026-11-28
 
 ### Added

@@ -24,6 +24,15 @@ describe('checkoutReadiness — why a checkout would fail, said before a buyer f
     expect(checkoutReadiness(null, [ready('acme')])).toEqual({ problems: [], notes: [] });
   });
 
+  it('★ names a shop with nowhere to send a buyer back to after paying, once, and only one that takes payments', () => {
+    const [p, ...rest] = checkoutReadiness(shop(), [ready('acme')], { siteAddress: false }).problems;
+    expect(rest).toEqual([]);
+    expect(p).toContain('Production URL');
+    expect(p).toContain('SW_PUBLIC_URL');
+    expect(checkoutReadiness(shop(), [ready('acme')], { siteAddress: true }).problems).toEqual([]);
+    expect(checkoutReadiness(shop({ channels: [{ kind: 'mailto', key: 'mail', email: 'o@shop.test' }] } as Partial<Shop>), [], { siteAddress: false }).problems).toEqual([]);
+  });
+
   it('names a channel whose gateway is unknown or disabled', () => {
     for (const gateways of [[], [ready('acme', { enabled: false })]]) {
       const [p, ...rest] = problems(shop(), gateways);

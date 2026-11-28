@@ -13,7 +13,7 @@ put these together, and `apps/api/.env.example` for a copy-paste starting point.
 | Variable | Default | Purpose |
 |---|---|---|
 | `SW_DATA_DIR` | `./data` (Docker: `/app/data`) | The **one** persistent directory — SQLite DB, media, published sites, preview builds, and pre-migration backups all live under it. Mount a single volume here. |
-| `SW_PUBLIC_URL` | — | The **canonical** public URL the instance is served at (e.g. `https://sites.example.com`). Setting this to an **https** URL turns on Secure cookies + the `__Host-` cookie prefix, and it is baked into exported forms as the absolute submission endpoint. Leave unset for a local/plain-HTTP instance. To answer on *more* hostnames than this one, see [Additional hostnames](#additional-hostnames) — they are an admin setting, not an env var. |
+| `SW_PUBLIC_URL` | — | The **canonical** public URL the instance is served at (e.g. `https://sites.example.com`). Setting this to an **https** URL turns on Secure cookies + the `__Host-` cookie prefix, and it is baked into exported forms as the absolute submission endpoint. It also gives the sites the instance hosts their address, which is where a buyer comes back to after paying when a project has no Production URL. Leave unset for a local/plain-HTTP instance. To answer on *more* hostnames than this one, see [Additional hostnames](#additional-hostnames) — they are an admin setting, not an env var. |
 
 ## Core
 

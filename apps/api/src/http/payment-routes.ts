@@ -98,7 +98,8 @@ export interface PaymentRoutesDeps {
   systemContext: (projectId: string) => ProjectContext;
   /** Absolute base for URLs handed to a provider (return/cancel/webhook). */
   publicBaseUrl: () => string;
-  /** The published site's own base, for the buyer's return destination. */
+  /** The site's own address, where the buyer comes back to: its Production URL, else where the platform hosts it.
+   *  Null with neither. */
   siteBaseUrl: (projectId: string) => Promise<string | null>;
   /** Whether the instance permits payments at all. */
   paymentsEnabled: () => Promise<boolean>;
@@ -215,20 +216,24 @@ function toFormFields(channel: Extract<ShopChannel, { kind: 'checkout' }>): Form
 /**
  * Joins a site base and a same-site path into an absolute URL, and REFUSES to leave the site.
  *
+ * ★ The path is the SITE's, so it is joined under the site's root, which is not always its origin's: a site the
+ * platform hosts at `/sites/<slug>/` keeps that prefix (joined to the origin, `/thank-you/` sent a buyer who had
+ * just paid to the platform's own front page).
+ *
  * ★★ The schema already rejects everything that could change the authority (`//`, a scheme, a
  * backslash, control characters), so this is defence in depth — and it is the layer that does not
  * depend on having enumerated every such trick correctly. The resolved URL is compared against the
- * site's OWN origin, so any value that escapes falls back to the site root rather than sending a
+ * site's OWN origin and root, so any value that escapes falls back to the site root rather than sending a
  * paying customer to someone else's page with their transaction token attached.
  *
  * Same posture as `originAllowed` in the executor: a URL is checked by PARSING it, never by
  * inspecting the string it came from.
  */
-function absolute(base: string, path: string | undefined, fallback: string): string {
-  const root = base.endsWith('/') ? base : `${base}/`;
-  const resolved = new URL(path ?? fallback, root);
-  const expected = new URL(root);
-  if (resolved.origin !== expected.origin) return expected.toString();
+export function absolute(base: string, path: string | undefined, fallback: string): string {
+  const root = new URL(base.endsWith('/') ? base : `${base}/`);
+  // `./` keeps it relative: a bare `a-b:c/` would parse as a URL with a scheme of its own.
+  const resolved = new URL(`.${path ?? fallback}`, root);
+  if (resolved.origin !== root.origin || !resolved.pathname.startsWith(root.pathname)) return root.toString();
   return resolved.toString();
 }
 
@@ -311,6 +316,15 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
       const placed = resolveMarket(shop, channelKey, parsed.data.market, parsed.data.shipTo);
       if (!placed.ok) return reply.code(400).send({ error: placed.reason });
       const market = placed.market;
+
+      // Where the buyer comes back to after paying. Without an address there is nowhere to send them, so this is
+      // refused BEFORE anything is spent or held: ahead of the proof-of-work and the captcha, which a check consumes,
+      // and of the stock (it used to fail after the stock was held and the order opened).
+      const siteBase = await deps.siteBaseUrl(projectId);
+      if (!siteBase) {
+        app.log.warn({ projectId, channelKey }, 'checkout refused: the site has no address to come back to after paying');
+        return reply.code(503).send({ error: 'checkout is temporarily unavailable' });
+      }
 
       if (channel.pow) {
         // Verifying CONSUMES the solution, and the scope ties it to THIS channel — so the work a
@@ -460,7 +474,6 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
         throw err;
       }
 
-      const siteBase = (await deps.siteBaseUrl(projectId)) ?? deps.publicBaseUrl();
       const apiBase = deps.publicBaseUrl().replace(/\/+$/, '');
       const scope: InterpolationScope = {
         cred: resolved.cred,

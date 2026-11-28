@@ -57,6 +57,8 @@ export interface PaymentAdminDeps {
   isWriter: (ctx: ProjectContext) => boolean;
   /** Absolute base for the webhook URL an operator pastes into the provider's dashboard. */
   publicBaseUrl: () => string;
+  /** The site's own address, where a buyer comes back to after paying; null when it has none. */
+  siteBaseUrl: (projectId: string) => Promise<string | null>;
   /** The project's shop settings — which checkout channels charge through which gateway. */
   getShop: (projectId: string) => Promise<Shop | null>;
   /** How many projects, instance-wide, hold keys for a gateway id ({@link projectsHoldingKeys}). */
@@ -312,7 +314,12 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
   app.get<{ Params: { projectId: string } }>('/projects/:projectId/payment-gateways', { config: rl(60) }, async (req, reply) => {
     const { ctx } = await resolveProject(req, 'content:read');
     if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
-    const [all, bindings, shop] = await Promise.all([gateways.list(), gateways.bindingsPublic(ctx), deps.getShop(ctx.projectId)]);
+    const [all, bindings, shop, siteBase] = await Promise.all([
+      gateways.list(),
+      gateways.bindingsPublic(ctx),
+      deps.getShop(ctx.projectId),
+      deps.siteBaseUrl(ctx.projectId),
+    ]);
     const base = deps.publicBaseUrl().replace(/\/+$/, '');
     const bindingOf = new Map(bindings.map((b) => [b.gatewayId, b]));
     const readiness = all.map(({ gateway }) => {
@@ -320,7 +327,7 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
       return { gateway, keys: binding ? bindingKeysStatus(binding, gateway.credentialFields) : null };
     });
     const checkout = (Array.isArray(shop?.channels) ? shop.channels : []).filter((c) => c?.kind === 'checkout');
-    const { problems, notes } = checkoutReadiness(shop, readiness);
+    const { problems, notes } = checkoutReadiness(shop, readiness, { siteAddress: siteBase !== null });
     return reply.send({
       // ★ Only ENABLED and VERIFIED gateways are offered. Letting a project bind an unproven one
       // would mean the first sign of an unfinished gateway is a buyer unable to pay.

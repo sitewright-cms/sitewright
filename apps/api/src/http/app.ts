@@ -2570,9 +2570,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         req.method === 'GET'
           ? /^\/b\/[^/]+\/(?:_booking\/[^/]+|[^/]+\/(?:availability|challenge))$/
           : req.method === 'POST' || req.method === 'OPTIONS'
-            ? /^\/b\/[^/]+\/(?:_booking\/[^/]+\/cancel|[^/_][^/]*)$/
+            ? /^\/b\/[^/]+\/(?:_booking\/[^/]+\/(?:cancel|pay)|[^/_][^/]*)$/
             : null;
       if (bookingPath?.test(path)) return url;
+      // CHECKOUT, for the same reason: the cart starts a checkout and solves its challenge, and the order-status
+      // page reads its order, against the page's own origin. The shapes those runtimes call, per verb; a GET of any
+      // other shape (the channel address itself, a trailing slash) is still the site's page.
+      const payPath =
+        req.method === 'GET'
+          ? /^\/pay\/[^/]+\/(?:txn\/[^/]+|[^/]+\/challenge)$/
+          : req.method === 'POST'
+            ? /^\/pay\/[^/]+\/[^/]+$/
+            : req.method === 'OPTIONS'
+              ? /^\/pay\/[^/]+\/(?:txn\/[^/]+|[^/]+(?:\/challenge)?)$/
+              : null;
+      if (payPath?.test(path)) return url;
       // The statistics collector, for the same reason: a locally hosted page built without a public URL
       // beacons to the root-relative `/a/<projectId>`, which on a site host is this origin.
       if ((req.method === 'POST' || req.method === 'OPTIONS') && /^\/a\/[^/]+$/.test(url.split('?')[0] ?? url)) {
@@ -11699,6 +11711,24 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return sitesDomain ? `${new URL(base).protocol}//${project.slug}.${sitesDomain}/` : `${base}/sites/${project.slug}/`;
   }
 
+  /**
+   * The site's OWN address, where a customer comes back to after paying (a booking, an order): its Production URL
+   * when set, else where the platform hosts it, with no trailing slash. ★ White-label: a provider never sends a
+   * customer to the platform. Null with neither, or when what is set is not an http(s) address.
+   */
+  async function siteAddress(projectId: string): Promise<string | null> {
+    const ctx: ProjectContext = { userId: 'system', projectId, role: 'owner' };
+    const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => null)) as { website?: { siteUrl?: string } } | null;
+    const raw = settings?.website?.siteUrl?.trim() || (await hostedSiteUrl(projectId)) || '';
+    try {
+      const u = new URL(raw);
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+      return `${u.origin}${u.pathname}`.replace(/\/+$/, '');
+    } catch {
+      return null;
+    }
+  }
+
   // BOOKING MAILS: queued when a booking happens, sent at once by a single-flight pass, and retried by the
   // maintenance pass (see booking/outbox.ts).
   const bookingMailRepo = new BookingMailRepository(db);
@@ -11812,17 +11842,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // The business's own booking page, as the booking mails link it: its site's production URL, else where the platform
     // hosts it. ★ White-label: the provider never sends a customer to the platform.
     returnUrls: async (projectId, reference, statusPath) => {
-      const ctx: ProjectContext = { userId: 'system', projectId, role: 'owner' };
-      const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => null)) as { website?: { siteUrl?: string } } | null;
-      const raw = settings?.website?.siteUrl?.trim() || (await hostedSiteUrl(projectId)) || '';
-      let base: string;
-      try {
-        const u = new URL(raw);
-        if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
-        base = `${u.origin}${u.pathname}`.replace(/\/+$/, '');
-      } catch {
-        return null;
-      }
+      const base = await siteAddress(projectId);
+      if (!base) return null;
       const page = `${base}${statusPath ?? '/'}#t=${encodeURIComponent(reference)}`;
       return { return: page, cancel: page };
     },
@@ -12002,7 +12023,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         return { userId: 'system', projectId, role: 'owner' };
       },
       publicBaseUrl: () => (opts.publicUrl ?? '').replace(/\/+$/, ''),
-      siteBaseUrl: hostedSiteUrl,
+      siteBaseUrl: siteAddress,
       paymentsEnabled: () => instanceSettingsRepo.getPaymentsEnabled(),
       io: { fetch: paymentFetch, now: () => Date.now(), log: { warn: (o, m) => app.log.warn(o, m), error: (o, m) => app.log.error(o, m) } },
       rl,
@@ -12097,6 +12118,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       resolveProject,
       isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
       publicBaseUrl: () => (opts.publicUrl ?? '').replace(/\/+$/, ''),
+      siteBaseUrl: siteAddress,
       io: { fetch: paymentFetch, now: () => Date.now(), log: { warn: (o, m) => app.log.warn(o, m), error: (o, m) => app.log.error(o, m) } },
       rl,
     });

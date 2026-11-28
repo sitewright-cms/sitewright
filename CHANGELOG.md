@@ -79,6 +79,33 @@ The running version of an instance is reported at `GET /version` (baked into the
 
   Hovering the map itself behaves as before.
 
+- **Renaming a dataset now updates everything that uses it.** Renaming a dataset with "update all references"
+  (or the `rename_dataset` tool) rewrote its entries and the loops in pages and templates, but other places kept
+  the old name, with no error:
+  - **Reference fields** still pointed at the old name, in other datasets and in the dataset itself, so the
+    entry editor showed "No target dataset set" instead of the entries to pick from.
+  - **Snippets and the site's header, footer and sidebars** kept `dataset.<old>` loops, and pages kept
+    `{{item.<old>.<key>}}` lookups, so they rendered nothing.
+  - **Data files** (`website.dataFiles`) were published as an empty list.
+  - **A dataset a client picked with a dataset dropdown** (`{{sw-control as="dataset"}}`) stayed on the old name.
+  - **The dataset's copy for another language** (`team_de` for `team`) kept its name, so pages in that language
+    showed the main language instead.
+
+  All of these are now updated in the same step, and the language copy is renamed with the dataset
+  (`team_de` → `staff_de`). A save made in another tab while the rename runs is kept, not overwritten. The rename
+  is refused, and nothing changes, when:
+  - one of the new names is already taken, or a dataset under the new name already exists for one of the site's
+    languages (pages in that language would switch to it);
+  - the dataset (or its copy for a language) belongs to a widget used on the site, such as the hero slider's
+    `hero`, because the widget only finds its settings under that name. The message says where the widget is
+    used, and the dataset's display name can still be changed;
+  - a template or snippet from the shared library that the site uses reads the dataset by name, because the
+    library is shared with other sites and is not rewritten. "Rename slug only" still works.
+
+  The start-up step that renames old dataset names written with hyphens (`faq-list` → `faq_list`) now renames a
+  dataset before its language copy, so the pair stays together. A dataset it may not rename for one of the
+  reasons above is left as it is, and the server log says which one and why.
+
 ## [0.86.0] — 2026-11-28
 
 ### Added

@@ -103,7 +103,44 @@ export class VersionConflictError extends ConflictError {
     );
   }
 }
-import { rewriteDatasetRefsInSource, sourceReferencesDataset, rewriteReferenceTargets } from './dataset-rename.js';
+import { planDatasetRename, plannedSlugChanges, type SettingsRow } from './dataset-rename-plan.js';
+
+/** What {@link ContentRepository.renameDataset} did, per kind. */
+export interface DatasetRenameResult {
+  oldSlug: string;
+  newSlug: string;
+  cascaded: boolean;
+  entriesUpdated: number;
+  pagesUpdated: number;
+  templatesUpdated: number;
+  snippetsUpdated: number;
+  /** True when the website settings (a chrome slot, a data file, a picked value) named the dataset. */
+  settingsUpdated: boolean;
+  /** Datasets OTHER than the renamed ones whose `reference` fields were repointed. */
+  referencesUpdated: number;
+  /** The dataset's per-language copies (`<slug>_<locale>`) renamed along with it. */
+  localeCopiesRenamed: Array<{ oldSlug: string; newSlug: string }>;
+  /** Datasets named like a language copy of the OLD slug that kept their name — a language the site does not
+   *  have, or every copy when cascade is off. Pages no longer pair them with the renamed dataset. */
+  localeCopiesNotRenamed: string[];
+}
+
+/** A rename result with nothing touched — the shape every count starts from. */
+function renameResult(oldSlug: string, newSlug: string, cascaded: boolean): DatasetRenameResult {
+  return {
+    oldSlug,
+    newSlug,
+    cascaded,
+    entriesUpdated: 0,
+    pagesUpdated: 0,
+    templatesUpdated: 0,
+    snippetsUpdated: 0,
+    settingsUpdated: false,
+    referencesUpdated: 0,
+    localeCopiesRenamed: [],
+    localeCopiesNotRenamed: [],
+  };
+}
 
 /**
  * The project's settings singleton (Corporate Identity + website settings + locale).
@@ -384,6 +421,12 @@ export class ContentRepository {
 
   async list(ctx: ProjectContext, kind: ContentKind, filter: ListFilter = {}): Promise<unknown[]> {
     const rows = await this.db.select().from(content).where(this.listWhere(ctx, kind, filter));
+    return rows.map((row) => this.normalizeOnRead(kind, row.data));
+  }
+
+  /** {@link list} through `exec` — a transaction reads with it, never the outer client (see db/sqlite.ts). */
+  private async listIn(exec: Executor, ctx: ProjectContext, kind: ContentKind, filter: ListFilter = {}): Promise<unknown[]> {
+    const rows = await exec.select().from(content).where(this.listWhere(ctx, kind, filter));
     return rows.map((row) => this.normalizeOnRead(kind, row.data));
   }
 
@@ -1539,95 +1582,131 @@ export class ContentRepository {
    * 336 unreachable entry rows. There is deliberately no flag that can produce that state.
    *
    * `cascade` governs only EXTERNAL references — things whose owner is somebody else and which an author
-   * may legitimately want to fix by hand: page/template `source` (`dataset.<slug>` paths and
-   * `dataset="<slug>"` picker args) and other datasets' `reference` fields whose `config.target` pointed
-   * here. Those break loudly (a loop renders nothing) rather than silently.
+   * may legitimately want to fix by hand: every Handlebars source (page, template, snippet, website chrome
+   * slot — `dataset.<slug>` / `item.<slug>` paths and `dataset="<slug>"` picker args), the values a
+   * `{{sw-control as="dataset"}}` stored, `website.dataFiles`, other datasets' `reference` fields (target
+   * `config.dataset`), and the dataset's per-language copies (`<slug>_<locale>`, renamed with it — a page in
+   * that language finds its copy only by that name). See `planDatasetRename` for the whole list.
    *
-   * All of it commits in ONE transaction. Events fire AFTER commit so live-preview reloads against
+   * REFUSED (409, nothing written) when a slug — the new one or a language copy's — is invalid or taken, when
+   * `<new>_<locale>` already exists (that language would silently switch to it), when a platform widget on the
+   * site reads the dataset by its fixed name, or (with cascade) when a shared library template/snippet the site
+   * renders reads it — neither of those can be rewritten from here.
+   *
+   * READ, PLANNED AND WRITTEN IN ONE WRITE TRANSACTION. Writes queue one behind the other (db/sqlite.ts
+   * `WriteGate`), so nothing commits between these reads and the rename's writes: a save that lands first is
+   * read and kept, one that lands after is written on top of the rename. Planning from rows read BEFORE the
+   * transaction wrote them back stale over a save made in between — a page title, the footer, a field added
+   * in another tab, an entry created under the old slug. (Per-entity write locks are NOT taken: `put` holds
+   * its entity lock while it waits for the gate, so a rename holding the gate and then waiting for entity
+   * locks would deadlock with it. A guarded `put` that checked its version before the rename committed and
+   * writes after it lands as a full replace — the same as against an import or a locale change.)
+   *
+   * Events fire AFTER commit, shaped like a save's (scope + version), so live-preview reloads against
    * committed state. Returns per-kind counts.
    */
-  async renameDataset(
+  async renameDataset(ctx: ProjectContext, datasetId: string, newSlug: string, opts: { cascade: boolean; name?: string }): Promise<DatasetRenameResult> {
+    const { result, written } = await this.db.transaction(async (tx) => this.renameDatasetIn(tx as unknown as Executor, ctx, datasetId, newSlug, opts));
+    for (const w of written) {
+      this.events?.emit(ctx.projectId, { kind: w.kind, entityId: w.entityId, op: 'put', actor: ctx.actor, scope: w.scope, version: contentVersion(w.data) });
+    }
+    return result;
+  }
+
+  /** {@link renameDataset}'s body, inside its transaction. Returns what it wrote, for the events. */
+  private async renameDatasetIn(
+    exec: Executor,
     ctx: ProjectContext,
     datasetId: string,
     newSlug: string,
     opts: { cascade: boolean; name?: string },
-  ): Promise<{ oldSlug: string; newSlug: string; cascaded: boolean; entriesUpdated: number; pagesUpdated: number; templatesUpdated: number; referencesUpdated: number }> {
-    const ds = (await this.get(ctx, 'dataset', datasetId)) as Dataset; // throws NotFoundError if absent
+  ): Promise<{ result: DatasetRenameResult; written: Array<{ kind: ContentKind; entityId: string; scope: string; data: unknown }> }> {
+    const dsRow = await this.row(exec, ctx, 'dataset', datasetId);
+    if (!dsRow) throw new NotFoundError('dataset not found');
+    const ds = dsRow.data as Dataset;
     const oldSlug = ds.slug;
     // Validate the new slug (+ optional display name) by re-parsing the dataset through its schema.
     const newName = opts.name?.trim() || ds.name;
     const renamed = DatasetSchema.parse({ ...ds, slug: newSlug, name: newName }) as Dataset;
     if (renamed.slug === oldSlug) {
       // Slug unchanged — but a display-name change still needs persisting (a name-only rename).
-      if (renamed.name !== ds.name) {
-        await this.writeRow(this.db, ctx, 'dataset', datasetId, renamed);
-        this.events?.emit(ctx.projectId, { kind: 'dataset', entityId: datasetId, op: 'put', actor: ctx.actor });
-      }
-      return { oldSlug, newSlug: oldSlug, cascaded: opts.cascade, entriesUpdated: 0, pagesUpdated: 0, templatesUpdated: 0, referencesUpdated: 0 };
+      if (renamed.name === ds.name) return { result: renameResult(oldSlug, oldSlug, opts.cascade), written: [] };
+      const data = await this.writeRow(exec, ctx, 'dataset', datasetId, renamed, dsRow);
+      return { result: renameResult(oldSlug, oldSlug, opts.cascade), written: [{ kind: 'dataset', entityId: datasetId, scope: '', data }] };
     }
-    const datasets = (await this.list(ctx, 'dataset')) as Dataset[];
-    if (datasets.some((d) => d.id !== datasetId && d.slug === renamed.slug)) {
-      throw new ConflictError(`a dataset with slug "${renamed.slug}" already exists`);
+    // The settings row is read RAW (not normalised) so writing it back changes only what the rename rewrote.
+    // The instance library is read only to SEE what the site renders through it — it is never written.
+    const settingsRow = await this.row(exec, ctx, 'settings', SETTINGS_ENTITY_ID);
+    const settings = settingsRow?.data as SettingsRow | undefined;
+    const library = { ...ctx, projectId: GLOBAL_SCOPE_ID };
+    const datasets = (await this.listIn(exec, ctx, 'dataset')) as Dataset[];
+    // Only the entries that move — those filed under a renamed slug's scope (indexed). Loading every entry of the
+    // project here would hold the write gate for all of them, and other writers give up after BUSY_WAIT_MS.
+    const entries: Array<{ scope: string; entry: Entry }> = [];
+    for (const { oldSlug: scope } of plannedSlugChanges({ renamed, oldSlug, cascade: opts.cascade, datasets, ...(settings ? { settings } : {}) }).pairs) {
+      for (const entry of (await this.listIn(exec, ctx, 'entry', { scope })) as Entry[]) entries.push({ scope, entry });
     }
-
-    // Owned children — moved unconditionally. See the note on `cascade` above: an entry left on the old
-    // slug is not a dangling reference, it is an unreachable row.
-    const entriesToUpdate: Entry[] = [];
-    for (const e of (await this.list(ctx, 'entry')) as Entry[]) {
-      if (e.dataset === oldSlug) entriesToUpdate.push({ ...e, dataset: renamed.slug });
-    }
-
-    const pagesToUpdate: Array<{ p: Page; source: string }> = [];
-    const templatesToUpdate: Array<{ t: Template; source: string }> = [];
-    const refDatasets: Dataset[] = [];
-    if (opts.cascade) {
-      for (const p of (await this.list(ctx, 'page')) as Page[]) {
-        if (typeof p.source === 'string' && sourceReferencesDataset(p.source, oldSlug)) {
-          pagesToUpdate.push({ p, source: rewriteDatasetRefsInSource(p.source, oldSlug, renamed.slug) });
-        }
-      }
-      for (const t of (await this.list(ctx, 'template')) as Template[]) {
-        if (typeof t.source === 'string' && sourceReferencesDataset(t.source, oldSlug)) {
-          templatesToUpdate.push({ t, source: rewriteDatasetRefsInSource(t.source, oldSlug, renamed.slug) });
-        }
-      }
-      for (const d of datasets) {
-        if (d.id === datasetId) continue;
-        const { fields, changed } = rewriteReferenceTargets(d.fields ?? [], oldSlug, renamed.slug);
-        if (changed) refDatasets.push({ ...d, fields });
-      }
-    }
-
-    await this.db.transaction(async (tx) => {
-      const exec = tx as unknown as Executor;
-      await this.writeRow(exec, ctx, 'dataset', datasetId, renamed);
-      // Entries are dataset-SCOPED: a rename moves each entry's row from the old slug's scope to the new
-      // one (in place) — a plain writeRow would compute the new scope, miss the old-scope row, and insert
-      // a duplicate. rescopeEntry re-keys the single existing row.
-      for (const e of entriesToUpdate) await this.rescopeEntry(exec, ctx, e.id, oldSlug, e);
-      // History is keyed by the same dataset slug, so it has to move WITH the rows. Without this the
-      // entities land on the new slug while every snapshot stays on the old one, and the History panel
-      // — which asks by the current slug — shows no past at all.
-      await this.revisions?.rescopeEntries(ctx, oldSlug, renamed.slug, exec);
-      for (const { p, source } of pagesToUpdate) await this.writeRow(exec, ctx, 'page', p.id, { ...p, source });
-      for (const { t, source } of templatesToUpdate) await this.writeRow(exec, ctx, 'template', t.id, { ...t, source });
-      for (const d of refDatasets) await this.writeRow(exec, ctx, 'dataset', d.id, d);
+    const plan = planDatasetRename({
+      renamed,
+      oldSlug,
+      cascade: opts.cascade,
+      datasets,
+      entries,
+      pages: (await this.listIn(exec, ctx, 'page')) as Page[],
+      templates: (await this.listIn(exec, ctx, 'template')) as Template[],
+      snippets: (await this.listIn(exec, ctx, 'snippet')) as Snippet[],
+      ...(settings ? { settings } : {}),
+      library: { templates: (await this.listIn(exec, library, 'template')) as Template[], snippets: (await this.listIn(exec, library, 'snippet')) as Snippet[] },
     });
+    // An entry id is unique per (dataset) scope, so a LEFTOVER row already filed under a new slug with the same
+    // id — stranded there by some earlier mishap, with no dataset of that name — would make the move below hit
+    // the unique key mid-transaction and surface as an opaque failure. Name it instead (one query per slug).
+    for (const p of plan.pairs) {
+      const moving = new Set(plan.entries.filter((e) => e.entry.dataset === p.newSlug).map((e) => e.entry.id));
+      if (moving.size === 0) continue;
+      const clash = ((await this.listIn(exec, ctx, 'entry', { scope: p.newSlug })) as Entry[]).find((e) => moving.has(e.id));
+      if (clash) {
+        throw new ConflictError(
+          `entry "${clash.id}" already exists under "${p.newSlug}" (a leftover row, with no dataset of that name) — ` +
+            `delete it or rename "${p.oldSlug}" to another slug`,
+        );
+      }
+    }
 
-    this.events?.emit(ctx.projectId, { kind: 'dataset', entityId: datasetId, op: 'put', actor: ctx.actor });
-    for (const e of entriesToUpdate) this.events?.emit(ctx.projectId, { kind: 'entry', entityId: e.id, op: 'put', actor: ctx.actor });
-    for (const { p } of pagesToUpdate) this.events?.emit(ctx.projectId, { kind: 'page', entityId: p.id, op: 'put', actor: ctx.actor });
-    for (const { t } of templatesToUpdate) this.events?.emit(ctx.projectId, { kind: 'template', entityId: t.id, op: 'put', actor: ctx.actor });
-    for (const d of refDatasets) this.events?.emit(ctx.projectId, { kind: 'dataset', entityId: d.id, op: 'put', actor: ctx.actor });
+    const written: Array<{ kind: ContentKind; entityId: string; scope: string; data: unknown }> = [];
+    const write = async (kind: ContentKind, entityId: string, data: unknown, knownRow?: Awaited<ReturnType<ContentRepository['row']>>) => {
+      written.push({ kind, entityId, scope: '', data: await this.writeRow(exec, ctx, kind, entityId, data, knownRow) });
+    };
+    for (const d of plan.datasets) await write('dataset', d.id, d, d.id === datasetId ? dsRow : undefined);
+    // Entries are dataset-SCOPED: a rename moves each entry's row from the old slug's scope to the new
+    // one (in place) — a plain writeRow would compute the new scope, miss the old-scope row, and insert
+    // a duplicate. rescopeEntry re-keys the single existing row.
+    for (const { entry, oldScope } of plan.entries) {
+      await this.rescopeEntry(exec, ctx, entry.id, oldScope, entry);
+      written.push({ kind: 'entry', entityId: entry.id, scope: entry.dataset, data: entry });
+    }
+    // History is keyed by the same dataset slug, so it has to move WITH the rows. Without this the
+    // entities land on the new slug while every snapshot stays on the old one, and the History panel
+    // — which asks by the current slug — shows no past at all.
+    for (const p of plan.pairs) await this.revisions?.rescopeEntries(ctx, p.oldSlug, p.newSlug, exec);
+    for (const p of plan.pages) await write('page', p.id, p);
+    for (const t of plan.templates) await write('template', t.id, t);
+    for (const s of plan.snippets) await write('snippet', s.id, s);
+    if (plan.settings) await write('settings', SETTINGS_ENTITY_ID, plan.settings, settingsRow);
 
     return {
-      oldSlug,
-      newSlug: renamed.slug,
-      cascaded: opts.cascade,
-      entriesUpdated: entriesToUpdate.length,
-      pagesUpdated: pagesToUpdate.length,
-      templatesUpdated: templatesToUpdate.length,
-      referencesUpdated: refDatasets.length,
+      written,
+      result: {
+        ...renameResult(oldSlug, renamed.slug, opts.cascade),
+        entriesUpdated: plan.entries.length,
+        pagesUpdated: plan.pages.length,
+        templatesUpdated: plan.templates.length,
+        snippetsUpdated: plan.snippets.length,
+        settingsUpdated: plan.settings !== undefined,
+        referencesUpdated: plan.referencesUpdated,
+        localeCopiesRenamed: plan.pairs.slice(1).map(({ oldSlug: from, newSlug: to }) => ({ oldSlug: from, newSlug: to })),
+        localeCopiesNotRenamed: plan.localeCopiesNotRenamed,
+      },
     };
   }
 

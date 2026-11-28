@@ -27,10 +27,12 @@ const SLUG_RE = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
  * Rename a dataset's display NAME and/or its SLUG (the binding key). The name is cosmetic. Changing the
  * slug is a server-side, ATOMIC operation (`api.renameDataset`). The dataset's ENTRIES always move with
  * it — they are owned by it, and an entry left on the old slug would be unreachable rather than merely
- * stale, so no option here can strand them. The CASCADE choice governs only EXTERNAL references: every
- * page/template `{{#each dataset.<slug>}}` / `dataset="<slug>"`. The slug is allow-list validated
- * (lowercase identifier with underscores). On a slug change the user picks: Cancel (close) · Rename +
- * update references (cascade) · Rename only (leave page/template refs for the author to fix).
+ * stale, so no option here can strand them. The CASCADE choice governs only EXTERNAL references — every
+ * page/template/snippet/header-footer `{{#each dataset.<slug>}}` / `dataset="<slug>"`, reference fields, data
+ * files, values picked in a dataset dropdown — and the dataset's LANGUAGE COPIES (`<slug>_<locale>`), which
+ * a page in that language finds only by name. The slug is allow-list validated (lowercase identifier with
+ * underscores). On a slug change the user picks: Cancel (close) · Rename + update references (cascade) ·
+ * Rename only (leave the references AND the language copies for the author to fix).
  */
 export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs, onRenamed, onClose }: RenameDatasetModalProps) {
   const { confirm, dialog } = useDialogs();
@@ -119,7 +121,8 @@ export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs,
             <p>
               Renaming the slug to <code>{slug}</code> changes the binding key. Its {entryCount}{' '}
               {entryCount === 1 ? 'entry moves' : 'entries move'} with it either way — choose how to handle
-              the page/template references:
+              what uses it: pages, templates, snippets, the header and footer, reference fields and data files,
+              and its copies for other languages (e.g. <code>{`${dataset.slug}_de`}</code> → <code>{`${slug}_de`}</code>):
             </p>
             <button
               type="button"
@@ -135,7 +138,8 @@ export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs,
               onClick={() => void run(false)}
               className="rounded-md border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/15 disabled:opacity-60"
             >
-              Rename slug only — leave page/template references (advanced; loops break until you fix them)
+              Rename slug only — leave references and language copies as they are (advanced; loops break, and pages in
+              other languages show the main language, until you fix them)
             </button>
           </div>
         )}

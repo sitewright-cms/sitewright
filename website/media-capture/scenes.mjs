@@ -415,6 +415,121 @@ Object.assign(scenes, {
       await ok(a.put('/admin/settings', { data: { platformName: 'Sitewright', brandPrimary: null, brandSecondary: null, platformLogo: null, platformBackground: null } }), 'branding back');
     }
   },
+
+  // Page Audit: a real Lighthouse run against a deploy-equivalent build of the page, then its findings.
+  async audits() {
+    for (const [slot, row, mode] of [['doc_editor_tour_audit', /^Home/, 'Mobile'], ['feat_seo_audit', /^Services/, 'Desktop']]) {
+      const page = await editor();
+      await page.getByRole('button', { name: row }).first().click();
+      await page.getByRole('button', { name: 'Page Audit', exact: true }).click();
+      await page.getByRole('button', { name: mode, exact: true }).click();
+      await page.getByRole('button', { name: 'Run Lighthouse audit' }).click();
+      // Done when the run button is back (it reads "Running…" meanwhile).
+      await page.getByRole('button', { name: /Run Lighthouse audit|Run again|Re-run/ }).waitFor({ timeout: 240_000 });
+      await page.waitForTimeout(1500);
+      await park(page);
+      // The audit column, from the search preview down to the first recommendations.
+      await shot(page, slot, { around: [page.getByText('SEO preview', { exact: true }), page.getByText(/recommendations/i).first()], pad: 150 });
+      await page.context().close();
+    }
+  },
+
+  // The code view: retype the eyebrow and tint the headline with a Tailwind class; the page follows.
+  async feat_editor_code() {
+    const page = await editor({ scale: 1 });
+    await openCode(page);
+    await glide(page, { x: 1100, y: 760 }, 10);
+    const stop = await record(page, 'feat_editor_code', EDITOR);
+    await page.waitForTimeout(1200);
+    await glide(page, page.locator('.cm-scroller'), 700);
+    await page.waitForTimeout(500);
+    await selectInCode(page, 'Boutique web studio · San Francisco');
+    await page.waitForTimeout(600);
+    await typeSlowly(page, 'Now booking autumn projects', 55);
+    await page.waitForTimeout(500);
+    await selectInCode(page, 'tracking-tight sm:text-6xl');
+    await page.keyboard.press('End');
+    await page.evaluate(() => {
+      const el = document.querySelector('.cm-content');
+      const view = el?.cmView?.view ?? el?.cmTile?.view;
+      const doc = view.state.doc.toString();
+      const at = doc.indexOf('tracking-tight sm:text-6xl') + 'tracking-tight'.length;
+      view.dispatch({ selection: { anchor: at }, scrollIntoView: true });
+    });
+    await page.waitForTimeout(400);
+    await typeSlowly(page, ' text-amber-200', 70);
+    await page.waitForTimeout(600);
+    await glide(page, { x: 1494, y: 700 }, 700);
+    await page.waitForTimeout(150);
+    await glide(page, { x: 1180, y: 880 }, 700);
+    await page.waitForTimeout(3000);
+    await stop({ hold: 300 });
+    await page.context().close();
+  },
+
+  // A developer's loop: one {{#each}} over the team dataset, and the page shows a card per person.
+  async way_developer() {
+    const page = await editor({ scale: 1 });
+    await openCode(page, /^FAQ/);
+    await glide(page, { x: 1100, y: 760 }, 10);
+    const stop = await record(page, 'way_developer', EDITOR);
+    await page.waitForTimeout(1000);
+    await glide(page, page.locator('.cm-scroller'), 700);
+    await page.evaluate(() => {
+      const el = document.querySelector('.cm-content');
+      const view = el?.cmView?.view ?? el?.cmTile?.view;
+      view.dispatch({ selection: { anchor: 0 }, scrollIntoView: true });
+      view.focus();
+    });
+    await page.waitForTimeout(400);
+    const chunks = [
+      '<section class="mx-auto grid max-w-6xl gap-6 px-6 pt-16 sm:grid-cols-4">\n',
+      '  {{#each dataset.team}}\n',
+      '  <div class="rounded-2xl border border-base-300 p-6 text-center">\n',
+      '    {{sw-image photo alt=name class="mx-auto h-24 w-24 rounded-full object-cover"}}\n',
+      '    <h3 class="mt-4 font-bold">{{name}}</h3>\n',
+      '    <p class="text-sm opacity-60">{{role}}</p>\n',
+      '  </div>\n',
+      '  {{/each}}\n',
+      '</section>\n',
+    ];
+    for (const c of chunks) {
+      await page.keyboard.insertText(c);
+      await page.waitForTimeout(380);
+    }
+    await page.waitForTimeout(700);
+    await glide(page, { x: 1494, y: 700 }, 700);
+    await page.waitForTimeout(150);
+    await glide(page, { x: 1150, y: 860 }, 700);
+    await page.waitForTimeout(3200);
+    await stop({ hold: 300 });
+    await page.context().close();
+  },
+
+  // A client edits in place: hover the heading, click, retype it, save.
+  async way_client() {
+    const page = await editor({ scale: 1 });
+    await page.getByRole('button', { name: /^About/ }).first().click();
+    await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
+    const preview = page.frameLocator('iframe[title="Preview"]');
+    const heading = preview.locator('[data-sw-translate="about.headline"]');
+    await heading.waitFor();
+    await page.waitForTimeout(2000);
+    await glide(page, { x: 1200, y: 800 }, 10);
+    const stop = await record(page, 'way_client', EDITOR);
+    await page.waitForTimeout(1000);
+    await glide(page, heading, 900);
+    await page.waitForTimeout(800);
+    await tap(page, heading, { ms: 200 });
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.waitForTimeout(300);
+    await typeSlowly(page, 'Five people. Every one senior.', 65);
+    await page.waitForTimeout(700);
+    await tap(page, page.getByRole('button', { name: 'Save', exact: true }), { ms: 800 });
+    await page.waitForTimeout(2200);
+    await stop({ hold: 300 });
+    await page.context().close();
+  },
 });
 
 const wanted = process.argv.slice(2);

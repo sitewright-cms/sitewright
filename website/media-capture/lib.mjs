@@ -221,7 +221,13 @@ export async function shot(page, slot, opts = {}) {
  * Starts recording the page. Returns `stop()`, which encodes OUT/<slot>.webm (25 fps, VP9) and OUT/<slot>-poster.jpg.
  * `size` is the frame size in px; frames are taken at the viewport's CSS size, scaled to it.
  */
+// While recording, the editor's frosted-glass BACKDROP blur is switched off. Without a GPU, Chrome re-blurs the whole
+// screen on every frame in which anything changes (typing, a preview update), which caps the editor at ~4 fps; without
+// the blur it runs at ~38. Stills keep the real look; in a video only the dimmed margins around a modal differ.
+const NO_BACKDROP_BLUR = '*,*::before,*::after,::backdrop{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}';
+
 export async function record(page, slot, size = { width: W, height: H }) {
+  await page.addStyleTag({ content: NO_BACKDROP_BLUR }).catch(() => {});
   const cdp = await page.context().newCDPSession(page);
   const frames = [];
   cdp.on('Page.screencastFrame', async ({ data, metadata, sessionId }) => {

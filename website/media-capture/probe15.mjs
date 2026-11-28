@@ -1,0 +1,10 @@
+import { launch, signedIn } from './lib.mjs';
+const browser = await launch();
+const ctx = await signedIn(browser, 'lena@northwind.example', 'Pw-secret-1', { scale: 1, width: 1680, height: 720, reducedMotion: 'reduce' });
+const page = await ctx.newPage();
+await page.goto('/');
+await page.getByRole('button', { name: /Example Project/ }).first().click();
+await page.getByRole('button', { name: /^Home/ }).first().waitFor();
+const snap = await page.locator('body').ariaSnapshot();
+console.log(snap.split('\n').filter((l) => /FR|French|fr\b|EN|DE\b|radio|tab "/.test(l)).slice(0, 20).join('\n'));
+await browser.close();

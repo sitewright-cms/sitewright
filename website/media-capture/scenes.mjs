@@ -603,6 +603,74 @@ Object.assign(scenes, {
     await stop({ hold: 300 });
     await page.context().close();
   },
+
+  // The SVG animation studio: an example plays, an element is picked to show its animation, and it plays again.
+  async feat_components_studio() {
+    const page = await editor({ scale: 1, reducedMotion: 'no-preference' });
+    await page.getByRole('button', { name: /System Library/i }).first().click();
+    await page.getByRole('button', { name: /^SVG animation studio/ }).click();
+    await page.getByRole('button', { name: 'View Orbit mark in the studio' }).click();
+    const play = page.getByRole('button', { name: /Play/ }).first();
+    await play.waitFor();
+    await page.waitForTimeout(1500);
+    await glide(page, { x: 1100, y: 760 }, 10);
+    const stop = await record(page, 'feat_components_studio', EDITOR);
+    await page.waitForTimeout(700);
+    await tap(page, play, { ms: 800 });
+    await page.waitForTimeout(3800);
+    await tap(page, page.getByRole('button', { name: 'ellipse', exact: true }), { ms: 900 });
+    await page.waitForTimeout(1600);
+    await tap(page, play, { ms: 900 });
+    await page.waitForTimeout(3800);
+    await stop({ hold: 300 });
+    await page.context().close();
+  },
+
+  // Add a language: search, pick French, and every page gains a French version that follows the English layout.
+  // (It changes the slot, so it runs last; 21:9 at 1680×720.)
+  async feat_languages_add() {
+    const size = { width: 1680, height: 720 };
+    // Start without French (a previous run added it).
+    const a = await api(ADMIN.email, ADMIN.password);
+    const { projects } = await ok(a.get('/projects'), 'projects');
+    const pid = projects.find((p) => p.slug === 'example').id;
+    await a.delete(`/projects/${pid}/locales/fr`);
+    const context = await signedIn(browser, ADMIN.email, ADMIN.password, { ...size, scale: 1, reducedMotion: 'reduce' });
+    await withCursor(context);
+    const page = await context.newPage();
+    await page.goto('/');
+    await page.getByRole('button', { name: /Example Project/ }).first().click();
+    await page.getByRole('tab', { name: 'Website Settings' }).click();
+    const tile = page.getByRole('button', { name: 'Open Languages' });
+    await tile.waitFor();
+    await tile.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(800);
+    await glide(page, { x: 1300, y: 600 }, 10);
+    const stop = await record(page, 'feat_languages_add', size);
+    await page.waitForTimeout(700);
+    await tap(page, tile, { ms: 800 });
+    const dialog = page.getByRole('dialog', { name: 'Languages' });
+    await dialog.waitFor();
+    await page.waitForTimeout(600);
+    await tap(page, dialog.getByRole('button', { name: /Add language/ }), { ms: 700 });
+    const add = page.getByRole('dialog', { name: 'Add a language' });
+    await add.getByRole('searchbox').waitFor();
+    await typeSlowly(page, 'Fren', 90);
+    await page.waitForTimeout(500);
+    await tap(page, add.getByRole('button', { name: 'French fr' }), { ms: 700 });
+    await page.waitForTimeout(1200);
+    // Picking it adds the language at once (its pages are created); the dialog stays open to show it.
+    await page.waitForTimeout(1400);
+    await tap(page, dialog.getByRole('button', { name: 'Close', exact: true }), { ms: 700 });
+    await page.waitForTimeout(700);
+    await tap(page, page.getByRole('tab', { name: 'Pages' }), { ms: 800 });
+    await page.waitForTimeout(800);
+    const fr = page.getByRole('tab', { name: 'fr', exact: true });
+    await tap(page, fr, { ms: 700 });
+    await page.waitForTimeout(3000);
+    await stop({ hold: 300 });
+    await context.close();
+  },
 });
 
 const wanted = process.argv.slice(2);

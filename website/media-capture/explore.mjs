@@ -16,6 +16,10 @@ const open = async () => {
   await page.waitForTimeout(800);
 };
 const screens = {
+  'add-lang': async () => { await page.getByRole('tab', { name: 'Website Settings' }).click(); await page.getByRole('button', { name: 'Open Languages' }).click(); await page.getByRole('button', { name: /Add language/ }).click(); await page.waitForTimeout(1200); },
+
+  'svg-studio': async () => { await page.getByRole('button', { name: /System Library/i }).first().click(); await page.getByRole('button', { name: /^SVG animation studio/ }).click(); await page.waitForTimeout(1200); await page.getByRole('button', { name: 'View Orbit mark in the studio' }).click(); await page.waitForTimeout(2500); },
+
   'team-open': async () => { await page.getByRole('button', { name: 'Open File Manager' }).click(); await page.getByRole('button', { name: 'grid view' }).click(); await page.getByRole('button', { name: /^Team \d/ }).click(); await page.waitForTimeout(1500); },
 
   'files-team': async () => { await page.getByRole('button', { name: 'Open File Manager' }).click(); await page.getByRole('button', { name: 'Grid' }).click(); await page.getByText('Team', { exact: true }).last().dblclick(); await page.waitForTimeout(1000); },

@@ -166,7 +166,9 @@
         "kind": "video",
         "ratio": "16x10",
         "alt": "The SVG animation studio playing a draw-on effect on a logo and a morph between two shapes",
-        "capture": "Library → SVG animation studio: pick draw on a line logo, replay, then switch to morph; 10–12 s"
+        "capture": "Library → SVG animation studio: pick draw on a line logo, replay, then switch to morph; 10–12 s",
+        "video": "/media/sitewright/qoEItg-feat_components_studio.webm",
+        "poster": "/media/sitewright/IZ2i1m-feat_components_studio-poster.jpg"
       }
     },
     {
@@ -197,7 +199,9 @@
         "kind": "video",
         "ratio": "21x9",
         "alt": "A language being added, after which the pages list shows a German version of each page marked inherited",
-        "capture": "Website Settings → Languages → Add language → German, then the pages list with the new /de/ pages and their inherited badges; 10 s, 1680×720"
+        "capture": "Website Settings → Languages → Add language → German, then the pages list with the new /de/ pages and their inherited badges; 10 s, 1680×720",
+        "video": "/media/sitewright/ABw6ra-feat_languages_add.webm",
+        "poster": "/media/sitewright/yOXwSD-feat_languages_add-poster.jpg"
       }
     },
     {

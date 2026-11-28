@@ -1166,11 +1166,55 @@ const FORM_JS = `(function(){
 // (weekend/holiday/other-month variants), so every selected day / range band / today / month-year
 // selection takes the brand colour. We also adopt the body font, lift the popup above sticky chrome,
 // and add a fade+rise OPEN ANIMATION (the vendor toggles the popup via opacity, so a transition
-// animates it) — dropped under prefers-reduced-motion. The runtime pins the light theme.
+// animates it) — dropped under prefers-reduced-motion. The runtime picks light or dark from the site's
+// surface token and follows a live theme flip; the DARK theme is painted from the site's tokens below.
+//
+// DARK = the SITE's dark, not the vendor's. The vendor dark theme is a fixed slate palette (a #0f172a
+// navy surface, white + slate text) that sat on a Sitewright dark page as a foreign box. Every colour
+// in it reads a `--vc-*` custom property with that slate as the fallback, so we feed those properties
+// from the site tokens: the surface IS --sw-color-base-100, the text IS --sw-color-base-content, and
+// the vendor's slate steps become content-into-surface mixes of the same strength (hover 10%, edges
+// 18%, disabled 30%, other-month 45%, muted 60%, soft 75%). Scoped to [data-vc-theme=dark] ONLY — the
+// light theme reads the very same property names, and stays exactly the vendor's.
+const vcMix = (pct: number): string =>
+  `color-mix(in srgb,var(--sw-color-base-content,#fff) ${pct}%,var(--sw-color-base-100,#0f172a))`;
+const VC_DARK_TOKENS: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['var(--sw-color-base-100,#0f172a)', ['bg', 'months-years-bg', 'date-bg', 'date-weekend-outside-bg', 'time-input-bg', 'time-range-bg']],
+  [
+    'var(--sw-color-base-content,#fff)',
+    ['color', 'header-color', 'title-color', 'months-years-color', 'week-day-color', 'week-number-color', 'week-numbers-title-color', 'date-color', 'date-color-hover', 'date-popup-color', 'time-input-color', 'time-separator-color'],
+  ],
+  [
+    vcMix(10),
+    ['months-years-bg-hover', 'date-bg-hover', 'date-hover-bg', 'date-today-bg', 'date-weekend-bg-hover', 'date-weekend-hover-bg', 'date-weekend-outside-bg-hover', 'date-weekend-outside-hover-bg', 'date-range-middle-outside-bg', 'date-popup-bg', 'date-range-tooltip-bg', 'time-border-color', 'time-range-thumb-bg'],
+  ],
+  [vcMix(18), ['date-hover-edge-bg', 'date-weekend-hover-edge-bg', 'date-selected-outside-bg', 'time-input-bg-hover']],
+  [
+    vcMix(30),
+    ['title-color-disabled', 'months-years-color-disabled', 'date-disabled-color', 'date-weekend-disabled-color', 'date-weekend-disabled-outside-color', 'date-weekend-today-disabled-color', 'time-range-track-color'],
+  ],
+  [vcMix(45), ['date-outside-color', 'date-today-outside-color', 'date-weekend-outside-color', 'collapse-color', 'time-range-thumb-border']],
+  [vcMix(60), ['title-color-hover', 'time-keeping-color', 'date-weekend-today-outside-color']],
+  [
+    vcMix(75),
+    ['week-day-color-hover', 'week-number-color-hover', 'date-weekend-outside-color-hover', 'date-selected-outside-color', 'date-range-middle-outside-color', 'date-range-tooltip-color', 'time-keeping-color-hover', 'time-range-thumb-border-hover'],
+  ],
+];
+// Each mix is computed ONCE on the calendar root (`--sw-vc-<n>`) and the vendor properties point at it,
+// so the rule stays small; custom properties inherit, so every cell inside the calendar picks them up.
+const VC_DARK_CSS =
+  '.vc[data-vc-theme=dark]{' +
+  VC_DARK_TOKENS.map(([value, names], i) => `--sw-vc-${i}:${value};${names.map((n) => `--vc-${n}:var(--sw-vc-${i})`).join(';')}`).join(';') +
+  '}' +
+  // The popup's surface now equals the page's, and the vendor's 10%-black shadow vanishes on a dark
+  // page, so give the dark popup a hairline edge + a deeper shadow to lift it off the content.
+  `[data-vc-theme=dark].vc[data-vc-input]{box-shadow:0 0 0 1px ${vcMix(18)},0 10px 24px rgba(0,0,0,.45)}`;
+
 const DATETIMEPICKER_CSS = [
   // The enhanced input reads as clickable (the picker opens on focus/click).
   ':where(input[data-sw-component="datetimepicker"][data-sw-enhanced="true"]){cursor:pointer}',
   DATETIMEPICKER_VENDOR_CSS,
+  VC_DARK_CSS,
   // Adopt the site body font; lift the input-mode popup above sticky chrome.
   '.vc{font-family:var(--sw-font-body,ui-sans-serif,system-ui,sans-serif)}',
   '.vc[data-vc-input]{z-index:1000}',
@@ -1195,11 +1239,12 @@ const DATETIMEPICKER_CSS = [
   '[data-vc-theme] .vc-date[data-vc-date-today] .vc-date__btn{color:var(--sw-color-primary,#0a7a5a)!important}',
   // Neutralise the vendor's RED weekends → the calendar's own neutrals, so the CI primary stays the
   // single accent (cleaner + brand-owned), in BOTH light and dark. Headers match the normal weekday
-  // header per theme (light #64748b / dark #fff). The weekend day numbers use `inherit` so they take
-  // the calendar's theme text colour automatically (dark text on light, light text on dark) — matching
-  // the normal days — excluding selected (stay white), today (stays primary), and other-month (stay muted).
+  // header per theme (light #64748b / dark the site's text token). The weekend day numbers use `inherit`
+  // so they take the calendar's theme text colour automatically (dark text on light, light text on dark)
+  // — matching the normal days — excluding selected (stay white), today (stays primary), and other-month
+  // (stay muted).
   '[data-vc-theme=light] .vc-week__day[data-vc-week-day-off]{color:#64748b!important}',
-  '[data-vc-theme=dark] .vc-week__day[data-vc-week-day-off]{color:#fff!important}',
+  '[data-vc-theme=dark] .vc-week__day[data-vc-week-day-off]{color:var(--sw-color-base-content,#fff)!important}',
   '[data-vc-theme] .vc-date[data-vc-date-weekend]:not([data-vc-date-selected]):not([data-vc-date-today]):not([data-vc-date-month="next"]):not([data-vc-date-month="prev"]) .vc-date__btn{color:inherit!important}',
   // TIME-ONLY mode (data-mode="time" → layout is just the time control): the time block is the popup's
   // FIRST child, so drop the calendar-separator border + top spacing it carries when it sits under a

@@ -147,7 +147,13 @@ describe('preview share links in a frame', () => {
     const revoked = await createShare({ label: 'Gone' });
     expect((await admin.del(`/projects/${projectId}/preview-shares/${revoked.id}`)).statusCode).toBe(200);
     const expired = await createShare({ label: 'Lapsed', expiresAt: Date.now() - 60_000 });
-    const forged = live.url.replace(/-([A-Za-z0-9_]+)\/$/, '-AAAAAAAAAAAAAAAAAAAAAAAAAAAA/');
+    // The token is `<shareId>-<mac>`, split on the FIRST dash: the MAC is base64url, which can itself hold a dash, or
+    // end in one (then a pattern anchored on the last dash matched nothing, and the "forgery" was the live link, about
+    // one run in 64). Keep the live shareId and change the MAC's first character, so the forgery always differs.
+    const parts = /^(.*\/)([0-9A-Za-z]+)-([^/]+)\/$/.exec(live.url);
+    expect(parts, live.url).not.toBeNull();
+    const [, base, shareId, mac] = parts!;
+    const forged = `${base}${shareId}-${mac!.startsWith('A') ? 'B' : 'A'}${mac!.slice(1)}/`;
     expect(forged).not.toBe(live.url);
 
     const before = await Promise.all([revoked.url, expired.url, forged].map(visit));
